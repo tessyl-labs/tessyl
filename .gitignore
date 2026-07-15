@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Turborepo
+.turbo/
+
+# Build output
+dist/
+build/
+coverage/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Logs and editor files
+*.log
+.DS_Store
+.idea/
+.vscode/
