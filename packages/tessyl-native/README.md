@@ -28,3 +28,15 @@ define the product and technical contracts those components satisfy:
 The documented v1 surface is implemented and tested in this package. Sections
 explicitly labeled as future work remain design guidance; any intentional
 implementation deviation should update these documents in the same change.
+
+## Run the examples locally
+
+From the repository root, start the package development server:
+
+```sh
+npm run dev --workspace=@tessyl/native
+```
+
+Open `http://127.0.0.1:3000/showcase`. The server rebuilds when the calculator,
+chart, or simulation Voyd source under `examples/` changes. Set `PORT` or
+`VOYD_WEB_PORT` to use a different port.
