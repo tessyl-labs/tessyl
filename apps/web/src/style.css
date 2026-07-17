@@ -3,7 +3,10 @@
 @source "./**/*.voyd";
 
 :root {
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  color: #172033;
+  background: #f4f6f8;
+  font-family: "Avenir Next", Avenir, "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  font-synthesis: none;
 }
 
 body {
@@ -15,4 +18,185 @@ button,
 input,
 textarea {
   font: inherit;
+}
+
+::selection {
+  background: #c8f2e2;
+  color: #12352b;
+}
+
+.app-body {
+  background:
+    radial-gradient(circle at 78% 5%, rgb(215 243 232 / 55%), transparent 26rem),
+    #f4f6f8;
+}
+
+.app-sidebar {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 20% 5%, rgb(45 212 191 / 16%), transparent 18rem),
+    linear-gradient(165deg, #17243a 0%, #0f172a 68%, #111827 100%);
+}
+
+.app-sidebar::after {
+  position: absolute;
+  right: -5rem;
+  bottom: -6rem;
+  width: 15rem;
+  height: 15rem;
+  border: 1px solid rgb(255 255 255 / 8%);
+  border-radius: 999px;
+  content: "";
+}
+
+.brand-mark {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: none;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 16%);
+  border-radius: 0.8rem;
+  background: linear-gradient(145deg, #34d399, #0f766e);
+  box-shadow: 0 10px 28px rgb(5 150 105 / 25%);
+  color: white;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+}
+
+.sidebar-link {
+  transition: color 160ms ease, background-color 160ms ease, transform 160ms ease;
+}
+
+.sidebar-link:hover {
+  transform: translateX(2px);
+}
+
+.editor-hero,
+.stat-card,
+.preview-card,
+.editor-textarea {
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%), 0 18px 45px rgb(15 23 42 / 4%);
+}
+
+.editor-hero {
+  background:
+    linear-gradient(135deg, rgb(255 255 255 / 96%), rgb(248 250 252 / 90%)),
+    white;
+}
+
+.stat-card {
+  transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+}
+
+.stat-card:hover {
+  transform: translateY(-1px);
+  border-color: #a7f3d0;
+  box-shadow: 0 14px 35px rgb(15 23 42 / 7%);
+}
+
+.editor-textarea {
+  caret-color: #059669;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.editor-textarea:focus {
+  border-color: #34d399;
+  box-shadow: 0 0 0 4px rgb(52 211 153 / 12%), 0 22px 55px rgb(15 23 42 / 7%);
+}
+
+.preview-paper {
+  background-image: linear-gradient(#e2e8f0 1px, transparent 1px);
+  background-size: 100% 1.75rem;
+}
+
+.showcase-body {
+  background:
+    radial-gradient(circle at 88% 2%, rgb(125 211 252 / 18%), transparent 30rem),
+    radial-gradient(circle at 8% 18%, rgb(110 231 183 / 22%), transparent 28rem),
+    #f7f8fa;
+}
+
+.showcase-hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 70%);
+  background:
+    radial-gradient(circle at 88% 20%, rgb(52 211 153 / 22%), transparent 22rem),
+    linear-gradient(135deg, #142238 0%, #172f42 58%, #164e4a 100%);
+  box-shadow: 0 30px 80px rgb(15 23 42 / 14%);
+}
+
+.showcase-hero::after {
+  position: absolute;
+  top: -7rem;
+  right: -6rem;
+  width: 22rem;
+  height: 22rem;
+  border: 1px solid rgb(255 255 255 / 10%);
+  border-radius: 999px;
+  content: "";
+}
+
+.showcase-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgb(203 213 225 / 72%);
+  background: rgb(255 255 255 / 90%);
+  box-shadow: 0 20px 55px rgb(15 23 42 / 7%);
+  backdrop-filter: blur(12px);
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.showcase-card:hover {
+  transform: translateY(-3px);
+  border-color: rgb(110 231 183 / 80%);
+  box-shadow: 0 28px 70px rgb(15 23 42 / 11%);
+}
+
+.example-index {
+  background: linear-gradient(145deg, #d1fae5, #ecfeff);
+  box-shadow: inset 0 0 0 1px rgb(16 185 129 / 18%);
+}
+
+.tessera-stage {
+  border: 1px solid rgb(226 232 240 / 90%);
+  background:
+    radial-gradient(circle at 100% 0%, rgb(209 250 229 / 50%), transparent 16rem),
+    linear-gradient(155deg, #fbfdff, #f3f6f8);
+}
+
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #64748b;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.status-line::before {
+  width: 0.45rem;
+  height: 0.45rem;
+  flex: none;
+  border-radius: 999px;
+  background: #10b981;
+  box-shadow: 0 0 0 4px rgb(16 185 129 / 12%);
+  content: "";
+}
+
+.reset-button {
+  transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+}
+
+.reset-button:hover {
+  transform: translateY(-1px);
+}
+
+@media (max-width: 63.99rem) {
+  .app-sidebar::after {
+    display: none;
+  }
 }

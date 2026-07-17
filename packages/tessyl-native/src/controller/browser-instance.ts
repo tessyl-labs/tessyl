@@ -88,8 +88,8 @@ export class BrowserTesseraInstance implements TesseraInstance {
     iframe.style.width = "100%";
     iframe.style.border = "0";
     iframe.style.height = this.#input.presentation?.expandedView
-      ? "min(80vh, 56rem)"
-      : ({ compact: "16rem", standard: "24rem", tall: "36rem" } as const)[this.#input.presentation?.height ?? "standard"];
+      ? "min(64vh, 34rem)"
+      : ({ compact: "18rem", standard: "28rem", tall: "40rem" } as const)[this.#input.presentation?.height ?? "standard"];
     iframe.dataset.tessylExpandedView = String(this.#input.presentation?.expandedView === true);
     iframe.hidden = true;
     const channel = new MessageChannel();

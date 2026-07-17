@@ -306,7 +306,7 @@ pub fn Metric({ label: String, value: f64, unit?: String, description?: String, 
   if precision is Some:
     if precision.value < 0 or precision.value > 6:
       panic("Metric precision must be from 0 through 6")
-  let rendered_value = if precision is Some then: to_string(round(value * precision_factor(precision.value)) / precision_factor(precision.value)) else: to_string(value)
+  let rendered_value = if precision is Some then: format_metric_value(value, precision.value) else: to_string(value)
   let ~value_children = [vx::text(rendered_value)]
   if unit is Some: value_children.push(vx::html_element(tag: "span", children: [vx::text(unit.value)]))
   let ~children = [
@@ -330,6 +330,38 @@ fn precision_factor(places: i32) -> f64
   if places == 6:
     return 1000000.0
   1.0
+
+fn precision_factor_i64(places: i32) -> i64
+  if places == 1:
+    return 10i64
+  if places == 2:
+    return 100i64
+  if places == 3:
+    return 1000i64
+  if places == 4:
+    return 10000i64
+  if places == 5:
+    return 100000i64
+  if places == 6:
+    return 1000000i64
+  1i64
+
+fn format_metric_value(value: f64, places: i32) -> String
+  let factor = precision_factor_i64(places)
+  match(to_i64_checked(round(value * precision_factor(places))))
+    Ok<i64> { value: scaled }:
+      if places == 0:
+        return to_string(scaled)
+
+      let whole = scaled / factor
+      var fractional = scaled - whole * factor
+      if fractional < 0i64:
+        fractional = 0i64 - fractional
+
+      let whole_text = if scaled < 0i64 and whole == 0i64 then: "-0" else: to_string(whole)
+      whole_text.concat(".").concat(to_string(fractional).pad_left(width: places, with: 48))
+    Err:
+      to_string(round(value * precision_factor(places)) / precision_factor(places))
 
 pub fn Legend({ items: Array<LegendItem> }) -> MsgPack
   let ~children = Array<MsgPack>::with_capacity(items.len())

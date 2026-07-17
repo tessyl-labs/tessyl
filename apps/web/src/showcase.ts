@@ -34,7 +34,11 @@ const prepare = async (container: HTMLElement): Promise<TesseraInstance> => {
   const instance = await native.initialize({
     artifact: await loadArtifact(artifactUrl),
     container,
-    ...(id === "simulation" ? { presentation: { expandedView: true } } : {}),
+    ...(id === "chart"
+      ? { presentation: { height: "tall" as const } }
+      : id === "simulation"
+        ? { presentation: { expandedView: true } }
+        : {}),
     onStatusChange: (status) => setStatus(id, status === "failed" ? "Failed safely — use Reset to restart" : status),
   });
   instances.set(id, instance);
