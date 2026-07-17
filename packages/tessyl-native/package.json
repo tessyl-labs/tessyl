@@ -25,9 +25,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@voyd-lang/js-host": "file:///Users/drewy/code/voyd/packages/js-host",
-    "@voyd-lang/sdk": "file:///Users/drewy/code/voyd/packages/sdk",
-    "@voyd-lang/vx-dom": "file:///Users/drewy/code/voyd/packages/vx-dom"
+    "@voyd-lang/js-host": "file:../../.voyd-source/packages/js-host",
+    "@voyd-lang/sdk": "file:../../.voyd-source/packages/sdk",
+    "@voyd-lang/vx-dom": "file:../../.voyd-source/packages/vx-dom"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
