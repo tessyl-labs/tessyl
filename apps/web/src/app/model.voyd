@@ -1,0 +1,73 @@
+use std::string::type::String
+
+pub obj Model {
+  slug: String,
+  title: String,
+  body: String,
+  saved_body: String,
+  preview_open: bool,
+  save_count: i32,
+  saving: bool,
+  save_failed: bool
+}
+
+pub fn initial_model({ slug: String, title: String, body: String }) -> Model
+  Model {
+    slug: slug,
+    title: title,
+    body: body,
+    saved_body: body,
+    preview_open: true,
+    save_count: 0,
+    saving: false,
+    save_failed: false
+  }
+
+pub fn empty_model() -> Model
+  initial_model(slug: "home", title: "Mini Voydpedia", body: String::init())
+
+pub fn with_body(model: Model, body: String) -> Model
+  copy(model, body: body)
+
+pub fn reset(model: Model) -> Model
+  copy(model, body: model.saved_body, save_failed: false)
+
+pub fn toggle_preview(model: Model) -> Model
+  copy(model, preview_open: not model.preview_open)
+
+pub fn start_saving(model: Model) -> Model
+  copy(model, saving: true, save_failed: false)
+
+pub fn finish_saving(model: Model, succeeded: bool) -> Model
+  copy(
+    model,
+    saved_body: if succeeded then: model.body else: model.saved_body,
+    save_count: if succeeded then: model.save_count + 1 else: model.save_count,
+    saving: false,
+    save_failed: not succeeded
+  )
+
+pub fn is_dirty(model: Model) -> bool
+  not (model.body == model.saved_body)
+
+pub fn can_save(model: Model) -> bool
+  is_dirty(model) and not model.saving
+
+fn copy(model: Model, {
+  body?: String,
+  saved_body?: String,
+  preview_open?: bool,
+  save_count?: i32,
+  saving?: bool,
+  save_failed?: bool
+}) -> Model
+  Model {
+    slug: model.slug,
+    title: model.title,
+    body: body ?? model.body,
+    saved_body: saved_body ?? model.saved_body,
+    preview_open: preview_open ?? model.preview_open,
+    save_count: save_count ?? model.save_count,
+    saving: saving ?? model.saving,
+    save_failed: save_failed ?? model.save_failed
+  }

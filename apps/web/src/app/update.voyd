@@ -1,0 +1,62 @@
+use super::model::{
+  Model,
+  can_save,
+  finish_saving,
+  reset,
+  start_saving,
+  toggle_preview,
+  with_body
+}
+use std::enums::{ enum }
+use std::error::HostError
+use std::http::{ Body, Response }
+use std::http::client::self as http_client
+use std::result::types::all
+use std::string::type::String
+use std::task::self as tasks
+use std::vx::all
+
+pub enum Msg
+  Edit { value: String }
+  Save
+  SaveFinished { succeeded: bool }
+  Reset
+  TogglePreview
+
+pub fn step(
+  model: Model,
+  message: Msg
+): (http_client::HttpClient, tasks::TaskRuntime) -> Program<Model, Msg>
+  match(message)
+    Msg::Edit { value }:
+      next(with_body(model, value))
+    Msg::Reset:
+      next(reset(model))
+    Msg::TogglePreview:
+      next(toggle_preview(model))
+    Msg::Save:
+      save(model)
+    Msg::SaveFinished { succeeded }:
+      next(finish_saving(model, succeeded))
+
+fn save(model: Model): (http_client::HttpClient, tasks::TaskRuntime) -> Program<Model, Msg>
+  if not can_save(model):
+    return next(model)
+  program<Model, Msg>(
+    model: start_saving(model),
+    commands: Cmd<Msg>::task(
+      work: () -> bool => save_article(slug: model.slug, body: model.body),
+      handler: (succeeded: bool) -> Msg => Msg::SaveFinished { succeeded: succeeded }
+    )
+  )
+
+fn save_article({ slug: String, body: String }): http_client::HttpClient -> bool
+  let response: Result<Response, HostError> = http_client::post(
+    url: "/wiki/".concat(slug).concat("/body"),
+    body: Body::text(body)
+  )
+  match(response)
+    Ok<Response> { value }:
+      value.is_success()
+    Err<HostError>:
+      false

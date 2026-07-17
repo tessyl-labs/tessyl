@@ -1,0 +1,7 @@
+use src::app::model::{ Model, empty_model }
+use src::app::update::{ Msg, step }
+use src::app::ui::view
+use std::vx::all
+
+pub fn app() -> Program<Model, Msg>
+  program({ init: empty_model, step: step, view })

@@ -1,0 +1,7 @@
+{
+  "name": "@tessyl/native",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Internal Tessyl framework for compiling and running secure interactive article applications.",
+  "type": "module"
+}

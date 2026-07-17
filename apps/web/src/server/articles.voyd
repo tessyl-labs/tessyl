@@ -1,0 +1,68 @@
+use pkg::web::{ Context, parse_query }
+use std::error::IoError
+use std::fs::self as fs
+use std::fs::{ read_string, write_string }
+use std::http::HttpError
+use std::optional::types::all
+use std::path::Path
+use std::result::types::all
+use std::string::type::String
+
+pub type Article = {
+  slug: String,
+  title: String,
+  body: String
+}
+
+pub fn load_article(slug: String): fs::Fs -> Article
+  let clean = canonical_slug(slug)
+  match(read_string(article_path(clean)))
+    Ok<String> { value }:
+      article(clean, value)
+    Err<IoError>:
+      article(clean, "# New article\n\nStart writing, then click Save.")
+
+pub fn save_article({ slug: String, body: String }): fs::Fs -> Result<Article, IoError>
+  match(write_string(article_path(slug), body))
+    Ok<Unit>:
+      Ok<Article> { value: article(slug, body) }
+    Err<IoError> { error }:
+      Err<IoError> { error: error }
+
+pub fn article_slug_from(ctx: Context) -> Option<String>
+  match(ctx.param("slug"))
+    Some<String> { value }:
+      valid_slug(value)
+    None:
+      match(ctx.query_value("slug"))
+        Some<String> { value }:
+          valid_slug(value)
+        None:
+          Some<String> { value: "home" }
+
+pub fn request_body(ctx: Context) -> Result<String, HttpError>
+  ctx.request.body.as_text()
+
+pub fn form_body(input: String) -> Option<String>
+  parse_query(input).get("body")
+
+fn article(slug: String, body: String) -> Article
+  { slug: slug, title: title_for(slug), body: body }
+
+fn article_path(slug: String) -> Path
+  Path::new("./data/articles").join(canonical_slug(slug).concat(".md"))
+
+fn canonical_slug(value: String) -> String
+  valid_slug(value) ?? "home"
+
+fn valid_slug(value: String) -> Option<String>
+  let slug = value.trimmed().lowered()
+  if slug.is_empty() or slug.contains(where: (rune: i32) -> bool => not is_slug_rune(rune)):
+    return None {}
+  Some<String> { value: slug }
+
+fn is_slug_rune(rune: i32) -> bool
+  (rune >= 97 and rune <= 122) or (rune >= 48 and rune <= 57) or rune == 45 or rune == 95
+
+fn title_for(slug: String) -> String
+  if slug == "home" then: "Mini Voydpedia" else: slug

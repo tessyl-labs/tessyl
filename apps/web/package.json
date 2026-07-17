@@ -1,0 +1,35 @@
+{
+  "name": "web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --preserve-symlinks --preserve-symlinks-main --conditions=development --import tsx scripts/dev.mjs",
+    "build": "npm run typecheck && vite build && node --preserve-symlinks --preserve-symlinks-main --conditions=development --import tsx scripts/check-voyd.mjs",
+    "start": "node --preserve-symlinks --preserve-symlinks-main --conditions=development --import tsx scripts/serve.mjs",
+    "voyd:check": "node --preserve-symlinks --preserve-symlinks-main --conditions=development --import tsx scripts/check-voyd.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "binaryen": "^125.0.0",
+    "commander": "^14.0.0",
+    "@msgpack/msgpack": "^3.1.2",
+    "import-meta-resolve": "^4.2.0",
+    "@voyd-lang/sdk": "file:///Users/drewy/code/voyd/packages/sdk",
+    "@voyd-lang/vx-dom": "file:///Users/drewy/code/voyd/packages/vx-dom",
+    "@voyd-lang/web": "file:///Users/drewy/code/voyd/packages/web",
+    "@voyd-lang/compiler": "file:///Users/drewy/code/voyd/packages/compiler",
+    "@voyd-lang/js-host": "file:///Users/drewy/code/voyd/packages/js-host",
+    "@voyd-lang/lib": "file:///Users/drewy/code/voyd/packages/lib",
+    "@voyd-lang/package-adapter": "file:///Users/drewy/code/voyd/packages/package-adapter",
+    "@voyd-lang/std": "file:///Users/drewy/code/voyd/packages/std"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.0",
+    "@types/node": "^22.5.1",
+    "@voyd-lang/cli": "file:///Users/drewy/code/voyd/apps/cli",
+    "tailwindcss": "^4.3.0",
+    "tsx": "^4.20.4",
+    "typescript": "^5.8.3",
+    "vite": "^8.0.0"
+  }
+}

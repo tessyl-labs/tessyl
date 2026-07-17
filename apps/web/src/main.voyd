@@ -1,0 +1,101 @@
+use src::server::articles::{
+  article_slug_from,
+  form_body,
+  load_article,
+  request_body,
+  save_article
+}
+use src::server::page::article_page
+use pkg::web::all
+use std::env::self as env
+use std::error::{ HostError, IoError }
+use std::fs::self as fs
+use std::http::{ HttpError, server }
+use std::result::types::all
+use std::task::self as tasks
+
+pub fn main(): (server::HttpServer, tasks::TaskRuntime, env::Env, fs::Fs) -> i32
+  let result = serve(
+    port: app_port(),
+    host: app_host(),
+    shutdown_timeout: 30000,
+    max_body_bytes: 65536
+  ) routes():
+    adopt(serve_dir("./public"))
+
+    get("/") do:
+      article_page(load_article("home"))
+
+    get("/wiki") do(ctx: Context):
+      article_response(ctx)
+
+    get("/wiki/:slug") do(ctx: Context):
+      article_response(ctx)
+
+    post("/wiki/:slug/body") do(ctx: Context):
+      save_body_response(ctx)
+
+    post("/wiki/:slug") do(ctx: Context):
+      save_form_response(ctx)
+
+  match(result)
+    Ok<Unit>:
+      0
+    Err<HostError> { error }:
+      -error.code
+
+fn save_body_response(ctx: Context): fs::Fs -> Response
+  match(article_slug_from(ctx))
+    Some<String> { value: slug }:
+      match(request_body(ctx))
+        Ok<String> { value }:
+          saved_body_response(slug: slug, body: value)
+        Err<HttpError> { error }:
+          Response::bad_request().text(error.message)
+    None:
+      invalid_request("invalid article slug")
+
+fn saved_body_response({ slug: String, body: String }): fs::Fs -> Response
+  match(save_article(slug: slug, body: body))
+    Ok:
+      Response::ok().text("saved")
+    Err<IoError> { error }:
+      Response::internal_server_error().text(error.message)
+
+fn save_form_response(ctx: Context): fs::Fs -> Response
+  match(article_slug_from(ctx))
+    Some<String> { value: slug }:
+      match(request_body(ctx))
+        Ok<String> { value }:
+          match(form_body(value))
+            Some<String> { value: body }:
+              saved_form_response(slug: slug, body: body)
+            None:
+              invalid_request("missing body form field")
+        Err<HttpError> { error }:
+          Response::bad_request().text(error.message)
+    None:
+      invalid_request("invalid article slug")
+
+fn saved_form_response({ slug: String, body: String }): fs::Fs -> Response
+  match(save_article(slug: slug, body: body))
+    Ok { value }:
+      article_page(value)
+    Err<IoError> { error }:
+      Response::internal_server_error().text(error.message)
+
+fn article_response(ctx: Context): fs::Fs -> Response
+  match(article_slug_from(ctx))
+    Some<String> { value }:
+      article_page(load_article(value))
+    None:
+      invalid_request("invalid article slug")
+
+fn invalid_request(message: String) -> Response
+  Response::bad_request().text(message)
+
+fn app_port(): env::Env -> i32
+  env::get_int("VOYD_WEB_PORT") ?? 3000
+
+fn app_host(): env::Env -> String
+  env::get("VOYD_WEB_HOST") ?? "127.0.0.1"
