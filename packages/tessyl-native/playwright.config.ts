@@ -5,6 +5,7 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
+  workers: process.env.CI ? 1 : undefined,
   use: { baseURL: "http://127.0.0.1:3000", trace: "retain-on-failure" },
   webServer: {
     command: "npm run build --workspace=@tessyl/native && npm run build --workspace=web && VOYD_WEB_OPTIMIZE=false npm run start --workspace=web",
