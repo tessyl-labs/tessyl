@@ -75,7 +75,7 @@ export const STANDARD_V1: ResourceProfile = Object.freeze({
   runtimeQueueTimeoutMs: 5_000,
   maxConcurrentCompilers: 1,
   maxCompilerQueue: 4,
-  compileTimeoutMs: 10_000,
+  compileTimeoutMs: 30_000,
   compilerMemoryMb: 1_024,
   maxCompilerOutputBytes: 4 * 1024 * 1024,
 });
