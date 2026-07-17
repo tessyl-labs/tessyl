@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - "packages/tessyl-native/**"
+      - "packages/design-tokens/**"
       - "apps/web/**"
       - ".github/workflows/tessyl-native.yml"
 
@@ -24,6 +25,7 @@ jobs:
       - run: npm ci && npx turbo run build
         working-directory: .voyd-source
       - run: npm ci
+      - run: npm run build --workspace=@tessyl/design-tokens
       - run: npm run typecheck --workspace=@tessyl/native
       - run: npm test --workspace=@tessyl/native
 
