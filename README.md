@@ -1,6 +1,6 @@
 # tessyl
 
-A full-stack Turborepo application written in [Voyd](../voyd).
+A full-stack Turborepo application written in Voyd.
 
 ## Workspace layout
 
@@ -9,6 +9,11 @@ A full-stack Turborepo application written in [Voyd](../voyd).
 
 The workspace is ready for the Voyd app initializer; no application has been
 generated yet.
+
+## Setup
+
+The `preinstall` hook automatically initializes the pinned Voyd submodule, so
+both `npm install` and `npm ci` work from a regular clone.
 
 ## Commands
 
