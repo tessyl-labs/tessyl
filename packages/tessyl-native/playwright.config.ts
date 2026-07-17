@@ -11,7 +11,7 @@ export default defineConfig({
     cwd: "../..",
     url: "http://127.0.0.1:3000/showcase",
     reuseExistingServer: !process.env.CI,
-    timeout: 120_000,
+    timeout: 300_000,
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
