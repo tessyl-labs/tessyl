@@ -4,6 +4,11 @@
   "private": true,
   "description": "Internal Tessyl framework for compiling and running secure interactive article applications.",
   "type": "module",
+  "voyd": {
+    "packageDirectories": [
+      "./voyd"
+    ]
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
