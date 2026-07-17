@@ -9,7 +9,7 @@ Only Tessyl installs `@tessyl/native`. Tessera authors use the Voyd package
 they do not install or call the TypeScript package.
 
 This package contains the implemented v1 author SDK, compiler facade, isolated
-browser runtime, renderer, examples, showcase, and test suites. Its documents
+browser runtime, renderer, examples, and test suites. Its documents
 define the product and technical contracts those components satisfy:
 
 - [Product design](./docs/product-design.md) explains why Tesserae exist, the
@@ -37,6 +37,8 @@ From the repository root, start the package development server:
 npm run dev --workspace=@tessyl/native
 ```
 
-Open `http://127.0.0.1:3000/showcase`. The server rebuilds when the calculator,
-chart, or simulation Voyd source under `examples/` changes. Set `PORT` or
-`VOYD_WEB_PORT` to use a different port.
+Open `http://127.0.0.1:3001/showcase`. The command builds the package and starts
+the standalone `apps/native-playground` Vite app. The playground recompiles and
+reloads when calculator, chart, or simulation source under `examples/` changes.
+Set `TESSYL_PLAYGROUND_HOST` or `TESSYL_PLAYGROUND_PORT` to configure the
+listener.

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="A standalone playground for Tessyl Native example applications." />
+    <title>Tessyl Native Playground</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main class="playground-shell">
+      <nav class="topbar" aria-label="Playground navigation">
+        <a class="brand" href="/showcase" aria-label="Tessyl Native Playground home">
+          <span class="brand-mark" aria-hidden="true">T</span>
+          <span><strong>Tessyl Native</strong><small>Package playground</small></span>
+        </a>
+        <span class="local-badge"><span aria-hidden="true"></span>Local development</span>
+      </nav>
+
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow"><span aria-hidden="true"></span>Isolated by default</p>
+          <h1>Small apps.<br />Strong boundaries.</h1>
+          <p class="hero-summary">A focused workbench for developing and testing Tesserae without depending on the Tessyl product application.</p>
+          <div class="feature-list" aria-label="Runtime features">
+            <span>Worker isolated</span><span>Sandbox rendered</span><span>Restartable</span>
+          </div>
+        </div>
+        <aside class="hero-note" aria-label="Playground purpose">
+          <span class="hero-note-number">03</span>
+          <p>Demo applications compiled directly from <code>packages/tessyl-native/examples</code>.</p>
+        </aside>
+      </header>
+
+      <section class="examples-heading" aria-labelledby="examples-title">
+        <div><p class="section-kicker">Example gallery</p><h2 id="examples-title">Native building blocks</h2></div>
+        <p>Each card owns an independent runtime, renderer, lifecycle, and static fallback.</p>
+      </section>
+
+      <section class="example-grid">
+        <article class="example-card" data-showcase-card="calculator">
+          <header class="card-header">
+            <div class="card-title"><span class="example-index">01</span><div><h3>Interactive calculator</h3><p>Reactive inputs and derived metrics</p></div></div>
+            <button class="reset-button" type="button" data-tessera-reset="calculator">Reset</button>
+          </header>
+          <div class="presentation-label"><span>Standard</span><span>Fluid width</span></div>
+          <div class="tessera-stage" data-tessera-id="calculator" data-artifact="/assets/showcase/calculator.json">
+            <section class="fallback" role="region" aria-label="Tip calculator">
+              <h4>Tip calculator</h4>
+              <dl><dt>Bill amount</dt><dd>48</dd><dt>Tip</dt><dd>9.6 $</dd><dt>Total</dt><dd>57.6 $</dd></dl>
+            </section>
+          </div>
+          <p class="status-line" aria-live="polite" data-tessera-status="calculator">Waiting near viewport</p>
+        </article>
+
+        <article class="example-card" data-showcase-card="chart">
+          <header class="card-header">
+            <div class="card-title"><span class="example-index">02</span><div><h3>Interactive chart</h3><p>Accessible data visualization</p></div></div>
+            <button class="reset-button" type="button" data-tessera-reset="chart">Reset</button>
+          </header>
+          <div class="presentation-label"><span>Tall</span><span>Fluid width</span></div>
+          <div class="tessera-stage" data-tessera-id="chart" data-artifact="/assets/showcase/chart.json" data-presentation-height="tall">
+            <figure class="fallback" aria-label="Value over four periods">
+              <figcaption>Value over four periods</figcaption>
+              <p>The value grows by a factor of 1.2 each period.</p>
+              <svg aria-label="Value over four periods plot" role="img" viewBox="0 0 320 120" width="320" height="120">
+                <polyline points="8,106 109,80 210,49 312,10" fill="none" stroke="currentColor" stroke-width="3" />
+              </svg>
+              <table><caption>View chart data</caption><thead><tr><th scope="col">Period</th><th scope="col">Value</th></tr></thead><tbody><tr><td>0</td><td>1</td></tr><tr><td>1</td><td>1.2</td></tr><tr><td>2</td><td>1.44</td></tr><tr><td>3</td><td>1.728</td></tr></tbody></table>
+            </figure>
+          </div>
+          <p class="status-line" aria-live="polite" data-tessera-status="chart">Waiting near viewport</p>
+        </article>
+
+        <article class="example-card example-card-wide" data-showcase-card="simulation">
+          <header class="card-header">
+            <div class="card-title"><span class="example-index">03</span><div><h3>Bounded simulation</h3><p>Commands and lifecycle control</p></div></div>
+            <button class="reset-button" type="button" data-tessera-reset="simulation">Reset</button>
+          </header>
+          <div class="presentation-label"><span>Expanded view</span><span>Fluid width</span></div>
+          <div class="tessera-stage" data-tessera-id="simulation" data-artifact="/assets/showcase/simulation.json" data-expanded-view="true">
+            <section class="fallback" role="region" aria-label="Bounded simulation">
+              <h4>Bounded simulation</h4><p>Runs for at most forty steps and is currently at step 0.</p>
+            </section>
+          </div>
+          <p class="status-line" aria-live="polite" data-tessera-status="simulation">Waiting near viewport</p>
+        </article>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

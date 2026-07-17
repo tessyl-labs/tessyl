@@ -1,0 +1,19 @@
+{
+  "name": "@tessyl/native-playground",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "playground": "vite",
+    "build": "npm run typecheck && vite build",
+    "start": "vite preview --host 127.0.0.1 --port 3001 --strictPort",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tessyl/native": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.1",
+    "typescript": "^5.8.3",
+    "vite": "^8.0.0"
+  }
+}

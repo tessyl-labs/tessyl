@@ -1,13 +1,9 @@
-import { createTessylNative, TessylNativeError, type TesseraArtifactV1, type TesseraInstance } from "@tessyl/native";
-import "./style.css";
+import { createTessylNative, TessylNativeError, type TesseraArtifactV1, type TesseraInstance, type TesseraPresentation } from "@tessyl/native";
 
-type SerializedArtifact = Omit<TesseraArtifactV1, "wasm" | "sourceBundle"> & {
-  wasm: string;
-  sourceBundle: string;
-};
+type SerializedArtifact = Omit<TesseraArtifactV1, "wasm" | "sourceBundle"> & { wasm: string; sourceBundle: string };
 
 const native = createTessylNative({
-  runtime: { onArticleLink: (slug) => { location.href = `/wiki/${encodeURIComponent(slug)}`; } },
+  runtime: { onArticleLink: (slug) => { console.info(`Tessera requested article navigation: ${slug}`); } },
 });
 const instances = new Map<string, TesseraInstance>();
 const starting = new Set<string>();
@@ -27,18 +23,21 @@ const loadArtifact = async (url: string): Promise<TesseraArtifactV1> => {
 const statusNode = (id: string): HTMLElement | null => document.querySelector(`[data-tessera-status="${CSS.escape(id)}"]`);
 const setStatus = (id: string, value: string): void => { const node = statusNode(id); if (node) node.textContent = value; };
 
+const presentationFor = (container: HTMLElement): TesseraPresentation | undefined => {
+  if (container.dataset.expandedView === "true") return { expandedView: true };
+  const height = container.dataset.presentationHeight;
+  if (height === "compact" || height === "standard" || height === "tall") return { height };
+  return undefined;
+};
+
 const prepare = async (container: HTMLElement): Promise<TesseraInstance> => {
   const id = container.dataset.tesseraId!;
-  const artifactUrl = container.dataset.artifact!;
   setStatus(id, "Validating static artifact");
+  const presentation = presentationFor(container);
   const instance = await native.initialize({
-    artifact: await loadArtifact(artifactUrl),
+    artifact: await loadArtifact(container.dataset.artifact!),
     container,
-    ...(id === "chart"
-      ? { presentation: { height: "tall" as const } }
-      : id === "simulation"
-        ? { presentation: { expandedView: true } }
-        : {}),
+    ...(presentation ? { presentation } : {}),
     onStatusChange: (status) => setStatus(id, status === "failed" ? "Failed safely — use Reset to restart" : status),
   });
   instances.set(id, instance);
@@ -64,10 +63,9 @@ const start = async (container: HTMLElement): Promise<void> => {
 const observer = new IntersectionObserver((entries) => {
   for (const entry of entries) {
     const container = entry.target as HTMLElement;
-    if (entry.isIntersecting) {
-      observer.unobserve(container);
-      void start(container);
-    }
+    if (!entry.isIntersecting) continue;
+    observer.unobserve(container);
+    void start(container);
   }
 }, { rootMargin: "320px" });
 

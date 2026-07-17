@@ -26,7 +26,7 @@ fn page_view(model: Model) -> Html<Msg>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <title>{model.title}</title>
-      <link rel="stylesheet" href="/assets/style.css" />
+      <link rel="stylesheet" href="/assets/client.css" />
     </head>
     <body class="app-body min-h-screen text-slate-950 antialiased">
       <main class="grid min-h-screen grid-cols-1 lg:grid-cols-[19rem_minmax(0,1fr)]">
@@ -53,7 +53,6 @@ fn Sidebar({ active_slug: String }) -> Html<Msg>
       <NavLink href="/" label="Home" active={active_slug == "home"} />
       <NavLink href="/wiki/voyd" label="Voyd" active={active_slug == "voyd"} />
       <NavLink href="/wiki/webassembly" label="WebAssembly" active={active_slug == "webassembly"} />
-      <NavLink href="/showcase" label="Tessera showcase" active={false} />
     </nav>
     <form class="relative z-10 mt-7 flex gap-2 border-t border-white/10 pt-6 lg:mt-10" action="/wiki" method="get">
       <input class="min-w-0 flex-1 rounded-xl border border-white/10 bg-white/8 px-3 py-2.5 text-sm text-white outline-none placeholder:text-slate-500 focus:border-emerald-400/60 focus:ring-4 focus:ring-emerald-400/10" name="slug" placeholder="article-slug" />

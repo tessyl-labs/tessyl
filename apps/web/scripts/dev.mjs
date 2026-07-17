@@ -8,7 +8,6 @@ import { watchSource } from "./watch-source.mjs";
 
 const rootDir = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const sourceDir = resolve(rootDir, "src");
-const nativeExamplesDir = resolve(rootDir, "../../packages/tessyl-native/examples");
 const stagedPublicDir = resolve(rootDir, ".voyd-dev/public");
 const liveAssetsDir = resolve(rootDir, "public/assets");
 const previousAssetsDir = resolve(rootDir, ".voyd-dev/previous-assets");
@@ -20,15 +19,10 @@ const stopWatching = watchSource(sourceDir, (file) => {
   if (file && !/\.(voyd|ts|css)$/.test(file)) return;
   void queueRebuild();
 });
-const stopWatchingExamples = watchSource(nativeExamplesDir, (file) => {
-  if (file && !/\.(voyd|json)$/.test(file)) return;
-  void queueRebuild();
-});
 try {
   await queueRebuild({ failFast: true });
 } catch (error) {
   stopWatching();
-  stopWatchingExamples();
   console.error(errorMessage(error));
   process.exitCode = 1;
 }
@@ -72,7 +66,6 @@ async function rebuild() {
   }
   app = nextApp;
   console.log("Voyd app ready at " + app.url);
-  console.log("Tessyl Native examples ready at " + new URL("/showcase", app.url).href);
 }
 
 async function promoteAssets() {
@@ -104,7 +97,6 @@ function run(name, args) {
 
 async function shutdown() {
   stopWatching();
-  stopWatchingExamples();
   if (app) await app.close("shutdown").catch(() => undefined);
 }
 
