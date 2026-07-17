@@ -60,13 +60,16 @@ test("three Tesserae start independently and remain accessible", async ({ page }
   await expect(chart.locator('polyline[data-native-series="solid"]')).toHaveCount(1);
   await expect(chart.locator('polyline[data-native-series="dashed"]')).toHaveCount(1);
   const slider = chart.getByLabel("Growth factor");
+  await slider.focus();
+  await expect(slider).toBeFocused();
+  const initialValue = await slider.inputValue();
   const box = await slider.boundingBox();
   if (!box) throw new Error("growth slider has no layout box");
   await page.mouse.move(box.x + box.width * 0.25, box.y + box.height / 2);
   await page.mouse.down();
   await page.mouse.move(box.x + box.width * 0.75, box.y + box.height / 2, { steps: 6 });
   await page.mouse.up();
-  await expect(slider).toBeFocused();
+  await expect(slider).not.toHaveValue(initialValue);
 });
 
 test("reset creates a fresh generation without disturbing neighbors", async ({ page }) => {

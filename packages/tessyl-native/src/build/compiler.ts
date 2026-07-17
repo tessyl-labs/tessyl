@@ -1,4 +1,5 @@
 import { fork } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { TessylNativeError } from "../errors.js";
 import { resourceProfile } from "../profiles.js";
@@ -189,7 +190,8 @@ const runRestrictedCompiler = (input: RestrictedCompilerInput): Promise<Restrict
   const packageRoot = fileURLToPath(new URL("../../", import.meta.url));
   const workspaceRoot = fileURLToPath(new URL("../../../../", import.meta.url));
   const workspaceNodeModules = fileURLToPath(new URL("../../../../node_modules/", import.meta.url));
-  const voydRoot = "/Users/drewy/code/voyd";
+  const voydCheckoutRoot = fileURLToPath(new URL("../../../../.voyd-source/", import.meta.url));
+  const voydRoot = realpathSync(voydCheckoutRoot);
   const swapCase = (value: string): string => value.replace(/[A-Za-z]/g, (character) => character === character.toUpperCase() ? character.toLowerCase() : character.toUpperCase());
   return new Promise((resolve, reject) => {
     const child = fork(fileURLToPath(processUrl), [], {
@@ -205,6 +207,7 @@ const runRestrictedCompiler = (input: RestrictedCompilerInput): Promise<Restrict
         "--permission",
         `--allow-fs-read=${packageRoot}`,
         `--allow-fs-read=${workspaceNodeModules}`,
+        `--allow-fs-read=${voydCheckoutRoot}`,
         `--allow-fs-read=${voydRoot}`,
         ...(sourceMode ? [`--allow-fs-read=${workspaceRoot}`] : []),
         ...(sourceMode ? [`--allow-fs-read=${swapCase(packageRoot)}`, `--allow-fs-read=${swapCase(workspaceRoot)}`] : []),
