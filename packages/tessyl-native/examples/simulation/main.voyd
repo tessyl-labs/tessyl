@@ -1,0 +1,34 @@
+use pkg::tessyl_native::all
+use std::number::cast::to_f64
+
+obj Model { step: i32, running: bool }
+enum Msg
+  Toggle
+  Tick
+
+pub fn app() -> Tessera<Model, Msg>
+  tessera({ init, step, view })
+
+fn init() -> Model
+  Model { step: 0, running: false }
+
+fn step(model: Model, msg: Msg) -> Update<Model, Msg>
+  match(msg)
+    Msg::Toggle:
+      if model.running:
+        next(Model { step: model.step, running: false })
+      else:
+        next(model: Model { step: model.step, running: true }, cmd: Cmd<Msg>::delay(milliseconds: 120.0, message: Msg::Tick {}))
+    Msg::Tick:
+      if model.running and model.step < 40:
+        next(model: Model { step: model.step + 1, running: true }, cmd: Cmd<Msg>::delay(milliseconds: 120.0, message: Msg::Tick {}))
+      else:
+        next(Model { step: model.step, running: false })
+
+fn view(model: Model) -> View<Msg>
+  <Column>
+    <Heading level={2}>Bounded simulation</Heading>
+    <Text>Runs for at most forty steps and can be paused at any time.</Text>
+    <Metric label="Step" value={to_f64(model.step)} />
+    <Button on_press={Msg::Toggle {}}>{if model.running then: "Pause" else: "Run"}</Button>
+  </Column>

@@ -6,6 +6,7 @@ use src::server::articles::{
   save_article
 }
 use src::server::page::article_page
+use src::server::showcase::showcase_page
 use pkg::web::all
 use std::env::self as env
 use std::error::{ HostError, IoError }
@@ -25,6 +26,9 @@ pub fn main(): (server::HttpServer, tasks::TaskRuntime, env::Env, fs::Fs) -> i32
 
     get("/") do:
       article_page(load_article("home"))
+
+    get("/showcase") do:
+      showcase_page()
 
     get("/wiki") do(ctx: Context):
       article_response(ctx)

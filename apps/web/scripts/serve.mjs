@@ -10,7 +10,7 @@ process.chdir(rootDir);
 export async function serve({
   host = process.env.HOST ?? process.env.VOYD_WEB_HOST ?? "127.0.0.1",
   port = readPort(),
-  optimize = true,
+  optimize = process.env.VOYD_WEB_OPTIMIZE !== "false",
 } = {}) {
   const result = await createSdk().serveWebApp({
     entryPath,

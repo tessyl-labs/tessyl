@@ -2,7 +2,7 @@
 
 This document defines the private TypeScript API through which Tessyl compiles
 and runs Tesserae. It is the supported integration boundary between the Tessyl
-product and Tessyl Native; examples may precede implementation.
+product and the implemented Tessyl Native v1 compiler and browser runtime.
 
 ## Audience and package boundary
 

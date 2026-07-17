@@ -1,2 +1,3 @@
 pub self::articles
 pub self::page
+pub self::showcase

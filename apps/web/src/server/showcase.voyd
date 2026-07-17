@@ -1,0 +1,67 @@
+use src::app::update::Msg
+use pkg::web::all
+use std::string::type::String
+use std::vx::all
+
+pub fn showcase_page() -> Response
+  Response::ok()
+    .with(header: "content-type", value: "text/html; charset=utf-8")
+    .text(document(showcase_view()))
+
+fn showcase_view() -> Html<Msg>
+  <html lang="en">
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Tessera showcase</title>
+      <link rel="stylesheet" href="/assets/style.css" />
+    </head>
+    <body class="min-h-screen bg-stone-50 text-zinc-950 antialiased">
+      <main class="mx-auto max-w-6xl px-5 py-10 lg:px-10">
+        <a class="text-sm font-semibold text-emerald-700" href="/">← Back to Tessyl</a>
+        <header class="mt-6 max-w-3xl">
+          <p class="text-sm font-medium uppercase tracking-wide text-emerald-700">Tessyl Native</p>
+          <h1 class="mt-2 text-4xl font-semibold tracking-tight">Independent Tesserae</h1>
+          <p class="mt-4 text-lg text-zinc-600">Each example keeps a static fallback until it nears the viewport, runs in its own Worker and sandboxed renderer, and can fail or restart without affecting its neighbors.</p>
+        </header>
+        <section class="mt-10 grid gap-8 lg:grid-cols-2">
+          <ShowcaseCard id="calculator" title="Interactive calculator" />
+          <ShowcaseCard id="chart" title="Interactive chart" />
+          <ShowcaseCard id="simulation" title="Bounded simulation" />
+        </section>
+      </main>
+      <script type="module" src="/assets/showcase.js"></script>
+    </body>
+  </html>
+
+fn ShowcaseCard({ id: String, title: String }) -> Html<Msg>
+  <article class="rounded-xl border border-zinc-200 bg-white p-5 shadow-sm" data-showcase-card={id}>
+    <div class="mb-4 flex items-center justify-between gap-3">
+      <h2 class="text-xl font-semibold">{title}</h2>
+      <button class="rounded-md border border-zinc-300 px-3 py-2 text-sm font-semibold" type="button" data-tessera-reset={id}>Reset</button>
+    </div>
+    <div class="min-h-64 rounded-lg bg-zinc-50 p-4" data-tessera-id={id} data-artifact={"/assets/showcase/".concat(id).concat(".json")}>
+      <ShowcaseFallback id={id} title={title} />
+    </div>
+    <p class="mt-3 text-xs text-zinc-500" aria-live="polite" data-tessera-status={id}>Waiting near viewport</p>
+  </article>
+
+fn ShowcaseFallback({ id: String, title: String }) -> Html<Msg>
+  if id == "calculator":
+    return <section aria-label="Tip calculator">
+      <h3 class="font-medium">Tip calculator</h3>
+      <dl class="mt-2 grid grid-cols-2 gap-2 text-sm"><dt>Bill amount</dt><dd>48</dd><dt>Tip</dt><dd>9.6 $</dd><dt>Total</dt><dd>57.6 $</dd></dl>
+    </section>
+  if id == "chart":
+    return <figure aria-label="Value over four periods">
+      <figcaption class="font-medium">Value over four periods</figcaption>
+      <p class="mt-2 text-sm">The value grows by a factor of 1.2 each period.</p>
+      <svg aria-label="Value over four periods plot" role="img" viewbox="0 0 320 120" width="320" height="120">
+        <polyline points="8,106 109,80 210,49 312,10" fill="none" stroke="currentColor" stroke-width="3" />
+      </svg>
+      <table class="mt-2 text-sm"><caption>View chart data</caption><thead><tr><th scope="col">Period</th><th scope="col">Value</th></tr></thead><tbody><tr><td>0</td><td>1</td></tr><tr><td>1</td><td>1.2</td></tr><tr><td>2</td><td>1.44</td></tr><tr><td>3</td><td>1.728</td></tr></tbody></table>
+    </figure>
+  <section aria-label={title}>
+    <h3 class="font-medium">{title}</h3>
+    <p class="mt-2 text-sm">Runs for at most forty steps and is currently at step 0.</p>
+  </section>

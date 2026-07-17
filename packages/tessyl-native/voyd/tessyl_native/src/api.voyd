@@ -1,0 +1,800 @@
+use std::array::Array
+use std::dict::Dict
+use std::math::float::{ is_finite, round }
+use std::msgpack::self as msgpack
+use std::msgpack::MsgPack
+use std::number::cast::{ to_f64, to_i64_checked, to_string }
+use std::optional::types::all
+use std::result::types::all
+use std::string::type::String
+use std::vx::self as vx
+use std::vx::{ Cmd as VxCmd, Html, InputEvent, Program, Sub as VxSub }
+
+pub type Tessera<Model, Msg> = Program<Model, Msg>
+pub type Update<Model, Msg> = Program<Model, Msg>
+pub type View<Msg> = Html<Msg>
+pub type Child<Msg> = MsgPack
+
+pub fn keyed({ key: String, child: MsgPack }): () -> MsgPack
+  apply_native_key(key, child)
+
+pub fn keyed({ key: String, body: fn() -> MsgPack }): vx::Component -> MsgPack
+  vx::Component::state_scope(msgpack::make_string(key))
+  apply_native_key(key, body())
+
+fn apply_native_key(key: String, child: MsgPack) -> MsgPack
+  match(msgpack::unpack_map(child))
+    Ok<Dict<String, MsgPack>> { value }:
+      let ~next = value
+      if next.contains("child"):
+        let nested = next.get("child") ?? child
+        next.set("child", apply_native_key(key, nested))
+      else:
+        next.set("key", key)
+      msgpack::make_map(next)
+    Err:
+      child
+
+@boundary(type: "payload", field: "payload")
+pub obj Cmd<Msg> { payload: MsgPack }
+
+@boundary(type: "payload", field: "payload")
+pub obj Sub<Msg> { payload: MsgPack }
+
+impl<Msg> Cmd<Msg>
+  api fn none() -> Cmd<Msg>
+    let command = VxCmd<Msg>::none()
+    Cmd<Msg> { payload: command.payload }
+
+  api fn batch(commands: Array<Cmd<Msg>>) -> Cmd<Msg>
+    let ~values = Array<VxCmd<Msg>>::with_capacity(commands.len())
+    var index = 0
+    while index < commands.len():
+      values.push(VxCmd<Msg> { payload: commands.at(index).payload })
+      index = index + 1
+    let command = VxCmd<Msg>::batch(values)
+    Cmd<Msg> { payload: command.payload }
+
+  api fn delay({ milliseconds: f64, message: Msg }) -> Cmd<Msg>
+    if not is_finite(milliseconds) or milliseconds < 0.0 or milliseconds > 60000.0:
+      panic("Cmd::delay requires milliseconds from 0 through 60000")
+    let millis = match(to_i64_checked(milliseconds))
+      Ok<i64> { value }:
+        value
+      Err:
+        -1i64
+    let command = VxCmd<Msg>::delay(millis: millis, value: message)
+    Cmd<Msg> { payload: command.payload }
+
+impl<Msg> Sub<Msg>
+  api fn none() -> Sub<Msg>
+    let value = VxSub<Msg>::none()
+    Sub<Msg> { payload: value.payload }
+
+  api fn batch(subscriptions: Array<Sub<Msg>>) -> Sub<Msg>
+    let ~values = Array<VxSub<Msg>>::with_capacity(subscriptions.len())
+    var index = 0
+    while index < subscriptions.len():
+      values.push(VxSub<Msg> { payload: subscriptions.at(index).payload })
+      index = index + 1
+    let value = VxSub<Msg>::batch(values)
+    Sub<Msg> { payload: value.payload }
+
+  api fn animation_frame(handler: fn(AnimationFrame) -> Msg) -> Sub<Msg>
+    let value = VxSub<AnimationFrame>::runtime(kind: "animation_frame", key: "native-animation-frame").map<MsgPack>((frame: AnimationFrame) -> MsgPack => msgpack::pack_boundary_value<Msg>(handler(frame)))
+    Sub<Msg> { payload: value.payload }
+
+  api fn container_size(handler: fn(ContainerSize) -> Msg) -> Sub<Msg>
+    let value = VxSub<ContainerSize>::runtime(kind: "container_size", key: "native-container-size").map<MsgPack>((size: ContainerSize) -> MsgPack => msgpack::pack_boundary_value<Msg>(handler(size)))
+    Sub<Msg> { payload: value.payload }
+
+pub fn tessera<Model, Msg>({ init: fn() : (open) -> Model, step: fn(Model, Msg) : (open) -> Program<Model, Msg>, view: fn(Model) : (open) -> Html<Msg> }) -> Tessera<Model, Msg>
+  vx::program({ init, step, view })
+
+pub fn tessera<Model, Msg>({ init: fn() : (open) -> Model, step: fn(Model, Msg) : (open) -> Program<Model, Msg>, view: fn(Model) : (open) -> Html<Msg>, subscriptions: fn(Model) : (open) -> Sub<Msg> }) -> Tessera<Model, Msg>
+  vx::program({ init, step, view, subscriptions: (model: Model) : (open) -> VxSub<Msg> => VxSub<Msg> { payload: subscriptions(model).payload } })
+
+pub fn next<Model, Msg>(model: Model) -> Update<Model, Msg>
+  vx::next<Model, Msg>(model)
+
+pub fn next<Model, Msg>({ model: Model, cmd: Cmd<Msg> }) -> Update<Model, Msg>
+  vx::next<Model, Msg>(model: model, cmd: VxCmd<Msg> { payload: cmd.payload })
+
+pub enum Width
+  Fit
+  Fill
+  Fixed { pixels: f64 }
+
+pub enum Align
+  Start
+  Center
+  End
+  Stretch
+
+pub enum Space
+  None
+  ExtraSmall
+  Small
+  Medium
+  Large
+  ExtraLarge
+
+pub enum Tone
+  Neutral
+  Accent
+  Informative
+  Positive
+  Caution
+  Critical
+
+pub enum TextSize
+  Small
+  Medium
+  Large
+
+pub enum TextWeight
+  Regular
+  Medium
+  Strong
+
+pub obj LegendItem { api label: String, api tone: Tone }
+pub obj AnimationFrame { api elapsed_ms: f64, api delta_ms: f64 }
+pub obj ContainerSize { api width: f64, api height: f64 }
+pub obj SelectOption { api value: String, api label: String }
+pub obj TableColumn { api key: String, api label: String }
+pub obj TableRow { api values: Array<String> }
+pub obj Point { api x: f64, api y: f64 }
+pub obj Series { api name: String, api points: Array<Point> }
+pub obj CategorySeries { api name: String, api values: Array<f64> }
+pub obj Axis { api label: String, api unit?: String, api min?: f64, api max?: f64 }
+obj HistogramBin { start: f64, end: f64, count: i32 }
+
+pub enum Annotation
+  Vertical { x: f64, label: String }
+  Horizontal { y: f64, label: String }
+  PointLabel { point: Point, label: String }
+
+fn component_attr(name: String) -> MsgPack
+  vx::attr(name: "data-native-component", value: name)
+
+fn space_name(value: Space) -> String
+  match(value)
+    Space::None: "none"
+    Space::ExtraSmall: "xs"
+    Space::Small: "sm"
+    Space::Medium: "md"
+    Space::Large: "lg"
+    Space::ExtraLarge: "xl"
+
+fn align_name(value: Align) -> String
+  match(value)
+    Align::Start: "start"
+    Align::Center: "center"
+    Align::End: "end"
+    Align::Stretch: "stretch"
+
+fn width_name(value: Width) -> String
+  match(value)
+    Width::Fit: "fit"
+    Width::Fill: "fill"
+    Width::Fixed { pixels }: "fixed"
+
+fn add_width_attrs(~attrs: Array<MsgPack>, width: Width) -> void
+  attrs.push(vx::attr(name: "data-native-width", value: width_name(width)))
+  match(width)
+    Width::Fixed { pixels }:
+      if not is_finite(pixels) or pixels <= 0.0:
+        panic("Width::Fixed requires a finite positive pixel value")
+      let bounded = if pixels > 1200.0 then: 1200.0 else: pixels
+      attrs.push(vx::attr(name: "data-native-width-px", value: to_string(bounded)))
+    else:
+      void
+
+fn tone_name(value: Tone) -> String
+  match(value)
+    Tone::Neutral: "neutral"
+    Tone::Accent: "accent"
+    Tone::Informative: "informative"
+    Tone::Positive: "positive"
+    Tone::Caution: "caution"
+    Tone::Critical: "critical"
+
+fn text_size_name(value: TextSize) -> String
+  match(value)
+    TextSize::Small: "small"
+    TextSize::Medium: "medium"
+    TextSize::Large: "large"
+
+fn text_weight_name(value: TextWeight) -> String
+  match(value)
+    TextWeight::Regular: "regular"
+    TextWeight::Medium: "medium"
+    TextWeight::Strong: "strong"
+
+fn labelled_unit(label: String, unit: Option<String>) -> String
+  if unit is Some:
+    return label.concat(" (").concat(unit.value).concat(")")
+  label
+
+fn normalize_children(children: Array<MsgPack>) -> Array<MsgPack>
+  let ~out = Array<MsgPack>::with_capacity(children.len())
+  var index = 0
+  while index < children.len():
+    let child = children.at(index)
+    match(msgpack::unpack_string(child))
+      Ok<String> { value }:
+        out.push(vx::text(value))
+      Err:
+        out.push(child)
+    index = index + 1
+  out
+
+fn children_element({ tag: String, component: String, children: Array<MsgPack> }) -> MsgPack
+  vx::html_element(tag: tag, attrs: [component_attr(component)], children: normalize_children(children))
+
+pub fn Column({ children: Array<MsgPack>, gap?: Space, align?: Align, width?: Width }) -> MsgPack
+  let ~attrs = [component_attr("column"), vx::attr(name: "data-native-gap", value: space_name(gap ?? Space::Medium {})), vx::attr(name: "data-native-align", value: align_name(align ?? Align::Stretch {}))]
+  add_width_attrs(attrs, width ?? Width::Fill {})
+  vx::html_element(tag: "div", attrs: attrs, children: normalize_children(children))
+
+pub fn Row({ children: Array<MsgPack>, gap?: Space, align?: Align, wrap?: bool, width?: Width }) -> MsgPack
+  let ~attrs = [component_attr("row"), vx::attr(name: "data-native-gap", value: space_name(gap ?? Space::Medium {})), vx::attr(name: "data-native-align", value: align_name(align ?? Align::Stretch {})), vx::attr(name: "data-native-wrap", value: wrap ?? false)]
+  add_width_attrs(attrs, width ?? Width::Fill {})
+  vx::html_element(tag: "div", attrs: attrs, children: normalize_children(children))
+
+pub fn Grid({ children: Array<MsgPack>, columns?: i32, gap?: Space }) -> MsgPack
+  let column_count = columns ?? 1
+  if column_count < 1 or column_count > 12:
+    panic("Grid columns must be from 1 through 12")
+  let ~attrs = [component_attr("grid"), vx::attr(name: "data-native-columns", value: column_count), vx::attr(name: "data-native-gap", value: space_name(gap ?? Space::Medium {}))]
+  vx::html_element(tag: "div", attrs: attrs, children: normalize_children(children))
+
+pub fn Panel({ children: Array<MsgPack>, tone?: Tone, padding?: Space }) -> MsgPack
+  let ~attrs = [component_attr("panel"), vx::attr(name: "data-native-tone", value: tone_name(tone ?? Tone::Neutral {})), vx::attr(name: "data-native-padding", value: space_name(padding ?? Space::Medium {}))]
+  vx::html_element(tag: "section", attrs: attrs, children: normalize_children(children))
+
+pub fn Divider() -> MsgPack
+  vx::html_element(tag: "hr", attrs: [component_attr("divider")], children: Array<MsgPack>::init())
+
+pub fn Spacer({ size: Space }) -> MsgPack
+  vx::html_element(tag: "div", attrs: [component_attr("spacer"), vx::attr(name: "data-native-gap", value: space_name(size)), vx::attr(name: "aria-hidden", value: true)], children: Array<MsgPack>::init())
+
+pub fn Text({ children: Array<MsgPack>, tone?: Tone, size?: TextSize, weight?: TextWeight }) -> MsgPack
+  let ~attrs = [component_attr("text")]
+  if tone is Some: attrs.push(vx::attr(name: "data-native-tone", value: tone_name(tone.value)))
+  if size is Some: attrs.push(vx::attr(name: "data-native-size", value: text_size_name(size.value)))
+  if weight is Some: attrs.push(vx::attr(name: "data-native-weight", value: text_weight_name(weight.value)))
+  vx::html_element(tag: "span", attrs: attrs, children: normalize_children(children))
+
+pub fn Heading({ level: i32, children: Array<MsgPack> }) -> MsgPack
+  if level < 2 or level > 6:
+    panic("Heading level must be from 2 through 6")
+  children_element(tag: heading_tag(level), component: "heading", children: children)
+
+fn heading_tag(level: i32) -> String
+  if level <= 2:
+    return "h2"
+  if level == 3:
+    return "h3"
+  if level == 4:
+    return "h4"
+  if level == 5:
+    return "h5"
+  "h6"
+
+pub fn Callout({ tone: Tone, title?: String, children: Array<MsgPack> }) -> MsgPack
+  let ~content = Array<MsgPack>::init()
+  if title is Some: content.push(vx::html_element(tag: "strong", children: [vx::text(title.value)]))
+  let normalized = normalize_children(children)
+  var index = 0
+  while index < normalized.len():
+    content.push(normalized.at(index))
+    index = index + 1
+  vx::html_element(tag: "aside", attrs: [component_attr("callout"), vx::attr(name: "data-native-tone", value: tone_name(tone))], children: content)
+
+pub fn Code({ value: String, language?: String }) -> MsgPack
+  let actual_language = language ?? "plain text"
+  vx::html_element(tag: "pre", attrs: [component_attr("code"), vx::attr(name: "data-native-language", value: actual_language)], children: [vx::html_element(tag: "code", children: [vx::text(value)])])
+
+pub fn Equation({ source: String, display?: bool }) -> MsgPack
+  let is_display = display ?? false
+  vx::html_element(tag: if is_display then: "div" else: "span", attrs: [component_attr("equation"), vx::attr(name: "role", value: "math"), vx::attr(name: "aria-label", value: source), vx::attr(name: "data-native-display", value: is_display)], children: [vx::text(source)])
+
+pub fn Metric({ label: String, value: f64, unit?: String, description?: String, precision?: i32 }) -> MsgPack
+  if not is_finite(value):
+    panic("Metric value must be finite")
+  if precision is Some:
+    if precision.value < 0 or precision.value > 6:
+      panic("Metric precision must be from 0 through 6")
+  let rendered_value = if precision is Some then: to_string(round(value * precision_factor(precision.value)) / precision_factor(precision.value)) else: to_string(value)
+  let ~value_children = [vx::text(rendered_value)]
+  if unit is Some: value_children.push(vx::html_element(tag: "span", children: [vx::text(unit.value)]))
+  let ~children = [
+    vx::html_element(tag: "span", children: [vx::text(label)]),
+    vx::html_element(tag: "strong", children: value_children)
+  ]
+  if description is Some: children.push(vx::html_element(tag: "span", children: [vx::text(description.value)]))
+  vx::html_element(tag: "div", attrs: [component_attr("metric"), vx::attr(name: "aria-label", value: label)], children: children)
+
+fn precision_factor(places: i32) -> f64
+  if places == 1:
+    return 10.0
+  if places == 2:
+    return 100.0
+  if places == 3:
+    return 1000.0
+  if places == 4:
+    return 10000.0
+  if places == 5:
+    return 100000.0
+  if places == 6:
+    return 1000000.0
+  1.0
+
+pub fn Legend({ items: Array<LegendItem> }) -> MsgPack
+  let ~children = Array<MsgPack>::with_capacity(items.len())
+  var index = 0
+  while index < items.len():
+    children.push(vx::html_element(tag: "li", attrs: [vx::attr(name: "data-native-tone", value: tone_name(items.at(index).tone))], children: [vx::text(items.at(index).label)]))
+    index = index + 1
+  vx::html_element(tag: "ul", attrs: [component_attr("legend"), vx::attr(name: "aria-label", value: "Legend")], children: children)
+
+pub fn Button<Msg>({ on_press: Msg, children: Array<Child<Msg>>, disabled: bool = false, tone?: Tone }) -> View<Msg>
+  let ~attrs = [
+    component_attr("button"),
+    vx::attr(name: "type", value: "button"),
+    vx::disabled(disabled),
+    vx::html_event_message(name: "click", message: on_press)
+  ]
+  if tone is Some: attrs.push(vx::attr(name: "data-native-tone", value: tone_name(tone.value)))
+  vx::html_element(tag: "button", attrs: attrs, children: normalize_children(children))
+
+fn parse_float_or(value: String, fallback: f64) -> f64
+  match(value.parse_float())
+    Ok<f64> { value }:
+      value
+    Err:
+      fallback
+
+fn parse_bounded_number(value: String, fallback: f64, min: f64, max: f64) -> f64
+  let parsed = parse_float_or(value, fallback)
+  if not is_finite(parsed) or parsed < min or parsed > max then: fallback else: parsed
+
+fn parse_optional_bounded_number(value: String, fallback: f64, min: Option<f64>, max: Option<f64>) -> f64
+  let parsed = parse_float_or(value, fallback)
+  if not is_finite(parsed):
+    return fallback
+  if min is Some:
+    if parsed < min.value:
+      return fallback
+  if max is Some:
+    if parsed > max.value:
+      return fallback
+  parsed
+
+pub fn Slider<Msg>({ label: String, value: f64, min: f64, max: f64, on_change: fn(f64) -> Msg, step?: f64, disabled: bool = false, unit?: String }) -> View<Msg>
+  if not is_finite(min) or not is_finite(max) or not is_finite(value) or max <= min or value < min or value > max:
+    panic("Slider requires finite increasing bounds and an in-range value")
+  let actual_step = step ?? ((max - min) / 100.0)
+  if not is_finite(actual_step) or actual_step <= 0.0:
+    panic("Slider step must be finite and positive")
+  let child = vx::html_element(tag: "label", attrs: [component_attr("field")], children: [
+    vx::html_element(tag: "span", children: [vx::text(labelled_unit(label, unit))]),
+    vx::html_element(tag: "input", attrs: [
+      vx::attr(name: "type", value: "range"), vx::attr(name: "aria-label", value: label),
+      vx::attr(name: "min", value: to_string(min)), vx::attr(name: "max", value: to_string(max)), vx::attr(name: "step", value: to_string(actual_step)),
+      vx::prop(name: "value", value: to_string(value)), vx::disabled(disabled),
+      vx::html_event_payload_handler<InputEvent, f64>(name: "input", handler: (event: InputEvent) -> f64 => parse_bounded_number(event.value, value, min, max))
+    ], children: Array<MsgPack>::init())
+  ])
+  vx::map_html<f64, MsgPack>(html: child, handler: (next_value: f64) -> MsgPack => msgpack::pack_boundary_value<Msg>(on_change(next_value)))
+
+pub fn NumberField<Msg>({ label: String, value: f64, on_change: fn(f64) -> Msg, min?: f64, max?: f64, step?: f64, disabled: bool = false, unit?: String }) -> View<Msg>
+  if not is_finite(value):
+    panic("NumberField value must be finite")
+  if min is Some:
+    let min_bound = min ?? value
+    if not is_finite(min_bound): panic("NumberField minimum must be finite")
+    if value < min_bound: panic("NumberField value is below its minimum")
+    if max is Some:
+      let max_bound = max ?? value
+      if max_bound <= min_bound: panic("NumberField bounds must be increasing")
+  if max is Some:
+    let max_bound = max ?? value
+    if not is_finite(max_bound): panic("NumberField maximum must be finite")
+    if value > max_bound: panic("NumberField value is above its maximum")
+  if step is Some:
+    let step_value = step ?? 1.0
+    if not is_finite(step_value) or step_value <= 0.0: panic("NumberField step must be positive")
+  let actual_value = value
+  let ~attrs = [
+    vx::attr(name: "type", value: "number"), vx::attr(name: "aria-label", value: label),
+    vx::prop(name: "value", value: to_string(actual_value)), vx::disabled(disabled),
+    vx::html_event_payload_handler<InputEvent, f64>(name: "input", handler: (event: InputEvent) -> f64 => parse_optional_bounded_number(event.value, actual_value, min, max))
+  ]
+  if min is Some: attrs.push(vx::attr(name: "min", value: to_string(min ?? value)))
+  if max is Some: attrs.push(vx::attr(name: "max", value: to_string(max ?? value)))
+  if step is Some: attrs.push(vx::attr(name: "step", value: to_string(step ?? 1.0)))
+  let child = vx::html_element(tag: "label", attrs: [component_attr("field")], children: [
+    vx::html_element(tag: "span", children: [vx::text(labelled_unit(label, unit))]),
+    vx::html_element(tag: "input", attrs: attrs, children: Array<MsgPack>::init())
+  ])
+  vx::map_html<f64, MsgPack>(html: child, handler: (next_value: f64) -> MsgPack => msgpack::pack_boundary_value<Msg>(on_change(next_value)))
+
+pub fn TextField<Msg>({ label: String, value: String, on_change: fn(String) -> Msg, disabled: bool = false, placeholder?: String, max_length?: i32 }) -> View<Msg>
+  let actual_max_length = max_length ?? 8192
+  if actual_max_length < 1 or actual_max_length > 8192 or value.byte_len() > actual_max_length:
+    panic("TextField value and maximum length must fit the Native profile")
+  let ~attrs = [
+    vx::attr(name: "type", value: "text"), vx::attr(name: "aria-label", value: label),
+    vx::prop(name: "value", value: value), vx::disabled(disabled),
+    vx::html_event_payload_handler<InputEvent, String>(name: "input", handler: (event: InputEvent) -> String => event.value)
+  ]
+  if placeholder is Some: attrs.push(vx::attr(name: "placeholder", value: placeholder.value))
+  attrs.push(vx::attr(name: "maxlength", value: actual_max_length))
+  let child = vx::html_element(tag: "label", attrs: [component_attr("field")], children: [vx::html_element(tag: "span", children: [vx::text(label)]), vx::html_element(tag: "input", attrs: attrs, children: Array<MsgPack>::init())])
+  vx::map_html<String, MsgPack>(html: child, handler: (next_value: String) -> MsgPack => msgpack::pack_boundary_value<Msg>(on_change(next_value)))
+
+pub fn Select<Msg>({ label: String, value: String, options: Array<SelectOption>, on_change: fn(String) -> Msg, disabled: bool = false }) -> View<Msg>
+  if options.is_empty(): panic("Select requires at least one option")
+  var contains_value = false
+  var validation_index = 0
+  while validation_index < options.len():
+    let candidate = options.at(validation_index)
+    if candidate.value == value:
+      contains_value = true
+    var duplicate_index = validation_index + 1
+    while duplicate_index < options.len():
+      if options.at(duplicate_index).value == candidate.value: panic("Select option values must be unique")
+      duplicate_index = duplicate_index + 1
+    validation_index = validation_index + 1
+  if not contains_value: panic("Select options must contain the current value")
+  let ~children = Array<MsgPack>::with_capacity(options.len())
+  var index = 0
+  while index < options.len():
+    let option = options.at(index)
+    children.push(vx::html_element(tag: "option", attrs: [vx::attr(name: "value", value: option.value), vx::prop(name: "selected", value: option.value == value)], children: [vx::text(option.label)]))
+    index = index + 1
+  let child = vx::html_element(tag: "label", attrs: [component_attr("field")], children: [
+    vx::html_element(tag: "span", children: [vx::text(label)]),
+    vx::html_element(tag: "select", attrs: [vx::attr(name: "aria-label", value: label), vx::prop(name: "value", value: value), vx::disabled(disabled), vx::html_event_payload_handler<InputEvent, String>(name: "change", handler: (event: InputEvent) -> String => event.value)], children: children)
+  ])
+  vx::map_html<String, MsgPack>(html: child, handler: (next_value: String) -> MsgPack => msgpack::pack_boundary_value<Msg>(on_change(next_value)))
+
+pub fn Toggle<Msg>({ label: String, checked: bool, on_change: fn(bool) -> Msg, disabled: bool = false }) -> View<Msg>
+  let child = vx::html_element(tag: "label", attrs: [component_attr("field")], children: [
+    vx::html_element(tag: "input", attrs: [
+      vx::attr(name: "type", value: "checkbox"), vx::attr(name: "aria-label", value: label), vx::checked(checked), vx::disabled(disabled),
+      vx::html_event_payload_handler<InputEvent, bool>(name: "change", handler: (event: InputEvent) -> bool => event.checked)
+    ], children: Array<MsgPack>::init()),
+    vx::html_element(tag: "span", children: [vx::text(label)])
+  ])
+  vx::map_html<bool, MsgPack>(html: child, handler: (next_value: bool) -> MsgPack => msgpack::pack_boundary_value<Msg>(on_change(next_value)))
+
+pub fn ArticleLink({ slug: String, children: Array<MsgPack> }) -> MsgPack
+  vx::html_element(tag: "a", attrs: [component_attr("article-link"), vx::attr(name: "data-article-slug", value: slug), vx::attr(name: "role", value: "link"), vx::attr(name: "tabindex", value: 0)], children: normalize_children(children))
+
+pub fn Table({ columns: Array<TableColumn>, rows: Array<TableRow>, caption: String }) -> MsgPack
+  if columns.is_empty(): panic("Table requires at least one column")
+  var validation_row = 0
+  while validation_row < rows.len():
+    if rows.at(validation_row).values.len() != columns.len(): panic("Table rows must match the column count")
+    validation_row = validation_row + 1
+  let ~headers = Array<MsgPack>::with_capacity(columns.len())
+  var column_index = 0
+  while column_index < columns.len():
+    headers.push(vx::html_element(tag: "th", attrs: [vx::attr(name: "scope", value: "col")], children: [vx::text(columns.at(column_index).label)]))
+    column_index = column_index + 1
+  let ~body = Array<MsgPack>::with_capacity(rows.len())
+  var row_index = 0
+  while row_index < rows.len():
+    let row = rows.at(row_index)
+    let ~cells = Array<MsgPack>::with_capacity(row.values.len())
+    var value_index = 0
+    while value_index < row.values.len():
+      cells.push(vx::html_element(tag: "td", children: [vx::text(row.values.at(value_index))]))
+      value_index = value_index + 1
+    body.push(vx::html_element(tag: "tr", children: cells))
+    row_index = row_index + 1
+  vx::html_element(tag: "table", attrs: [component_attr("table")], children: [
+    vx::html_element(tag: "caption", children: [vx::text(caption)]),
+    vx::html_element(tag: "thead", children: [vx::html_element(tag: "tr", children: headers)]),
+    vx::html_element(tag: "tbody", children: body)
+  ])
+
+fn chart_series_table({ title: String, series: Array<Series>, x_axis: Axis, y_axis: Axis }) -> MsgPack
+  let ~rows = Array<TableRow>::init()
+  var series_index = 0
+  while series_index < series.len():
+    let item = series.at(series_index)
+    var point_index = 0
+    while point_index < item.points.len():
+      let point = item.points.at(point_index)
+      rows.push(TableRow { values: [item.name, to_string(point.x), to_string(point.y)] })
+      point_index = point_index + 1
+    series_index = series_index + 1
+  Table(columns: [TableColumn { key: "series", label: "Series" }, TableColumn { key: "x", label: labelled_unit(x_axis.label, x_axis.unit) }, TableColumn { key: "y", label: labelled_unit(y_axis.label, y_axis.unit) }], rows: rows, caption: title)
+
+fn chart_figure({ component: String, title: String, description: String, data: MsgPack }) -> MsgPack
+  vx::html_element(tag: "figure", attrs: [component_attr(component), vx::attr(name: "aria-label", value: title)], children: [
+    vx::html_element(tag: "figcaption", children: [vx::text(title)]),
+    vx::html_element(tag: "p", children: [vx::text(description)]),
+    data
+  ])
+
+fn series_pattern(series_index: i32) -> String
+  var pattern = series_index
+  while pattern >= 4:
+    pattern = pattern - 4
+  if pattern == 0:
+    return "solid"
+  if pattern == 1:
+    return "dashed"
+  if pattern == 2:
+    return "dotted"
+  "ring"
+
+fn chart_series_legend(series: Array<Series>) -> MsgPack
+  let ~items = Array<MsgPack>::init()
+  var index = 0
+  while index < series.len():
+    if not series.at(index).name.is_empty():
+      items.push(vx::html_element(tag: "li", attrs: [vx::attr(name: "data-native-series", value: series_pattern(index))], children: [vx::text(series.at(index).name)]))
+    index = index + 1
+  vx::html_element(tag: "ul", attrs: [component_attr("legend"), vx::attr(name: "aria-label", value: "Legend")], children: items)
+
+fn category_series_legend(series: Array<CategorySeries>) -> MsgPack
+  let ~items = Array<MsgPack>::init()
+  var index = 0
+  while index < series.len():
+    if not series.at(index).name.is_empty():
+      items.push(vx::html_element(tag: "li", attrs: [vx::attr(name: "data-native-series", value: series_pattern(index))], children: [vx::text(series.at(index).name)]))
+    index = index + 1
+  vx::html_element(tag: "ul", attrs: [component_attr("legend"), vx::attr(name: "aria-label", value: "Legend")], children: items)
+
+fn chart_axes(x_axis: Axis, y_axis: Axis) -> Array<MsgPack>
+  [
+    vx::html_element(tag: "line", attrs: [vx::attr(name: "x1", value: "8"), vx::attr(name: "y1", value: "92"), vx::attr(name: "x2", value: "96"), vx::attr(name: "y2", value: "92")], children: Array<MsgPack>::init()),
+    vx::html_element(tag: "line", attrs: [vx::attr(name: "x1", value: "8"), vx::attr(name: "y1", value: "8"), vx::attr(name: "x2", value: "8"), vx::attr(name: "y2", value: "92")], children: Array<MsgPack>::init()),
+    vx::html_element(tag: "text", attrs: [vx::attr(name: "x", value: "52"), vx::attr(name: "y", value: "99"), vx::attr(name: "text-anchor", value: "middle")], children: [vx::text(labelled_unit(x_axis.label, x_axis.unit))]),
+    vx::html_element(tag: "text", attrs: [vx::attr(name: "x", value: "8"), vx::attr(name: "y", value: "6"), vx::attr(name: "text-anchor", value: "start")], children: [vx::text(labelled_unit(y_axis.label, y_axis.unit))])
+  ]
+
+fn axis_bounds(axis: Axis, observed_min: f64, observed_max: f64) -> (f64, f64)
+  let has_min = axis.min is Some
+  let has_max = axis.max is Some
+  if has_min != has_max: panic("Chart axis min and max must be supplied together")
+  if has_min:
+    let min_value = axis.min ?? observed_min
+    let max_value = axis.max ?? observed_max
+    if not is_finite(min_value) or not is_finite(max_value) or max_value <= min_value:
+      panic("Chart axis bounds must be finite and increasing")
+    return (min_value, max_value)
+  if observed_max > observed_min then: (observed_min, observed_max) else: (observed_min - 0.5, observed_max + 0.5)
+
+fn chart_x(value: f64, min: f64, max: f64) -> f64
+  8.0 + ((value - min) / (max - min)) * 88.0
+
+fn chart_y(value: f64, min: f64, max: f64) -> f64
+  92.0 - ((value - min) / (max - min)) * 84.0
+
+fn validate_series(series: Array<Series>) -> (f64, f64, f64, f64)
+  if series.is_empty(): panic("Charts require at least one series")
+  if series.len() > 1:
+    var name_index = 0
+    while name_index < series.len():
+      if series.at(name_index).name.is_empty(): panic("Multiple chart series require names")
+      name_index = name_index + 1
+  if series.at(0).points.is_empty(): panic("Chart series require at least one point")
+  let first = series.at(0).points.at(0)
+  if not is_finite(first.x) or not is_finite(first.y): panic("Chart points must be finite")
+  var min_x = first.x
+  var max_x = first.x
+  var min_y = first.y
+  var max_y = first.y
+  var series_index = 0
+  while series_index < series.len():
+    let item = series.at(series_index)
+    if item.points.is_empty(): panic("Chart series require at least one point")
+    var point_index = 0
+    while point_index < item.points.len():
+      let point = item.points.at(point_index)
+      if not is_finite(point.x) or not is_finite(point.y): panic("Chart points must be finite")
+      if point.x < min_x:
+        min_x = point.x
+      if point.x > max_x:
+        max_x = point.x
+      if point.y < min_y:
+        min_y = point.y
+      if point.y > max_y:
+        max_y = point.y
+      point_index = point_index + 1
+    series_index = series_index + 1
+  (min_x, max_x, min_y, max_y)
+
+fn append_annotations(~marks: Array<MsgPack>, annotations: Option<Array<Annotation>>, min_x: f64, max_x: f64, min_y: f64, max_y: f64) -> void
+  let values = annotations ?? Array<Annotation>::init()
+  var index = 0
+  while index < values.len():
+    match(values.at(index))
+      Annotation::Vertical { x, label }:
+        if not is_finite(x): panic("Chart annotations must be finite")
+        let position = chart_x(x, min_x, max_x)
+        marks.push(vx::html_element(tag: "line", attrs: [vx::attr(name: "x1", value: to_string(position)), vx::attr(name: "x2", value: to_string(position)), vx::attr(name: "y1", value: "8"), vx::attr(name: "y2", value: "92")], children: Array<MsgPack>::init()))
+        marks.push(vx::html_element(tag: "text", attrs: [vx::attr(name: "x", value: to_string(position)), vx::attr(name: "y", value: "7"), vx::attr(name: "text-anchor", value: "middle")], children: [vx::text(label)]))
+      Annotation::Horizontal { y, label }:
+        if not is_finite(y): panic("Chart annotations must be finite")
+        let position = chart_y(y, min_y, max_y)
+        marks.push(vx::html_element(tag: "line", attrs: [vx::attr(name: "x1", value: "8"), vx::attr(name: "x2", value: "96"), vx::attr(name: "y1", value: to_string(position)), vx::attr(name: "y2", value: to_string(position))], children: Array<MsgPack>::init()))
+        marks.push(vx::html_element(tag: "text", attrs: [vx::attr(name: "x", value: "95"), vx::attr(name: "y", value: to_string(position)), vx::attr(name: "text-anchor", value: "end")], children: [vx::text(label)]))
+      Annotation::PointLabel { point, label }:
+        if not is_finite(point.x) or not is_finite(point.y): panic("Chart annotations must be finite")
+        marks.push(vx::html_element(tag: "text", attrs: [vx::attr(name: "x", value: to_string(chart_x(point.x, min_x, max_x))), vx::attr(name: "y", value: to_string(chart_y(point.y, min_y, max_y))), vx::attr(name: "text-anchor", value: "middle")], children: [vx::text(label)]))
+    index = index + 1
+
+fn line_visual(series: Array<Series>, title: String, x_axis: Axis, y_axis: Axis, annotations: Option<Array<Annotation>>) -> MsgPack
+  let observed = validate_series(series)
+  let x_bounds = axis_bounds(x_axis, observed.0, observed.1)
+  let y_bounds = axis_bounds(y_axis, observed.2, observed.3)
+  let ~marks = chart_axes(x_axis, y_axis)
+  var series_index = 0
+  while series_index < series.len():
+    let item = series.at(series_index)
+    var point_index = 0
+    var points = ""
+    while point_index < item.points.len():
+      let point = item.points.at(point_index)
+      let pair = to_string(chart_x(point.x, x_bounds.0, x_bounds.1)).concat(",").concat(to_string(chart_y(point.y, y_bounds.0, y_bounds.1)))
+      points = if points.is_empty() then: pair else: points.concat(" ").concat(pair)
+      point_index = point_index + 1
+    marks.push(vx::html_element(tag: "polyline", attrs: [vx::attr(name: "points", value: points), vx::attr(name: "data-native-series", value: series_pattern(series_index))], children: Array<MsgPack>::init()))
+    series_index = series_index + 1
+  append_annotations(marks, annotations, x_bounds.0, x_bounds.1, y_bounds.0, y_bounds.1)
+  vx::html_element(tag: "svg", attrs: [vx::attr(name: "viewbox", value: "0 0 100 100"), vx::attr(name: "role", value: "img"), vx::attr(name: "aria-label", value: title)], children: marks)
+
+fn scatter_visual(series: Array<Series>, title: String, x_axis: Axis, y_axis: Axis, annotations: Option<Array<Annotation>>) -> MsgPack
+  let observed = validate_series(series)
+  let x_bounds = axis_bounds(x_axis, observed.0, observed.1)
+  let y_bounds = axis_bounds(y_axis, observed.2, observed.3)
+  let ~marks = chart_axes(x_axis, y_axis)
+  var series_index = 0
+  while series_index < series.len():
+    let item = series.at(series_index)
+    var point_index = 0
+    while point_index < item.points.len():
+      let point = item.points.at(point_index)
+      marks.push(vx::html_element(tag: "circle", attrs: [vx::attr(name: "cx", value: to_string(chart_x(point.x, x_bounds.0, x_bounds.1))), vx::attr(name: "cy", value: to_string(chart_y(point.y, y_bounds.0, y_bounds.1))), vx::attr(name: "r", value: "2"), vx::attr(name: "data-native-series", value: series_pattern(series_index))], children: Array<MsgPack>::init()))
+      point_index = point_index + 1
+    series_index = series_index + 1
+  append_annotations(marks, annotations, x_bounds.0, x_bounds.1, y_bounds.0, y_bounds.1)
+  vx::html_element(tag: "svg", attrs: [vx::attr(name: "viewbox", value: "0 0 100 100"), vx::attr(name: "role", value: "img"), vx::attr(name: "aria-label", value: title)], children: marks)
+
+fn bar_visual(series: Array<CategorySeries>, categories: Array<String>, y_axis: Axis, title: String) -> MsgPack
+  if categories.is_empty() or series.is_empty(): panic("Bar charts require categories and series")
+  var observed_min = 0.0
+  var observed_max = 0.0
+  var validation_series = 0
+  while validation_series < series.len():
+    let item = series.at(validation_series)
+    if item.values.len() != categories.len(): panic("Bar series values must match categories")
+    if series.len() > 1 and item.name.is_empty(): panic("Multiple bar series require names")
+    var validation_value = 0
+    while validation_value < item.values.len():
+      let value = item.values.at(validation_value)
+      if not is_finite(value): panic("Bar values must be finite")
+      if value < observed_min:
+        observed_min = value
+      if value > observed_max:
+        observed_max = value
+      validation_value = validation_value + 1
+    validation_series = validation_series + 1
+  let bounds = axis_bounds(y_axis, observed_min, observed_max)
+  var baseline = chart_y(0.0, bounds.0, bounds.1)
+  if bounds.0 > 0.0:
+    baseline = 92.0
+  if bounds.1 < 0.0:
+    baseline = 8.0
+  let category_width = 88.0 / to_f64(categories.len())
+  let bar_width = category_width / to_f64(series.len() + 1)
+  let ~marks = chart_axes(Axis { label: "Category" }, y_axis)
+  var series_index = 0
+  while series_index < series.len():
+    let item = series.at(series_index)
+    var value_index = 0
+    while value_index < item.values.len():
+      let endpoint = chart_y(item.values.at(value_index), bounds.0, bounds.1)
+      let top = if endpoint < baseline then: endpoint else: baseline
+      let height = if endpoint < baseline then: baseline - endpoint else: endpoint - baseline
+      marks.push(vx::html_element(tag: "rect", attrs: [vx::attr(name: "x", value: to_string(8.0 + to_f64(value_index) * category_width + to_f64(series_index) * bar_width)), vx::attr(name: "y", value: to_string(top)), vx::attr(name: "width", value: to_string(bar_width * 0.85)), vx::attr(name: "height", value: to_string(height)), vx::attr(name: "data-native-series", value: series_pattern(series_index))], children: Array<MsgPack>::init()))
+      value_index = value_index + 1
+    series_index = series_index + 1
+  vx::html_element(tag: "svg", attrs: [vx::attr(name: "viewbox", value: "0 0 100 100"), vx::attr(name: "role", value: "img"), vx::attr(name: "aria-label", value: title)], children: marks)
+
+fn compute_histogram_bins(values: Array<f64>, x_axis: Axis, requested_bins: Option<i32>) -> Array<HistogramBin>
+  if values.is_empty(): panic("Histograms require at least one value")
+  var observed_min = values.at(0)
+  var observed_max = values.at(0)
+  var value_index = 0
+  while value_index < values.len():
+    let value = values.at(value_index)
+    if not is_finite(value): panic("Histogram values must be finite")
+    if value < observed_min:
+      observed_min = value
+    if value > observed_max:
+      observed_max = value
+    value_index = value_index + 1
+  let bounds = axis_bounds(x_axis, observed_min, observed_max)
+  let default_bins = if values.len() < 10 then: values.len() else: 10
+  let bin_count = requested_bins ?? default_bins
+  if bin_count < 1 or bin_count > 50: panic("Histogram bins must be from 1 through 50")
+  let width = (bounds.1 - bounds.0) / to_f64(bin_count)
+  let ~counts = Array<i32>::with_capacity(bin_count)
+  var index = 0
+  while index < bin_count:
+    counts.push(0)
+    index = index + 1
+  value_index = 0
+  while value_index < values.len():
+    let value = values.at(value_index)
+    if value >= bounds.0 and value <= bounds.1:
+      var bin_index = 0
+      while bin_index < bin_count - 1 and value >= bounds.0 + to_f64(bin_index + 1) * width:
+        bin_index = bin_index + 1
+      counts.replace(bin_index, with: counts.at(bin_index) + 1)
+    value_index = value_index + 1
+  let ~out = Array<HistogramBin>::with_capacity(bin_count)
+  index = 0
+  while index < bin_count:
+    out.push(HistogramBin { start: bounds.0 + to_f64(index) * width, end: bounds.0 + to_f64(index + 1) * width, count: counts.at(index) })
+    index = index + 1
+  out
+
+fn histogram_visual(bins: Array<HistogramBin>, title: String, x_axis: Axis) -> MsgPack
+  var max_count = 1
+  var count_index = 0
+  while count_index < bins.len():
+    if bins.at(count_index).count > max_count:
+      max_count = bins.at(count_index).count
+    count_index = count_index + 1
+  let width = 88.0 / to_f64(bins.len())
+  let ~marks = chart_axes(x_axis, Axis { label: "Count" })
+  var index = 0
+  while index < bins.len():
+    let height = (to_f64(bins.at(index).count) / to_f64(max_count)) * 84.0
+    marks.push(vx::html_element(tag: "rect", attrs: [vx::attr(name: "x", value: to_string(8.0 + to_f64(index) * width)), vx::attr(name: "y", value: to_string(92.0 - height)), vx::attr(name: "width", value: to_string(width * 0.9)), vx::attr(name: "height", value: to_string(height))], children: Array<MsgPack>::init()))
+    index = index + 1
+  vx::html_element(tag: "svg", attrs: [vx::attr(name: "viewbox", value: "0 0 100 100"), vx::attr(name: "role", value: "img"), vx::attr(name: "aria-label", value: title)], children: marks)
+
+pub fn LineChart({ title: String, description: String, series: Array<Series>, x_axis: Axis, y_axis: Axis, annotations?: Array<Annotation> }) -> MsgPack
+  chart_figure(component: "line-chart", title: title, description: description, data: vx::fragment([line_visual(series, title, x_axis, y_axis, annotations), chart_series_legend(series), chart_series_table(title: "View chart data", series: series, x_axis: x_axis, y_axis: y_axis)]))
+
+pub fn ScatterPlot({ title: String, description: String, series: Array<Series>, x_axis: Axis, y_axis: Axis, annotations?: Array<Annotation> }) -> MsgPack
+  chart_figure(component: "scatter-plot", title: title, description: description, data: vx::fragment([scatter_visual(series, title, x_axis, y_axis, annotations), chart_series_legend(series), chart_series_table(title: "View chart data", series: series, x_axis: x_axis, y_axis: y_axis)]))
+
+pub fn BarChart({ title: String, description: String, categories: Array<String>, series: Array<CategorySeries>, y_axis: Axis }) -> MsgPack
+  let ~columns = [TableColumn { key: "category", label: "Category" }]
+  var series_index = 0
+  while series_index < series.len():
+    columns.push(TableColumn { key: series.at(series_index).name, label: labelled_unit(series.at(series_index).name, y_axis.unit) })
+    series_index = series_index + 1
+  let ~rows = Array<TableRow>::init()
+  var category_index = 0
+  while category_index < categories.len():
+    let ~values = [categories.at(category_index)]
+    series_index = 0
+    while series_index < series.len():
+      values.push(to_string(series.at(series_index).values.at(category_index)))
+      series_index = series_index + 1
+    rows.push(TableRow { values: values })
+    category_index = category_index + 1
+  chart_figure(component: "bar-chart", title: title, description: description, data: vx::fragment([bar_visual(series, categories, y_axis, title), category_series_legend(series), Table(columns: columns, rows: rows, caption: "View chart data")]))
+
+pub fn Histogram({ title: String, description: String, values: Array<f64>, x_axis: Axis, bins?: i32 }) -> MsgPack
+  let computed = compute_histogram_bins(values, x_axis, bins)
+  let ~rows = Array<TableRow>::with_capacity(computed.len())
+  var index = 0
+  while index < computed.len():
+    let bin = computed.at(index)
+    rows.push(TableRow { values: [to_string(bin.start).concat("–").concat(to_string(bin.end)), to_string(bin.count)] })
+    index = index + 1
+  chart_figure(component: "histogram", title: title, description: description, data: vx::fragment([histogram_visual(computed, title, x_axis), Table(columns: [TableColumn { key: "range", label: labelled_unit(x_axis.label, x_axis.unit) }, TableColumn { key: "count", label: "Count" }], rows: rows, caption: "View chart data")]))
