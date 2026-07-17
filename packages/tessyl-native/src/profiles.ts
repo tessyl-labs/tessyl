@@ -26,6 +26,7 @@ export type ResourceProfile = {
   readonly maxMemoryPages: number;
   readonly maxTables: number;
   readonly maxTableElements: number;
+  readonly startupTimeoutMs: number;
   readonly rpcTimeoutMs: number;
   readonly maxTransitionsPerSecond: number;
   readonly maxDelayMs: number;
@@ -67,6 +68,7 @@ export const STANDARD_V1: ResourceProfile = Object.freeze({
   maxMemoryPages: 256,
   maxTables: 4,
   maxTableElements: 10_000,
+  startupTimeoutMs: 5_000,
   rpcTimeoutMs: 1_000,
   maxTransitionsPerSecond: 120,
   maxDelayMs: 60_000,

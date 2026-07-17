@@ -98,7 +98,7 @@ export class BrowserTesseraInstance implements TesseraInstance {
     this.#rendererPort.start();
     this.#iframe = iframe;
     const ready = new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => { this.#rendererReady = undefined; reject(this.#rendererFailure("Renderer initialization timed out", "timeout")); }, this.#profile.rpcTimeoutMs);
+      const timeout = setTimeout(() => { this.#rendererReady = undefined; reject(this.#rendererFailure("Renderer initialization timed out", "timeout")); }, this.#profile.startupTimeoutMs);
       this.#rendererReady = { resolve, reject, timeout };
     });
     iframe.addEventListener("load", () => iframe.contentWindow?.postMessage({ version: 1, kind: "tessyl_renderer_boot" }, "*", [channel.port2]), { once: true });
@@ -191,7 +191,7 @@ export class BrowserTesseraInstance implements TesseraInstance {
     this.#workerPort.onmessage = (event) => this.#onWorkerMessage(event.data);
     this.#workerPort.start();
     const ready = new Promise<void>((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new TessylNativeError({ code: "timeout", phase: "run", message: "Worker startup timed out", recoverable: true })), this.#profile.rpcTimeoutMs);
+      const timeout = setTimeout(() => reject(new TessylNativeError({ code: "timeout", phase: "run", message: "Worker startup timed out", recoverable: true })), this.#profile.startupTimeoutMs);
       this.#workerReady = { generation, resolve, reject, timeout };
     });
     worker.addEventListener("error", () => {
@@ -200,13 +200,13 @@ export class BrowserTesseraInstance implements TesseraInstance {
     worker.postMessage({ kind: "tessyl_worker_boot", tesseraId: this.#id, generation }, [channel.port2]);
     await ready;
     this.#assertGeneration(generation);
-    await this.#request("boot", this.#input.artifact.wasm.slice());
+    await this.#request("boot", this.#input.artifact.wasm.slice(), this.#profile.startupTimeoutMs);
     this.#assertGeneration(generation);
-    const step = validateRuntimeStep(await this.#request("init"), this.#profile);
+    const step = validateRuntimeStep(await this.#request("init", undefined, this.#profile.startupTimeoutMs), this.#profile);
     await this.#acceptStep(step);
   }
 
-  #request(kind: RuntimeRequest["kind"], payload?: unknown): Promise<unknown> {
+  #request(kind: RuntimeRequest["kind"], payload?: unknown, timeoutMs = this.#profile.rpcTimeoutMs): Promise<unknown> {
     if (!this.#workerPort) return Promise.reject(new TessylNativeError({ code: "trap", phase: "run", message: "Worker is unavailable", recoverable: true }));
     const requestId = ++this.#requestId;
     const generation = this.#generation;
@@ -215,7 +215,7 @@ export class BrowserTesseraInstance implements TesseraInstance {
         this.#pending.delete(requestId);
         this.#terminateGeneration();
         reject(new TessylNativeError({ code: "timeout", phase: "run", message: "Tessera operation timed out", recoverable: true }));
-      }, this.#profile.rpcTimeoutMs);
+      }, timeoutMs);
       this.#pending.set(requestId, { generation, resolve, reject, timeout });
       this.#workerPort!.postMessage({ version: 1, tesseraId: this.#id, generation, requestId, kind, ...(payload === undefined ? {} : { payload }) } satisfies RuntimeRequest);
     });
