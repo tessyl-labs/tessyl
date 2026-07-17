@@ -38,7 +38,8 @@ npm run dev --workspace=@tessyl/native
 ```
 
 Open `http://127.0.0.1:3001/showcase`. The command builds the package and starts
-the standalone `apps/native-playground` Vite app. The playground recompiles and
+the package-local Vite harness under `playground/`. It is intentionally kept
+inside `@tessyl/native`: it exists to exercise package changes and examples,
+not as a separately deployed Tessyl application. The playground recompiles and
 reloads when calculator, chart, or simulation source under `examples/` changes.
-Set `TESSYL_PLAYGROUND_HOST` or `TESSYL_PLAYGROUND_PORT` to configure the
-listener.
+Set `TESSYL_PLAYGROUND_HOST` or `TESSYL_PLAYGROUND_PORT` to configure the listener.

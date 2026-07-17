@@ -1,4 +1,10 @@
-import { createTessylNative, TessylNativeError, type TesseraArtifactV1, type TesseraInstance, type TesseraPresentation } from "@tessyl/native";
+import {
+  createTessylNative,
+  TessylNativeError,
+  type TesseraArtifactV1,
+  type TesseraInstance,
+  type TesseraPresentation,
+} from "@tessyl/native";
 
 type SerializedArtifact = Omit<TesseraArtifactV1, "wasm" | "sourceBundle"> & { wasm: string; sourceBundle: string };
 

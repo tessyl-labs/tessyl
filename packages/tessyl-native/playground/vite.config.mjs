@@ -5,7 +5,7 @@ import { readFile } from "node:fs/promises";
 import { createTessylNative } from "@tessyl/native";
 
 const appRoot = resolve(fileURLToPath(new URL(".", import.meta.url)));
-const examplesRoot = resolve(appRoot, "../../packages/tessyl-native/examples");
+const examplesRoot = resolve(appRoot, "../examples");
 const exampleNames = ["calculator", "chart", "simulation"];
 
 const serialize = (artifact) => JSON.stringify({
@@ -72,9 +72,10 @@ const examplesPlugin = () => {
 const port = Number.parseInt(process.env.TESSYL_PLAYGROUND_PORT ?? "3001", 10);
 
 export default defineConfig({
+  root: appRoot,
   plugins: [examplesPlugin()],
   resolve: { conditions: ["browser", "development"], preserveSymlinks: true },
   server: { host: process.env.TESSYL_PLAYGROUND_HOST ?? "127.0.0.1", port, strictPort: true },
   preview: { host: process.env.TESSYL_PLAYGROUND_HOST ?? "127.0.0.1", port, strictPort: true },
-  build: { outDir: "dist", emptyOutDir: true },
+  build: { outDir: resolve(appRoot, "dist"), emptyOutDir: true },
 });

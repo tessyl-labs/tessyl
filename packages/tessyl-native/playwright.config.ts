@@ -8,7 +8,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : undefined,
   use: { baseURL: "http://127.0.0.1:3001", trace: "retain-on-failure" },
   webServer: {
-    command: "npm run build --workspace=@tessyl/native && npm run build --workspace=@tessyl/native-playground && npm run start --workspace=@tessyl/native-playground",
+    command: "npm run build --workspace=@tessyl/design-tokens && npm run build --workspace=@tessyl/native && npm run playground:build --workspace=@tessyl/native && npm run playground:start --workspace=@tessyl/native",
     cwd: "../..",
     url: "http://127.0.0.1:3001/showcase",
     reuseExistingServer: !process.env.CI,

@@ -1,10 +1,9 @@
 # Tessyl Native playground
 
-This standalone Vite app is the development host for `@tessyl/native`. It owns
-the demo gallery and compiles the calculator, chart, and simulation sources
-from `packages/tessyl-native/examples` into browser-loadable artifacts.
-
-It intentionally has no dependency on `apps/web` or the Tessyl product UI.
+This package-local Vite harness owns the demo gallery and compiles the
+calculator, chart, and simulation sources from `../examples` into
+browser-loadable artifacts. It is not a workspace application or deployable
+Tessyl product surface.
 
 From the repository root, use the package entry point:
 
@@ -14,8 +13,8 @@ npm run dev --workspace=@tessyl/native
 
 Then open `http://127.0.0.1:3001/showcase`.
 
-The package development command builds `@tessyl/native` before starting the
-playground. Changes to example `.voyd` and `tessera.json` files trigger artifact
+The package development command builds `@tessyl/native` before starting this
+harness. Changes to example `.voyd` and `tessera.json` files trigger artifact
 recompilation and a full browser reload.
 
 ## Presentation behavior

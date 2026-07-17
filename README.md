@@ -4,11 +4,9 @@ A full-stack Turborepo application written in [Voyd](../voyd).
 
 ## Workspace layout
 
-- `apps/*` — deployable Voyd applications
-- `packages/*` — shared Voyd packages
-
-The workspace is ready for the Voyd app initializer; no application has been
-generated yet.
+- `apps/*` — deployable Tessyl applications
+- `packages/design-tokens` — shared semantic theme values for web and Native
+- `packages/tessyl-native` — the Native runtime, examples, and local playground
 
 ## Commands
 

@@ -13,5 +13,5 @@
     "strict": true,
     "preserveSymlinks": true
   },
-  "include": ["src"]
+  "include": ["src/**/*.ts"]
 }
