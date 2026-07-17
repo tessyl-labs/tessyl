@@ -1,6 +1,6 @@
 # tessyl
 
-A full-stack Turborepo application written in [Voyd](../voyd).
+A full-stack Turborepo application written in Voyd.
 
 ## Workspace layout
 
@@ -9,6 +9,18 @@ A full-stack Turborepo application written in [Voyd](../voyd).
 
 The workspace is ready for the Voyd app initializer; no application has been
 generated yet.
+
+## Setup
+
+Clone with submodules so the pinned Voyd source is available:
+
+```sh
+git clone --recurse-submodules <repository-url>
+```
+
+For an existing checkout, run `git submodule update --init --recursive` once.
+The `preinstall` hook keeps the submodule synchronized to the revision pinned
+by Tessyl.
 
 ## Commands
 

@@ -1,0 +1,3 @@
+[submodule ".voyd-source"]
+	path = .voyd-source
+	url = https://github.com/voyd-lang/voyd.git

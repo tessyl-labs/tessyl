@@ -2,8 +2,9 @@
 
 This is a server-rendered Voyd application with a hydrated VX editor.
 
-This project uses Voyd source packages from `/Users/drewy/code/voyd`. Running
-`npm install` links the complete local Voyd dependency set automatically.
+This project uses the pinned Voyd source in the `.voyd-source` submodule.
+Running `npm install` links the complete local Voyd dependency set
+automatically.
 
 
 ## Architecture
