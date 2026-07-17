@@ -12,15 +12,8 @@ generated yet.
 
 ## Setup
 
-Clone with submodules so the pinned Voyd source is available:
-
-```sh
-git clone --recurse-submodules <repository-url>
-```
-
-For an existing checkout, run `git submodule update --init --recursive` once.
-The `preinstall` hook keeps the submodule synchronized to the revision pinned
-by Tessyl.
+The `preinstall` hook automatically initializes the pinned Voyd submodule, so
+both `npm install` and `npm ci` work from a regular clone.
 
 ## Commands
 

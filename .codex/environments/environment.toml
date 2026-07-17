@@ -3,4 +3,4 @@ version = 1
 name = "tessyl"
 
 [setup]
-script = "git submodule update --init --recursive && npm ci"
+script = "npm ci"
