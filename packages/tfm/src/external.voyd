@@ -1,0 +1,66 @@
+use std::array::Array
+use std::string::type::String
+
+pub type TfmSpan = {
+  start: i32,
+  end: i32,
+  startLine: i32,
+  startColumn: i32,
+  endLine: i32,
+  endColumn: i32
+}
+
+pub type TfmDiagnostic = {
+  code: String,
+  severity: String,
+  message: String,
+  span: TfmSpan
+}
+
+pub type TfmAttribute = {
+  name: String,
+  type: String,
+  value: String,
+  booleanValue: bool,
+  integerValue: i32
+}
+
+pub type TfmNode = {
+  kind: String,
+  children: Array<i32>,
+  span: TfmSpan,
+  text: String,
+  url: String,
+  title: String,
+  language: String,
+  identifier: String,
+  depth: i32,
+  ordered: bool,
+  listStart: i32,
+  task: bool,
+  checked: bool,
+  attributes: Array<TfmAttribute>
+}
+
+pub type TfmLimits = {
+  maxSourceBytes: i32,
+  maxNestingDepth: i32,
+  maxNodeCount: i32,
+  maxAttributeCount: i32,
+  maxAttributeLength: i32,
+  maxDiagnostics: i32
+}
+
+pub type ParseResult = {
+  schemaVersion: String,
+  vocabularyVersion: String,
+  success: bool,
+  root: i32,
+  nodes: Array<TfmNode>,
+  diagnostics: Array<TfmDiagnostic>,
+  limits: TfmLimits
+}
+
+// Parses TFM synchronously without rendering, fetching, or executing content.
+@external(id: "tessyl:tfm/parser@1")
+pub fn parse(source: String) -> ParseResult
