@@ -1,4 +1,35 @@
-use pkg::agents::{ Completed, Failed, Llm, agent, run, user_message }
+use pkg::agents::{
+  Completed,
+  Failed,
+  Llm,
+  ToolResult,
+  agent,
+  run,
+  tool,
+  tool_failed,
+  tool_succeeded,
+  user_message
+}
+use std::string::type::String
+
+@effect(id: "tessyl.agents.test.async-tool")
+eff AsyncTool
+  transform(resume, value: i32) -> i32
+
+fn pure_tool(arguments: String) -> ToolResult
+  if arguments.equals("{\"value\":\"pure\"}") then:
+    tool_succeeded("pure-result")
+  else:
+    tool_failed("unexpected pure arguments")
+
+fn async_tool(arguments: String): AsyncTool -> ToolResult
+  if arguments.equals("{\"value\":\"async\"}") then:
+    if AsyncTool::transform(41) == 42 then:
+      tool_succeeded("async-result")
+    else:
+      tool_failed("unexpected async result")
+  else:
+    tool_failed("unexpected async arguments")
 
 pub fn answer(): (Llm, open) -> i32
   let result = run(
@@ -12,5 +43,36 @@ pub fn answer(): (Llm, open) -> i32
   match(result)
     Completed { output }:
       if output.equals("Hello back") then: 42 else: 0
+    Failed:
+      -1
+
+pub fn tool_answer(): (Llm, AsyncTool, open) -> i32
+  let result = run(
+    agent(
+      name: "tool-integration",
+      instructions: "Call both tools before answering.",
+      model: "gpt-integration",
+      tools: [
+        tool(
+          name: "pure_tool",
+          description: "Call an ordinary Voyd function",
+          parameters_json: "{\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"string\"}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          strict: true,
+          handler: pure_tool
+        ),
+        tool(
+          name: "async_tool",
+          description: "Call a Voyd function that performs an async effect",
+          parameters_json: "{\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"string\"}},\"required\":[\"value\"],\"additionalProperties\":false}",
+          strict: true,
+          handler: async_tool
+        )
+      ]
+    ),
+    input: [user_message("Use both tools")]
+  )
+  match(result)
+    Completed { output }:
+      if output.equals("Tools complete") then: 84 else: 0
     Failed:
       -1
