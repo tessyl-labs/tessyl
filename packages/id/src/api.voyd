@@ -1,8 +1,133 @@
-use src::external::IdGenerator
+use std::array::Array
+use std::bytes::ByteBuffer
+use std::encoding::hex
+use std::error::panic
+use std::number::cast::{ to_i32_wrapping, to_i64 }
+use std::random::{ Random, fill_bytes as fill_random_bytes }
 use std::string::type::String
+use std::time::{ SystemTime, Time }
 
-pub fn id(): IdGenerator -> String
-  IdGenerator::id()
+/// Generates an RFC 9562 UUIDv7 from cryptographic randomness and wall-clock time.
+pub fn id(): (Random, Time) -> String
+  id_at(SystemTime::now().unix_millis())
 
-pub fn word_id({ word_count: i32 = 4 }): IdGenerator -> String
-  IdGenerator::word_id(word_count)
+fn id_at(timestamp: i64): Random -> String
+  let ~random_bytes = ByteBuffer::with_capacity(16)
+  fill_random_bytes(random_bytes, 16)
+  uuid_v7(timestamp, random_bytes.as_bytes().to_array())
+
+/// Generates one to four dash-separated words from curated semantic categories.
+pub fn word_id({ word_count: i32 = 4 }): Random -> String
+  if word_count < 1 or word_count > 4:
+    panic("word_count must be from 1 through 4")
+
+  let ~entropy = ByteBuffer::with_capacity(32)
+  fill_random_bytes(entropy, 32)
+  word_id_from_entropy(entropy.as_bytes().to_array(), word_count)
+
+fn word_id_from_entropy(entropy: Array<i32>, word_count: i32) -> String
+  if entropy.len() != 32:
+    panic("word_id requires exactly 32 random bytes")
+
+  let sets = word_sets()
+  let modifier_values = modifiers()
+  var result = String::init()
+  var index = 0
+  while index < word_count:
+    if index > 0:
+      result = result.concat("-")
+    let modifier = modifier_values.at(entropy_index(entropy, index * 8, modifier_values.len()))
+    let word = sets.at(index).at(entropy_index(entropy, index * 8 + 4, sets.at(index).len()))
+    result = result.concat(modifier.concat(word))
+    index = index + 1
+  result
+
+fn uuid_v7(timestamp: i64, random_bytes: Array<i32>) -> String
+  if timestamp < to_i64(0) or timestamp > 281474976710655i64:
+    panic("UUIDv7 timestamp must fit in 48 unsigned bits")
+  if random_bytes.len() != 16:
+    panic("UUIDv7 requires exactly 16 random bytes")
+
+  let ~bytes = random_bytes.copied()
+  var remaining = timestamp
+  var index = 5
+  while index >= 0:
+    let _ = bytes.replace(index, with: to_i32_wrapping(remaining % to_i64(256)))
+    remaining = remaining / to_i64(256)
+    index = index - 1
+
+  let _ = bytes.replace(6, with: bytes.at(6) % 16 + 112)
+  let _ = bytes.replace(8, with: bytes.at(8) % 64 + 128)
+
+  let ~buffer = ByteBuffer::with_capacity(16)
+  index = 0
+  while index < bytes.len():
+    buffer.push(bytes.at(index))
+    index = index + 1
+  format_uuid(hex::encode(buffer.as_bytes()))
+
+fn format_uuid(value: String) -> String
+  value.slice(bytes: 0, len: 8).to_string()
+    .concat("-")
+    .concat(value.slice(bytes: 8, len: 4).to_string())
+    .concat("-")
+    .concat(value.slice(bytes: 12, len: 4).to_string())
+    .concat("-")
+    .concat(value.slice(bytes: 16, len: 4).to_string())
+    .concat("-")
+    .concat(value.slice(bytes: 20, len: 12).to_string())
+
+fn entropy_index(entropy: Array<i32>, offset: i32, count: i32) -> i32
+  let value = to_i64(entropy.at(offset)) * 16777216i64 + to_i64(entropy.at(offset + 1)) * 65536i64 + to_i64(entropy.at(offset + 2)) * 256i64 + to_i64(entropy.at(offset + 3))
+  to_i32_wrapping(value % to_i64(count))
+
+fn word_sets() -> Array<Array<String>>
+  [colors_and_materials(), plants_and_places(), geometry_and_space(), objects()]
+
+fn modifiers() -> Array<String>
+  [
+    "", "bright", "calm", "clear", "cool", "crisp", "deep", "fair", "fresh", "gentle", "grand",
+    "light", "little", "mellow", "misty", "neat", "new", "open", "pale", "quiet", "radiant",
+    "round", "serene", "sharp", "soft", "steady", "still", "sunny", "swift", "warm", "wide", "wild",
+    "young"
+  ]
+
+fn colors_and_materials() -> Array<String>
+  [
+    "amber", "apricot", "azure", "beige", "bronze", "cerulean", "cobalt", "copper",
+    "coral", "cream", "crimson", "denim", "emerald", "flaxen", "golden", "gray",
+    "green", "indigo", "ivory", "jade", "lavender", "lilac", "linen", "magenta",
+    "marble", "mint", "ochre", "olive", "opal", "peach", "pearl", "plum",
+    "quartz", "rose", "ruby", "saffron", "scarlet", "silver", "slate", "teal",
+    "topaz", "umber", "velvet", "violet", "walnut", "wheat", "white", "yellow"
+  ]
+
+fn plants_and_places() -> Array<String>
+  [
+    "acacia", "alder", "aloe", "apple", "aspen", "bamboo", "birch", "blossom",
+    "cedar", "clover", "cypress", "dahlia", "daisy", "elm", "fern", "fig",
+    "fir", "flora", "garden", "ginger", "hazel", "heather", "herb", "holly",
+    "iris", "ivy", "juniper", "laurel", "lemon", "lilac", "lotus", "maple",
+    "meadow", "moss", "myrtle", "oak", "orchid", "palm", "pine", "poppy",
+    "reed", "sage", "spruce", "thyme", "tulip", "willow", "yarrow", "yucca"
+  ]
+
+fn geometry_and_space() -> Array<String>
+  [
+    "arc", "aster", "aurora", "axis", "circle", "comet", "cosmos", "crescent",
+    "cube", "dawn", "delta", "eclipse", "equinox", "galaxy", "globe", "halo",
+    "helix", "horizon", "lattice", "lunar", "meteor", "nebula", "nova", "orbit",
+    "oval", "prism", "pyramid", "quasar", "ray", "ring", "solar", "sphere",
+    "spiral", "star", "summit", "sunrise", "sunset", "terra", "trine", "vertex",
+    "vortex", "wave", "wedge", "zenith", "angle", "facet", "hexagon", "vector"
+  ]
+
+fn objects() -> Array<String>
+  [
+    "anchor", "arch", "basket", "beacon", "bell", "bridge", "cabin", "canvas",
+    "chime", "compass", "cove", "cradle", "drum", "feather", "flute", "harbor",
+    "haven", "key", "kite", "lantern", "loom", "lyre", "map", "mirror",
+    "mosaic", "needle", "paddle", "page", "path", "pebble", "quill", "ribbon",
+    "sail", "shell", "shield", "shore", "spindle", "stone", "studio", "table",
+    "tile", "tower", "trail", "vessel", "wheel", "window", "wing", "workshop"
+  ]

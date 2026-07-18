@@ -1,7 +1,5 @@
 //! UUIDv7 and human-readable word ID generation.
 
 pub self::api
-pub self::external
 
 pub use self::api::{ id, word_id }
-pub use self::external::IdGenerator

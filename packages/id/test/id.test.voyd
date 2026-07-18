@@ -1,0 +1,14 @@
+use pkg::id::{ id, word_id }
+use std::test::assertions::all
+
+test "UUIDv7 runs through standard Random and Time effects":
+  let value = id()
+  assert(value.byte_len(), eq: 36)
+  assert(value.slice(bytes: 14, len: 1).to_string(), eq: "7")
+  assert("89ab".contains(value.slice(bytes: 19, len: 1)), eq: true)
+
+test "word IDs use curated categories and default to four words":
+  assert(word_id().split(on: 45).len(), eq: 4)
+  assert(word_id(word_count: 1).split(on: 45).len(), eq: 1)
+  assert(word_id(word_count: 2).split(on: 45).len(), eq: 2)
+  assert(word_id(word_count: 3).split(on: 45).len(), eq: 3)

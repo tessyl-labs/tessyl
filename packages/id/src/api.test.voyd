@@ -1,0 +1,30 @@
+use std::array::Array
+use std::test::assertions::all
+
+test "UUIDv7 encodes timestamp, version, and variant":
+  let ~zeros = Array<i32>::with_capacity(16)
+  var index = 0
+  while index < 16:
+    zeros.push(0)
+    index = index + 1
+  assert(
+    uuid_v7(1250999896491i64, zeros),
+    eq: "01234567-89ab-7000-8000-000000000000"
+  )
+
+test "word dictionaries preserve default namespace capacity":
+  assert(modifiers().len(), eq: 33)
+  let sets = word_sets()
+  assert(sets.len(), eq: 4)
+  var index = 0
+  while index < sets.len():
+    assert(sets.at(index).len(), eq: 48)
+    index = index + 1
+
+test "word IDs derive deterministically from cryptographic entropy":
+  let ~zeros = Array<i32>::with_capacity(32)
+  var index = 0
+  while index < 32:
+    zeros.push(0)
+    index = index + 1
+  assert(word_id_from_entropy(zeros, 4), eq: "amber-acacia-arc-anchor")
