@@ -54,6 +54,16 @@ export type OpenAIResponsesOptions = {
   baseUrl?: string;
   organization?: string;
   project?: string;
+  /** Provider label used in diagnostics. */
+  providerName?: string;
+  /** Prefix used for adapter-local streaming cursors. */
+  streamCursorPrefix?: string;
+  /**
+   * Send `previous_response_id` and only the latest input delta on follow-up
+   * turns. Disable this for OpenAI-compatible providers without stateful
+   * Responses API support.
+   */
+  usePreviousResponseId?: boolean;
   timeoutMs?: number;
   fetch?: typeof globalThis.fetch;
 };
@@ -63,6 +73,13 @@ export type OpenAIResponsesHandlers = LlmEffectHandlers;
 type ActiveStream = {
   abort: AbortController;
   events: SseEvents;
+  input: Record<string, unknown>[];
+  replayTokens: Set<string>;
+  usePreviousResponseId: boolean;
+};
+
+type ResponsesRequestBody = Record<string, unknown> & {
+  input: Record<string, unknown>[];
 };
 
 class ProviderError extends Error {
@@ -96,28 +113,41 @@ export const createOpenAIResponsesAdapter = (
     throw new Error("A Fetch API implementation is required");
   }
   const baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "");
+  const providerName = options.providerName ?? "OpenAI";
+  const streamCursorPrefix = options.streamCursorPrefix ?? "openai";
+  const usePreviousResponseId = options.usePreviousResponseId ?? true;
   const streams = new Map<string, ActiveStream>();
+  const replays = new Map<string, Record<string, unknown>[]>();
   let nextCursor = 1;
 
   const respond: LlmAdapter["respond"] = async (
     request,
     context,
   ) => {
-    const abort = requestAbort(context, options.timeoutMs);
+    const abort = requestAbort(context, providerName, options.timeoutMs);
     try {
+      const body = requestBody(request, false, usePreviousResponseId, replays);
       const response = await fetchImplementation(`${baseUrl}/responses`, {
         method: "POST",
         headers: headers(options),
-        body: JSON.stringify(requestBody(request, false)),
+        body: JSON.stringify(body),
         signal: abort.signal,
       });
-      const payload = await responsePayload(response);
+      const payload = await responsePayload(response, providerName);
       if (!response.ok) {
-        throw apiError(response.status, payload);
+        throw apiError(response.status, payload, providerName);
       }
-      return llmSuccess(mapResponse(payload));
+      const mapped = mapResponse(payload, usePreviousResponseId, providerName);
+      if (!usePreviousResponseId) rememberReplay(replays, body.input, payload, mapped);
+      if (mapped.continuation_token) {
+        const token = mapped.continuation_token;
+        context.registerResourceCleanup(() => {
+          replays.delete(token);
+        });
+      }
+      return llmSuccess(mapped);
     } catch (error) {
-      return llmFailure(toLlmError(error, abort.signal));
+      return llmFailure(toLlmError(error, providerName, abort.signal));
     } finally {
       abort.abort();
     }
@@ -127,29 +157,44 @@ export const createOpenAIResponsesAdapter = (
     request,
     context,
   ) => {
-    const abort = requestAbort(context, options.timeoutMs);
+    const abort = requestAbort(context, providerName, options.timeoutMs);
     try {
+      const body = requestBody(request, true, usePreviousResponseId, replays);
       const response = await fetchImplementation(`${baseUrl}/responses`, {
         method: "POST",
         headers: headers(options),
-        body: JSON.stringify(requestBody(request, true)),
+        body: JSON.stringify(body),
         signal: abort.signal,
       });
       if (!response.ok) {
-        throw apiError(response.status, await responsePayload(response));
+        throw apiError(
+          response.status,
+          await responsePayload(response, providerName),
+          providerName,
+        );
       }
       if (!response.body) {
-        throw new ProviderError("empty_stream", "OpenAI returned an empty response stream");
+        throw new ProviderError(
+          "empty_stream",
+          `${providerName} returned an empty response stream`,
+        );
       }
-      const cursor = `openai-${nextCursor++}`;
+      const cursor = `${streamCursorPrefix}-${nextCursor++}`;
+      const replayTokens = new Set<string>();
       streams.set(cursor, {
         abort,
-        events: new SseEvents(response.body.getReader()),
+        events: new SseEvents(response.body.getReader(), providerName),
+        input: body.input,
+        replayTokens,
+        usePreviousResponseId,
       });
-      context.registerResourceCleanup(() => closeStream(streams, cursor));
-      return await readStreamStep(streams, cursor);
+      context.registerResourceCleanup(() => {
+        closeStream(streams, cursor);
+        replayTokens.forEach((token) => replays.delete(token));
+      });
+      return await readStreamStep(streams, replays, cursor, providerName);
     } catch (error) {
-      const failure = toLlmError(error, abort.signal);
+      const failure = toLlmError(error, providerName, abort.signal);
       abort.abort();
       return streamFailure(failure);
     }
@@ -160,10 +205,10 @@ export const createOpenAIResponsesAdapter = (
   ) => {
     const signal = streams.get(cursor)?.abort.signal;
     try {
-      return await readStreamStep(streams, cursor);
+      return await readStreamStep(streams, replays, cursor, providerName);
     } catch (error) {
       closeStream(streams, cursor);
-      return streamFailure(toLlmError(error, signal));
+      return streamFailure(toLlmError(error, providerName, signal));
     }
   };
 
@@ -175,21 +220,49 @@ export const createOpenAIResponsesAdapter = (
   };
 };
 
-const requestBody = (request: LlmModelRequest, stream: boolean) => {
-  const input = request.continuation_token
-    ? request.input_delta
-    : request.input;
-  const body: Record<string, unknown> = {
+const requestBody = (
+  request: LlmModelRequest,
+  stream: boolean,
+  usePreviousResponseId: boolean,
+  replays: Map<string, Record<string, unknown>[]>,
+) => {
+  const replay = !usePreviousResponseId && request.continuation_token
+    ? replays.get(request.continuation_token)
+    : undefined;
+  if (replay && request.continuation_token) {
+    replays.delete(request.continuation_token);
+  }
+  const input = replay
+    ? [...replay, ...request.input_delta.map(mapInput)]
+    : (usePreviousResponseId && request.continuation_token
+      ? request.input_delta
+      : request.input).map(mapInput);
+  const body: ResponsesRequestBody = {
     model: request.model,
-    input: input.map(mapInput),
+    input,
     tools: request.tools.map(mapTool),
     stream,
   };
   if (request.instructions) body.instructions = request.instructions;
-  if (request.continuation_token) {
+  if (usePreviousResponseId && request.continuation_token) {
     body.previous_response_id = request.continuation_token;
   }
   return body;
+};
+
+const rememberReplay = (
+  replays: Map<string, Record<string, unknown>[]>,
+  input: Record<string, unknown>[],
+  value: unknown,
+  response: LlmModelResponse,
+): void => {
+  if (!response.continuation_token || !isRecord(value) || !Array.isArray(value.output)) {
+    return;
+  }
+  replays.set(response.continuation_token, [
+    ...input,
+    ...value.output.filter(isRecord),
+  ]);
 };
 
 const mapInput = (item: LlmInputItem): Record<string, unknown> => {
@@ -381,9 +454,16 @@ const withDescription = (
 const jsonPointerSegment = (value: string): string =>
   value.replaceAll("~", "~0").replaceAll("/", "~1");
 
-const mapResponse = (value: unknown): LlmModelResponse => {
+const mapResponse = (
+  value: unknown,
+  usePreviousResponseId: boolean,
+  providerName: string,
+): LlmModelResponse => {
   if (!isRecord(value)) {
-    throw new ProviderError("invalid_response", "OpenAI returned a non-object response");
+    throw new ProviderError(
+      "invalid_response",
+      `${providerName} returned a non-object response`,
+    );
   }
   const response = value as OpenAIResponse;
   if (response.status === "failed" || response.status === "incomplete") {
@@ -393,15 +473,15 @@ const mapResponse = (value: unknown): LlmModelResponse => {
       : response.status === "incomplete" ? "response_incomplete" : "response_failed";
     throw new ProviderError(
       code,
-      providerMessage(response) ?? `OpenAI response ${response.status}`,
+      providerMessage(response) ?? `${providerName} response ${response.status}`,
       response.status === "incomplete" || retryableProviderCode(code),
     );
   }
   if (typeof response.id !== "string") {
-    throw new ProviderError("invalid_response", "OpenAI response is missing its id");
+    throw new ProviderError("invalid_response", `${providerName} response is missing its id`);
   }
   if (!Array.isArray(response.output)) {
-    throw new ProviderError("invalid_response", "OpenAI response is missing its output");
+    throw new ProviderError("invalid_response", `${providerName} response is missing its output`);
   }
 
   const output: LlmModelOutput[] = [];
@@ -435,7 +515,9 @@ const mapResponse = (value: unknown): LlmModelResponse => {
   const usage = isRecord(response.usage) ? response.usage : {};
   return {
     id: response.id,
-    continuation_token: response.id,
+    continuation_token: usePreviousResponseId || output.some((item) => item.tag === "ToolCall")
+      ? response.id
+      : null,
     output,
     usage: {
       input_tokens: integer(usage.input_tokens),
@@ -447,7 +529,9 @@ const mapResponse = (value: unknown): LlmModelResponse => {
 
 const readStreamStep = async (
   streams: Map<string, ActiveStream>,
+  replays: Map<string, Record<string, unknown>[]>,
   cursor: string,
+  providerName: string,
 ): Promise<LlmStreamResult> => {
   const active = streams.get(cursor);
   if (!active) {
@@ -464,7 +548,7 @@ const readStreamStep = async (
       closeStream(streams, cursor);
       throw new ProviderError(
         "incomplete_stream",
-        "OpenAI closed the stream before a completed response",
+        `${providerName} closed the stream before a completed response`,
         true,
       );
     }
@@ -490,7 +574,19 @@ const readStreamStep = async (
     }
     if (event.type === "response.completed") {
       closeStream(streams, cursor);
-      return streamSuccess({ tag: "Done", response: mapResponse(event.response) });
+      const mapped = mapResponse(
+        event.response,
+        active.usePreviousResponseId,
+        providerName,
+      );
+      if (!active.usePreviousResponseId) {
+        rememberReplay(replays, active.input, event.response, mapped);
+      }
+      if (mapped.continuation_token) active.replayTokens.add(mapped.continuation_token);
+      return streamSuccess({
+        tag: "Done",
+        response: mapped,
+      });
     }
     if (event.type === "response.failed" || event.type === "response.incomplete") {
       closeStream(streams, cursor);
@@ -501,7 +597,7 @@ const readStreamStep = async (
         : event.type === "response.incomplete" ? "response_incomplete" : "response_failed";
       throw new ProviderError(
         code,
-        providerMessage(event.response) ?? `OpenAI emitted ${event.type}`,
+        providerMessage(event.response) ?? `${providerName} emitted ${event.type}`,
         event.type === "response.incomplete" || retryableProviderCode(code),
       );
     }
@@ -510,7 +606,7 @@ const readStreamStep = async (
       const code = typeof event.code === "string" ? event.code : "stream_error";
       throw new ProviderError(
         code,
-        providerMessage(event) ?? "OpenAI stream failed",
+        providerMessage(event) ?? `${providerName} stream failed`,
         retryableProviderCode(code),
       );
     }
@@ -521,9 +617,11 @@ class SseEvents {
   readonly #reader: ReadableStreamDefaultReader<Uint8Array>;
   readonly #decoder = new TextDecoder();
   #buffer = "";
+  readonly #providerName: string;
 
-  constructor(reader: ReadableStreamDefaultReader<Uint8Array>) {
+  constructor(reader: ReadableStreamDefaultReader<Uint8Array>, providerName: string) {
     this.#reader = reader;
+    this.#providerName = providerName;
   }
 
   async next(): Promise<OpenAIEvent | undefined> {
@@ -543,7 +641,10 @@ class SseEvents {
           const parsed: unknown = JSON.parse(data);
           if (isRecord(parsed)) return parsed as OpenAIEvent;
         } catch {
-          throw new ProviderError("invalid_stream_event", "OpenAI returned malformed SSE data");
+          throw new ProviderError(
+            "invalid_stream_event",
+            `${this.#providerName} returned malformed SSE data`,
+          );
         }
         continue;
       }
@@ -569,12 +670,13 @@ const headers = (options: OpenAIResponsesOptions): Record<string, string> => ({
 
 const requestAbort = (
   context: LlmAdapterContext,
+  providerName: string,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): AbortController => {
   const abort = new AbortController();
   const timeout = setTimeout(() => abort.abort(new ProviderError(
     "request_timeout",
-    "OpenAI request timed out",
+    `${providerName} request timed out`,
     true,
   )), timeoutMs);
   context.registerResourceCleanup(() => {
@@ -585,7 +687,10 @@ const requestAbort = (
   return abort;
 };
 
-const responsePayload = async (response: Response): Promise<unknown> => {
+const responsePayload = async (
+  response: Response,
+  providerName: string,
+): Promise<unknown> => {
   const text = await response.text();
   if (!text) return {};
   try {
@@ -593,14 +698,18 @@ const responsePayload = async (response: Response): Promise<unknown> => {
   } catch {
     throw new ProviderError(
       "invalid_response",
-      `OpenAI returned non-JSON data: ${text.slice(0, MAX_ERROR_BODY_CHARS)}`,
+      `${providerName} returned non-JSON data: ${text.slice(0, MAX_ERROR_BODY_CHARS)}`,
       response.status >= 500,
     );
   }
 };
 
-const apiError = (status: number, payload: unknown): ProviderError => {
-  const message = providerMessage(payload) ?? `OpenAI request failed with HTTP ${status}`;
+const apiError = (
+  status: number,
+  payload: unknown,
+  providerName: string,
+): ProviderError => {
+  const message = providerMessage(payload) ?? `${providerName} request failed with HTTP ${status}`;
   const code = isRecord(payload) && isRecord(payload.error) && typeof payload.error.code === "string"
     ? payload.error.code
     : `http_${status}`;
@@ -621,7 +730,11 @@ const providerMessage = (value: unknown): string | undefined => {
 const retryableProviderCode = (code: string): boolean =>
   code === "server_error" || code === "rate_limit_exceeded" || code === "timeout";
 
-const toLlmError = (error: unknown, signal?: AbortSignal): LlmError => {
+const toLlmError = (
+  error: unknown,
+  providerName: string,
+  signal?: AbortSignal,
+): LlmError => {
   if (signal?.aborted && signal.reason instanceof ProviderError) {
     const reason = signal.reason;
     return { code: reason.code, message: reason.message, retryable: reason.retryable };
@@ -630,18 +743,22 @@ const toLlmError = (error: unknown, signal?: AbortSignal): LlmError => {
     return { code: error.code, message: error.message, retryable: error.retryable };
   }
   if (error instanceof DOMException && error.name === "AbortError") {
-    return { code: "request_aborted", message: "OpenAI request was aborted", retryable: true };
+    return {
+      code: "request_aborted",
+      message: `${providerName} request was aborted`,
+      retryable: true,
+    };
   }
   if (error instanceof TypeError || isNetworkError(error)) {
     return {
       code: "network_error",
-      message: error instanceof Error ? error.message : "OpenAI network request failed",
+      message: error instanceof Error ? error.message : `${providerName} network request failed`,
       retryable: true,
     };
   }
   return {
     code: "provider_error",
-    message: error instanceof Error ? error.message : "Unknown OpenAI provider error",
+    message: error instanceof Error ? error.message : `Unknown ${providerName} provider error`,
     retryable: false,
   };
 };

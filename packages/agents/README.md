@@ -85,6 +85,43 @@ await compiled.run({ entryName: "answer", handlers });
 The adapter uses `POST /v1/responses`, function tools, response continuation
 IDs, and streamed server-sent events.
 
+## Ollama adapter
+
+Ollama 0.13.3 or newer exposes a compatible Responses API. Start Ollama and
+make sure the model used by the Voyd agent is installed—for example, if the
+agent's `model` is `"qwen3.6"`:
+
+```sh
+ollama pull qwen3.6
+ollama serve
+```
+
+Then use the dedicated stateless adapter:
+
+```ts
+import { createOllamaHandlers } from "@tessyl/agents/ollama";
+
+const handlers = createOllamaHandlers();
+await compiled.run({ entryName: "answer", handlers });
+```
+
+The default endpoint is `http://localhost:11434/v1`; no API key is required
+for a local Ollama server. Override the connection settings for another local
+or remote server:
+
+```ts
+const handlers = createOllamaHandlers({
+  baseUrl: process.env.OLLAMA_BASE_URL,
+  apiKey: process.env.OLLAMA_API_KEY,
+  timeoutMs: 180_000,
+});
+```
+
+Keep the `/v1` suffix on `baseUrl`. Ollama does not support Responses API
+continuation IDs, so this adapter deliberately sends the complete agent
+transcript on every tool turn. Use a model with tool-calling support when the
+agent declares tools.
+
 ## Custom provider adapters
 
 Implement the typed, versioned adapter contract and let `defineLlmHandlers`

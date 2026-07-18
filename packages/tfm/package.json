@@ -41,7 +41,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist",
-    "generate": "voyd generate adapter ./src --out ./generated",
+    "generate": "node ../../.voyd-source/apps/cli/bin/voyd.js generate adapter ./src --out ./generated",
     "lint": "tsc --noEmit -p tsconfig.json",
     "test": "tsx --test src/**/*.test.ts host/**/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json"
