@@ -1,0 +1,339 @@
+{
+  "abiVersion": 1,
+  "packageName": "@tessyl/tfm",
+  "interfaces": [
+    {
+      "interfaceId": "tessyl:tfm/parser@1",
+      "fingerprint": "07fcc46a80631a36"
+    }
+  ],
+  "functions": [
+    {
+      "kind": "sync",
+      "interfaceId": "tessyl:tfm/parser@1",
+      "functionName": "parse",
+      "params": [
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "diagnostics",
+            "schema": {
+              "kind": "array",
+              "element": {
+                "kind": "record",
+                "fields": [
+                  {
+                    "name": "code",
+                    "schema": {
+                      "kind": "string"
+                    }
+                  },
+                  {
+                    "name": "message",
+                    "schema": {
+                      "kind": "string"
+                    }
+                  },
+                  {
+                    "name": "severity",
+                    "schema": {
+                      "kind": "string"
+                    }
+                  },
+                  {
+                    "name": "span",
+                    "schema": {
+                      "kind": "record",
+                      "fields": [
+                        {
+                          "name": "end",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        },
+                        {
+                          "name": "endColumn",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        },
+                        {
+                          "name": "endLine",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        },
+                        {
+                          "name": "start",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        },
+                        {
+                          "name": "startColumn",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        },
+                        {
+                          "name": "startLine",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": "limits",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "maxAttributeCount",
+                  "schema": {
+                    "kind": "i32"
+                  }
+                },
+                {
+                  "name": "maxAttributeLength",
+                  "schema": {
+                    "kind": "i32"
+                  }
+                },
+                {
+                  "name": "maxDiagnostics",
+                  "schema": {
+                    "kind": "i32"
+                  }
+                },
+                {
+                  "name": "maxNestingDepth",
+                  "schema": {
+                    "kind": "i32"
+                  }
+                },
+                {
+                  "name": "maxNodeCount",
+                  "schema": {
+                    "kind": "i32"
+                  }
+                },
+                {
+                  "name": "maxSourceBytes",
+                  "schema": {
+                    "kind": "i32"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "nodes",
+            "schema": {
+              "kind": "array",
+              "element": {
+                "kind": "record",
+                "fields": [
+                  {
+                    "name": "attributes",
+                    "schema": {
+                      "kind": "array",
+                      "element": {
+                        "kind": "record",
+                        "fields": [
+                          {
+                            "name": "booleanValue",
+                            "schema": {
+                              "kind": "bool"
+                            }
+                          },
+                          {
+                            "name": "integerValue",
+                            "schema": {
+                              "kind": "i32"
+                            }
+                          },
+                          {
+                            "name": "name",
+                            "schema": {
+                              "kind": "string"
+                            }
+                          },
+                          {
+                            "name": "type",
+                            "schema": {
+                              "kind": "string"
+                            }
+                          },
+                          {
+                            "name": "value",
+                            "schema": {
+                              "kind": "string"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "name": "checked",
+                    "schema": {
+                      "kind": "bool"
+                    }
+                  },
+                  {
+                    "name": "children",
+                    "schema": {
+                      "kind": "array",
+                      "element": {
+                        "kind": "i32"
+                      }
+                    }
+                  },
+                  {
+                    "name": "depth",
+                    "schema": {
+                      "kind": "i32"
+                    }
+                  },
+                  {
+                    "name": "identifier",
+                    "schema": {
+                      "kind": "string"
+                    }
+                  },
+                  {
+                    "name": "kind",
+                    "schema": {
+                      "kind": "string"
+                    }
+                  },
+                  {
+                    "name": "language",
+                    "schema": {
+                      "kind": "string"
+                    }
+                  },
+                  {
+                    "name": "listStart",
+                    "schema": {
+                      "kind": "i32"
+                    }
+                  },
+                  {
+                    "name": "ordered",
+                    "schema": {
+                      "kind": "bool"
+                    }
+                  },
+                  {
+                    "name": "span",
+                    "schema": {
+                      "kind": "record",
+                      "fields": [
+                        {
+                          "name": "end",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        },
+                        {
+                          "name": "endColumn",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        },
+                        {
+                          "name": "endLine",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        },
+                        {
+                          "name": "start",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        },
+                        {
+                          "name": "startColumn",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        },
+                        {
+                          "name": "startLine",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "name": "task",
+                    "schema": {
+                      "kind": "bool"
+                    }
+                  },
+                  {
+                    "name": "text",
+                    "schema": {
+                      "kind": "string"
+                    }
+                  },
+                  {
+                    "name": "title",
+                    "schema": {
+                      "kind": "string"
+                    }
+                  },
+                  {
+                    "name": "url",
+                    "schema": {
+                      "kind": "string"
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": "root",
+            "schema": {
+              "kind": "i32"
+            }
+          },
+          {
+            "name": "schemaVersion",
+            "schema": {
+              "kind": "string"
+            }
+          },
+          {
+            "name": "success",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "vocabularyVersion",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

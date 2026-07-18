@@ -1,0 +1,64 @@
+{
+  "name": "@tessyl/tfm",
+  "version": "0.1.0",
+  "description": "Validated Tessyl Flavored Markdown parser for TypeScript and Voyd",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "development": "./src/index.ts",
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    },
+    "./adapter": {
+      "types": "./dist/host/adapter.d.ts",
+      "development": "./host/adapter.ts",
+      "import": "./dist/host/adapter.js",
+      "default": "./dist/host/adapter.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "generated",
+    "src/*.voyd",
+    "README.md"
+  ],
+  "voyd": {
+    "source": "./src/pkg.voyd",
+    "adapter": {
+      "abi": 1,
+      "interfaces": [
+        "tessyl:tfm/parser@1"
+      ],
+      "browser": "./adapter",
+      "node": "./adapter",
+      "default": "./adapter"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "generate": "voyd generate adapter ./src --out ./generated",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test src/**/*.test.ts host/**/*.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@voyd-lang/package-adapter": "file:../../.voyd-source/packages/package-adapter",
+    "@voyd-lang/std": "file:../../.voyd-source/packages/std",
+    "remark-directive": "^4.0.0",
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.1",
+    "@voyd-lang/cli": "file:../../.voyd-source/apps/cli",
+    "@voyd-lang/sdk": "file:../../.voyd-source/packages/sdk",
+    "tsx": "^4.20.4",
+    "typescript": "^5.8.3"
+  }
+}
