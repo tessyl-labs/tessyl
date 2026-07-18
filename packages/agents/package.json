@@ -33,7 +33,7 @@
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit -p tsconfig.json",
     "prepack": "npm run clean && npm run build",
-    "test": "voyd test ./voyd/agents/src --fail-empty-tests && tsx --test src/**/*.test.ts",
+    "test": "node ../../.voyd-source/apps/cli/bin/voyd.js test ./voyd/agents/src --fail-empty-tests && tsx --test src/**/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json && node --input-type=module -e 'import { createSdk } from \"@voyd-lang/sdk\"; const result = await createSdk().compile({ entryPath: \"./voyd/agents/src/pkg.voyd\", boundaryExports: false }); if (!result.success) { console.error(result.diagnostics); process.exit(1); }'"
   },
   "dependencies": {

@@ -18,6 +18,7 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "test:affected": "turbo run test --affected",
     "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
