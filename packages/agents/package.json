@@ -18,6 +18,10 @@
       "types": "./dist/openai-responses.d.ts",
       "import": "./dist/openai-responses.js"
     },
+    "./ollama": {
+      "types": "./dist/ollama.d.ts",
+      "import": "./dist/ollama.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
