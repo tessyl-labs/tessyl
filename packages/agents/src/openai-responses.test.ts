@@ -5,6 +5,28 @@ import {
 } from "./openai-responses.js";
 import type { LlmModelRequest } from "./adapter.js";
 
+const addParameters = {
+  root: {
+    tag: "RecordShape" as const,
+    name: "add",
+    fields: [
+      {
+        name: "a",
+        shape: { tag: "F64Shape" as const },
+        optional: false,
+        documentation: "First number.",
+      },
+      {
+        name: "b",
+        shape: { tag: "F64Shape" as const },
+        optional: false,
+        documentation: "Second number.",
+      },
+    ],
+  },
+  definitions: [],
+};
+
 const request: LlmModelRequest = {
   model: "gpt-test",
   instructions: "Be concise",
@@ -18,12 +40,7 @@ const request: LlmModelRequest = {
     {
       name: "add",
       description: "Add numbers",
-      parameters_json: JSON.stringify({
-        type: "object",
-        properties: { a: { type: "number" }, b: { type: "number" } },
-        required: ["a", "b"],
-        additionalProperties: false,
-      }),
+      parameters: addParameters,
       strict: true,
     },
   ],
@@ -74,7 +91,15 @@ describe("OpenAI Responses handlers", () => {
         type: "function",
         name: "add",
         description: "Add numbers",
-        parameters: JSON.parse(request.tools[0]!.parameters_json),
+        parameters: {
+          type: "object",
+          properties: {
+            a: { type: "number", description: "First number." },
+            b: { type: "number", description: "Second number." },
+          },
+          required: ["a", "b"],
+          additionalProperties: false,
+        },
         strict: true,
       }],
       stream: false,
@@ -95,6 +120,85 @@ describe("OpenAI Responses handlers", () => {
         ],
         usage: { input_tokens: 10, output_tokens: 4, total_tokens: 14 },
       },
+    });
+  });
+
+  it("maps optional fields to nullable required properties in strict mode", async () => {
+    let sentBody: Record<string, any> | undefined;
+    const adapter = createOpenAIResponsesAdapter({
+      apiKey: "test-key",
+      fetch: async (_input, init) => {
+        sentBody = JSON.parse(String(init?.body));
+        return Response.json({ id: "resp_optional", output: [], usage: {} });
+      },
+    });
+
+    await adapter.respond({
+      ...request,
+      tools: [{
+        name: "lookup",
+        description: "Lookup",
+        strict: true,
+        parameters: {
+          root: {
+            tag: "RecordShape",
+            name: "lookup",
+            fields: [{
+              name: "limit",
+              optional: true,
+              shape: { tag: "I32Shape" },
+            }],
+          },
+          definitions: [],
+        },
+      }],
+    }, context);
+
+    assert.deepEqual(sentBody?.tools[0].parameters, {
+      type: "object",
+      properties: {
+        limit: { anyOf: [{ type: "integer" }, { type: "null" }] },
+      },
+      required: ["limit"],
+      additionalProperties: false,
+    });
+  });
+
+  it("advertises the exact integer range accepted by i64 tool decoding", async () => {
+    let sentBody: Record<string, any> | undefined;
+    const adapter = createOpenAIResponsesAdapter({
+      apiKey: "test-key",
+      fetch: async (_input, init) => {
+        sentBody = JSON.parse(String(init?.body));
+        return Response.json({ id: "resp_i64", output: [], usage: {} });
+      },
+    });
+
+    await adapter.respond({
+      ...request,
+      tools: [{
+        name: "count",
+        description: "Count",
+        strict: true,
+        parameters: {
+          root: {
+            tag: "RecordShape",
+            name: "count",
+            fields: [{
+              name: "value",
+              optional: false,
+              shape: { tag: "I64Shape" },
+            }],
+          },
+          definitions: [],
+        },
+      }],
+    }, context);
+
+    assert.deepEqual(sentBody?.tools[0].parameters.properties.value, {
+      type: "integer",
+      minimum: -Number.MAX_SAFE_INTEGER,
+      maximum: Number.MAX_SAFE_INTEGER,
     });
   });
 
@@ -415,7 +519,7 @@ describe("OpenAI Responses handlers", () => {
     }
   });
 
-  it("rejects invalid tool schemas before sending a request", async () => {
+  it("rejects non-record tool shapes before sending a request", async () => {
     let called = false;
     const adapter = createOpenAIResponsesAdapter({
       apiKey: "test-key",
@@ -427,7 +531,10 @@ describe("OpenAI Responses handlers", () => {
 
     const value = await adapter.respond({
       ...request,
-      tools: [{ ...request.tools[0], parameters_json: "not json" }],
+      tools: [{
+        ...request.tools[0],
+        parameters: { root: { tag: "StringShape" }, definitions: [] },
+      }],
     }, context);
 
     assert.equal(called, false);

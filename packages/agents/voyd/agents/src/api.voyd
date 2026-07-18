@@ -9,6 +9,7 @@ use std::msgpack::MsgPack
 use std::msgpack::self as msgpack
 use std::optional::types::all
 use std::string::type::String
+use super::tool::{ Tool, ToolDefinition, ToolFactory, ToolMarker, invoke_tool }
 
 pub obj User {}
 pub obj Assistant {}
@@ -23,27 +24,6 @@ pub obj ToolCall {
 }
 pub obj ToolOutput { api call_id: String, api output: String }
 pub type InputItem = Message | ToolCall | ToolOutput
-
-/// A boundary-safe tool declaration sent to an LLM adapter.
-pub obj ToolDefinition {
-  api name: String,
-  api description: String,
-  api parameters_json: String,
-  api strict: bool
-}
-
-/// A tool backed by an ordinary Voyd function.
-pub obj Tool {
-  name: String,
-  description: String,
-  parameters_json: String,
-  strict: bool,
-  handler: fn(String) -> ToolResult
-}
-
-pub obj ToolSucceeded { api output: String }
-pub obj ToolFailed { api message: String }
-pub type ToolResult = ToolSucceeded | ToolFailed
 
 pub obj Text { api text: String }
 pub type ModelOutput = Text | ToolCall
@@ -93,7 +73,7 @@ pub obj StreamFailed { api error: LlmError }
 pub type StreamResult = StreamSucceeded | StreamFailed
 
 /// Provider adapter surface used by the agent harness.
-@effect(id: "tessyl.agents.llm.v1")
+@effect(id: "tessyl.agents.llm.v2")
 pub eff Llm
   respond(tail, payload: MsgPack) -> MsgPack
   open_stream(tail, payload: MsgPack) -> MsgPack
@@ -132,22 +112,6 @@ enum RunMode
   Regular
   Streaming { on_event: fn(StreamEvent) -> void }
 
-/// Creates a tool from a JSON Schema and an ordinary Voyd function.
-pub fn tool({
-  name: String,
-  description: String,
-  parameters_json: String,
-  strict?: bool,
-  handler: fn(String) -> ToolResult
-}) -> Tool
-  Tool {
-    name: name,
-    description: description,
-    parameters_json: parameters_json,
-    strict: strict ?? false,
-    handler: handler
-  }
-
 pub fn user_message(content: String) -> InputItem
   Message { role: User {}, content: content }
 
@@ -157,25 +121,19 @@ pub fn assistant_message(content: String) -> InputItem
 pub fn system_message(content: String) -> InputItem
   Message { role: System {}, content: content }
 
-pub fn tool_succeeded(output: String) -> ToolResult
-  ToolSucceeded { output: output }
-
-pub fn tool_failed(message: String) -> ToolResult
-  ToolFailed { message: message }
-
 /// Creates an agent. `max_turns` bounds model calls, including tool turns.
 pub fn agent({
   name: String,
   instructions: String,
   model: String,
-  tools?: Array<Tool>,
+  tools?: Array<ToolFactory>,
   max_turns?: i32
 }) -> Agent
   Agent {
     name: name,
     instructions: instructions,
     model: model,
-    tools: tools ?? Array<Tool>::init(),
+    tools: materialize_tools(tools ?? Array<ToolFactory>::init()),
     max_turns: max_turns ?? 8
   }
 
@@ -256,19 +214,18 @@ fn run_loop(agent: Agent, initial_input: Array<InputItem>, mode: RunMode): (Llm,
           let call = tool_calls.at(call_index)
           match(find_tool(agent.tools, call.name))
             Some<Tool> { value: selected }:
-              let handler = selected.handler
-              match(handler(call.arguments))
-                ToolResult::ToolSucceeded { output }:
-                  let item = ToolOutput { call_id: call.call_id, output: output }
-                  tool_outputs.push(item)
-                  history.push(item)
-                ToolResult::ToolFailed { message }:
-                  return failed(
-                    AgentError::ToolFailure { name: call.name, message: message },
-                    history,
-                    turns,
-                    usage
-                  )
+              let result = invoke_tool(selected, call.arguments)
+              if result.succeeded:
+                let item = ToolOutput { call_id: call.call_id, output: result.value }
+                tool_outputs.push(item)
+                history.push(item)
+              else:
+                return failed(
+                  AgentError::ToolFailure { name: call.name, message: result.value },
+                  history,
+                  turns,
+                  usage
+                )
             None:
               return failed(
                 AgentError::UnknownTool { name: call.name },
@@ -325,11 +282,20 @@ fn tool_definitions(tools: Array<Tool>) -> Array<ToolDefinition>
     definitions.push(ToolDefinition {
       name: current.name,
       description: current.description,
-      parameters_json: current.parameters_json,
+      parameters_shape: current.parameters_shape,
       strict: current.strict
     })
     index = index + 1
   definitions
+
+fn materialize_tools(factories: Array<ToolFactory>) -> Array<Tool>
+  let ~tools = Array<Tool>::with_capacity(factories.len())
+  var index = 0
+  while index < factories.len():
+    let factory = factories.at(index)
+    tools.push(factory(ToolMarker {}))
+    index = index + 1
+  tools
 
 fn find_tool(tools: Array<Tool>, name: String) -> Option<Tool>
   var index = 0

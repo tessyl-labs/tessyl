@@ -23,8 +23,8 @@ it("rejects adapters built for a different ABI version", () => {
   });
 
   assert.throws(
-    () => defineLlmHandlers({ ...adapter, abiVersion: 2 as 1 }),
-    /Unsupported LLM adapter ABI 2; expected 1/,
+    () => defineLlmHandlers({ ...adapter, abiVersion: 3 as 2 }),
+    /Unsupported LLM adapter ABI 3; expected 2/,
   );
 });
 
@@ -75,7 +75,8 @@ it("executes pure and async-effect Voyd functions as model tools", async () => {
               type: "function_call",
               call_id: "call_pure",
               name: "pure_tool",
-              arguments: "{\"value\":\"pure\"}",
+              arguments:
+                "{\"value\":\"pure\",\"payload\":{\"a\":20,\"b\":22},\"bonus\":1}",
             },
             {
               type: "function_call",
@@ -127,6 +128,37 @@ it("executes pure and async-effect Voyd functions as model tools", async () => {
     ),
     ["pure_tool", "async_tool"],
   );
+  assert.deepEqual(sentBodies[0]?.tools[0], {
+    type: "function",
+    name: "pure_tool",
+    description: "Call an ordinary Voyd function",
+    parameters: {
+      type: "object",
+      properties: {
+        value: {
+          type: "string",
+          description: "The mode the tool should execute.",
+        },
+        payload: {
+          type: "object",
+          properties: {
+            a: { type: "integer" },
+            b: { type: "integer" },
+          },
+          required: ["a", "b"],
+          additionalProperties: false,
+          description: "Integer inputs used by the nested record calculation.",
+        },
+        bonus: {
+          type: "integer",
+          description: "Increment added to the nested record calculation.",
+        },
+      },
+      required: ["bonus", "payload", "value"],
+      additionalProperties: false,
+    },
+    strict: true,
+  });
   assert.deepEqual(sentBodies[1]?.input, [
     {
       type: "function_call_output",

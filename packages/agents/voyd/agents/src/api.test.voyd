@@ -1,8 +1,15 @@
 use std::array::Array
+use std::data::{ DecodeError, DecodeOptions, RejectUnknownFields }
 use std::optional::types::all
+use std::result::types::all
 use std::msgpack::MsgPack
 use std::msgpack::self as msgpack
+use std::meta::shape_of
 use std::test::assertions::all
+use super::tool::all
+
+obj I64Arguments { value: i64 }
+obj F32Arguments { value: f32 }
 
 fn usage(input: i32, output: i32) -> Usage
   Usage {
@@ -35,7 +42,7 @@ fn tool_response(id: String, name: String, arguments: String) -> LlmResult
     }
   }
 
-fn test_agent(tools: Array<Tool>, max_turns: i32) -> Agent
+fn test_agent(tools: Array<ToolFactory>, max_turns: i32) -> Agent
   agent(
     name: "test",
     instructions: "Be useful",
@@ -44,9 +51,23 @@ fn test_agent(tools: Array<Tool>, max_turns: i32) -> Agent
     max_turns: max_turns
   )
 
-fn add_tool(arguments: String) -> ToolResult
-  assert(arguments.equals("{\"a\":1,\"b\":2}"), eq: true)
-  ToolResult::ToolSucceeded { output: "3" }
+fn add_tool(_marker: ToolMarker) -> Tool
+  Tool {
+    name: "add",
+    description: "Add two values",
+    parameters_shape: "{}",
+    strict: true,
+    handler: (_arguments: String) => ToolInvocationResult { succeeded: true, value: "3" }
+  }
+
+fn looping_tool(_marker: ToolMarker) -> Tool
+  Tool {
+    name: "loop",
+    description: "Keep going",
+    parameters_shape: "{}",
+    strict: true,
+    handler: (_arguments: String) => ToolInvocationResult { succeeded: true, value: "again" }
+  }
 
 fn capture_delta(~deltas: Array<String>, event: StreamEvent) -> void
   match(event)
@@ -57,7 +78,7 @@ fn capture_delta(~deltas: Array<String>, event: StreamEvent) -> void
 
 fn run_text_case() -> RunResult
   try open
-    run(test_agent(Array<Tool>::init(), 2), input: [
+    run(test_agent(Array<ToolFactory>::init(), 2), input: [
       InputItem::Message { role: Role::User {}, content: "hello" }
     ])
   Llm::respond(tail, payload):
@@ -68,7 +89,7 @@ fn run_text_case() -> RunResult
     assert(request.input_delta.len(), eq: 1)
     tail(msgpack::pack_boundary_value<LlmResult>(text_response("response-1", "Hello!", 5, 2)))
 
-fn run_tool_case(calculator: Tool) -> RunResult
+fn run_tool_case(calculator: ToolFactory) -> RunResult
   try open
     run(test_agent([calculator], 3), input: [
       InputItem::Message { role: Role::User {}, content: "add" }
@@ -106,13 +127,13 @@ fn run_tool_case(calculator: Tool) -> RunResult
 
 fn run_unknown_case() -> RunResult
   try open
-    run(test_agent(Array<Tool>::init(), 2), input: [
+    run(test_agent(Array<ToolFactory>::init(), 2), input: [
       InputItem::Message { role: Role::User {}, content: "call it" }
     ])
   Llm::respond(tail, _payload):
     tail(msgpack::pack_boundary_value<LlmResult>(tool_response("response-1", "missing", "{}")))
 
-fn run_limit_case(looping: Tool) -> RunResult
+fn run_limit_case(looping: ToolFactory) -> RunResult
   try open
     run(test_agent([looping], 1), input: [
       InputItem::Message { role: Role::User {}, content: "loop" }
@@ -123,7 +144,7 @@ fn run_limit_case(looping: Tool) -> RunResult
 fn run_stream_case(~deltas: Array<String>) -> RunResult
   try open
     run_streamed(
-      test_agent(Array<Tool>::init(), 2),
+      test_agent(Array<ToolFactory>::init(), 2),
       input: [InputItem::Message { role: Role::User {}, content: "hello" }],
       on_event: (event: StreamEvent) -> void => capture_delta(deltas, event)
     )
@@ -168,14 +189,7 @@ test "run returns a final response and usage":
       assert(false)
 
 test "run executes Voyd tools and preserves the provider-neutral transcript":
-  let calculator = tool(
-    name: "add",
-    description: "Add two values",
-    parameters_json: "{\"type\":\"object\"}",
-    handler: add_tool
-  )
-
-  let result = run_tool_case(calculator)
+  let result = run_tool_case(add_tool)
 
   match(result)
     RunResult::Completed { output, turns, usage, history }:
@@ -201,14 +215,7 @@ test "run reports unknown tools without another model turn":
       assert(false)
 
 test "run enforces the turn limit":
-  let looping = tool(
-    name: "loop",
-    description: "Keep going",
-    parameters_json: "{\"type\":\"object\"}",
-    handler: (_arguments: String) -> ToolResult =>
-      ToolResult::ToolSucceeded { output: "again" }
-  )
-  let result = run_limit_case(looping)
+  let result = run_limit_case(looping_tool)
 
   match(result)
     RunResult::Failed { error, turns }:
@@ -232,3 +239,19 @@ test "run_streamed forwards deltas and returns the completed response":
       assert(output.equals("Hello"), eq: true)
     RunResult::Failed:
       assert(false)
+
+test "tool arguments reject integers that JSON cannot represent exactly":
+  let shape = shape_of<I64Arguments>()
+  let unsafe = __prepare_tool_arguments("{\"value\":9007199254740993}", shape)
+  assert(unsafe.error.byte_len() > 0, eq: true)
+
+  let safe = __prepare_tool_arguments("{\"value\":9007199254740991}", shape)
+  assert(safe.error.byte_len(), eq: 0)
+
+test "tool arguments reject numbers outside the finite f32 range":
+  let shape = shape_of<F32Arguments>()
+  let overflow = __prepare_tool_arguments("{\"value\":1e100}", shape)
+  assert(overflow.error.byte_len() > 0, eq: true)
+
+  let finite = __prepare_tool_arguments("{\"value\":3.4028234e38}", shape)
+  assert(finite.error.byte_len(), eq: 0)

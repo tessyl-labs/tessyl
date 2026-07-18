@@ -1,0 +1,523 @@
+//! Typed agent tools and the `@tool` declaration attribute.
+
+use std::array::Array
+use std::data::{
+  DataArray,
+  DataBool,
+  DataF32,
+  DataF64,
+  DataField,
+  DataI32,
+  DataI64,
+  DataNull,
+  DataObject,
+  DataString,
+  DataValue,
+  DataVariant,
+  DecodeError,
+  DecodeOptions,
+  RejectUnknownFields,
+  decode
+}
+use std::dict::Dict
+use std::json::{ JsonArray, JsonBool, JsonError, JsonNull, JsonNumber, JsonObject, JsonString, JsonValue }
+use std::json::self as json
+use std::meta::{
+  ArrayShape,
+  BoolShape,
+  F32Shape,
+  F64Shape,
+  I32Shape,
+  I64Shape,
+  RecordShape,
+  RefShape,
+  Shape,
+  ShapeDefinition,
+  ShapeField,
+  ShapeNode,
+  ShapeVariant,
+  StringShape,
+  UnionShape,
+  UnitShape,
+  shape_of
+}
+use std::number::cast::self as cast
+use std::math::float::is_finite
+use std::optional::types::all
+use std::result::types::all
+use std::string::type::String
+use super::shape_wire::encode_shape
+
+/// A boundary-safe tool declaration sent to an LLM adapter.
+pub obj ToolDefinition {
+  api name: String,
+  api description: String,
+  api parameters_shape: String,
+  api strict: bool
+}
+
+pub obj ToolSucceeded { api output: String }
+pub obj ToolFailed { api message: String }
+pub type ToolOutcome = ToolSucceeded | ToolFailed
+pub obj ToolResult { api outcome: ToolOutcome }
+pub obj ToolInvocationResult {
+  api succeeded: bool,
+  api value: String
+}
+pub type ToolHandler = fn(String) : (open) -> ToolInvocationResult
+
+pub obj PreparedToolArguments {
+  api data: DataValue,
+  api error: String
+}
+
+/// A tool backed by an ordinary typed Voyd function.
+pub obj Tool {
+  name: String,
+  description: String,
+  parameters_shape: String,
+  strict: bool,
+  handler: ToolHandler
+}
+
+/// Marker used to give every generated tool factory the same function type.
+pub obj ToolMarker {}
+
+/// Function shape accepted by `agent(..., tools: [...])`.
+pub type ToolFactory = fn(ToolMarker) -> Tool
+
+/// Marks a typed function as an agent tool.
+///
+/// The declaration becomes a `ToolFactory`; its typed body is evaluated after
+/// the generated argument decoder succeeds.
+/// Supported options are `name`, `description`, and `strict`.
+pub attribute macro tool(arguments, declaration)
+  let is_public = declaration.calls(pub)
+  let fn_offset = if is_public then: 1 else: 0
+  if not declaration.get(fn_offset) == fn:
+    panic("@tool must precede a function declaration")
+
+  let signature = declaration.get(fn_offset + 1)
+  if not is_list(signature):
+    panic("@tool could not read the function signature")
+  let function_head = signature.get(1)
+  if not is_list(function_head):
+    panic("@tool could not read the function parameters")
+  let function_name = function_head.get(0)
+  let parameters = function_head.slice(1)
+
+  arguments.map((argument) =>
+    if not argument.calls(':'):
+      panic("@tool arguments must be labeled")
+    let label = argument.get(1)
+    if not label == name and not label == description and not label == strict:
+      panic("@tool supports only name, description, and strict")
+    argument
+  )
+
+  let argument_value = (label, fallback) =>
+    arguments.reduce(fallback, (found, argument) =>
+      if argument.calls(':') and argument.get(1) == label then:
+        argument.get(2)
+      else:
+        found
+    )
+
+  let duplicate_count = (label) =>
+    arguments.reduce(0, (count, argument) =>
+      if argument.calls(':') and argument.get(1) == label then:
+        count + 1
+      else:
+        count
+    )
+
+  if duplicate_count(name) > 1 or duplicate_count(description) > 1 or duplicate_count(strict) > 1:
+    panic("@tool arguments may only be specified once")
+
+  let exposed_name = argument_value(name, false)
+  if not exposed_name:
+    panic("@tool requires name: \"...\"")
+  let exposed_description = argument_value(description, "")
+  let strict_value = argument_value(strict, true)
+
+  let parameter_field = (parameter) =>
+    if not is_list(parameter):
+      panic("@tool parameter syntax must be a form")
+    let is_direct = parameter.calls(':') or parameter.calls('?:') or parameter.calls('=')
+    let declaration = if is_direct then: parameter else: parameter.get(1)
+    if not is_list(declaration):
+      panic("@tool labeled parameter declaration must be a form")
+    if declaration.calls('='):
+      panic("@tool does not support default parameters; use an optional parameter")
+    if not declaration.calls(':') and not declaration.calls('?:'):
+      panic("@tool parameters must have explicit types")
+
+    if is_direct then:
+      parameter
+    else:
+      let external_name = parameter.get(0)
+      let parameter_type = declaration.get(2)
+      let generated_field = if declaration.calls(':') then: `(: $external_name $parameter_type) else: `(?: $external_name $parameter_type)
+      with_location(generated_field, declaration.get(1))
+
+  let fields = parameters.reduce(empty_list(), (all, parameter) =>
+    if parameter.calls(object_literal) then:
+      let labeled = parameter.slice(1).map((entry) => parameter_field(entry))
+      all.spread(labeled)
+    else:
+      all.push(parameter_field(parameter))
+  )
+  let parameter_call = (parameter, labeled) =>
+    if not is_list(parameter):
+      panic("@tool call parameter syntax must be a form")
+    let is_direct = parameter.calls(':') or parameter.calls('?:')
+    let parameter_name = if is_direct then: parameter.get(1) else: parameter.get(0)
+    let access = `(. decoded $parameter_name)
+    if labeled then: `(: $parameter_name $access) else: access
+  let call_arguments = parameters.reduce(empty_list(), (all, parameter) =>
+    if parameter.calls(object_literal) then:
+      all.spread(parameter.slice(1).map((entry) => parameter_call(entry, true)))
+    else:
+      all.push(parameter_call(parameter, false))
+  )
+
+  let implementation = identifier(__agents_tool_implementation)
+  let argument_type = identifier(AgentsToolArguments)
+  let tool_shape = identifier(agents_tool_shape)
+
+  let body = declaration.get(fn_offset + 2)
+  let callable_signature = if signature.calls('->') then: signature else: signature.get(2)
+  let return_type = callable_signature.get(2)
+  let implementation_declaration = `(fn $implementation($$parameters): (open) -> $return_type
+    let $function_name = $implementation
+    $body)
+  let argument_declaration = `(obj $argument_type { $$fields })
+  let invocation_body = `(block
+    let prepared = __prepare_tool_arguments(arguments, $tool_shape)
+    if prepared.error.byte_len() > 0 then:
+      ToolInvocationResult { succeeded: false, value: prepared.error }
+    else:
+      let options = DecodeOptions { unknown_fields: RejectUnknownFields {} }
+      match(decode<$argument_type>(prepared.data, options: options))
+        Err<DecodeError> { error }:
+          ToolInvocationResult {
+            succeeded: false,
+            value: __format_tool_decode_error(error)
+          }
+        Ok<$argument_type> { value: decoded }:
+          let result = $implementation($$call_arguments)
+          match(result.outcome)
+            ToolSucceeded { output }:
+              ToolInvocationResult { succeeded: true, value: output }
+            ToolFailed { message }:
+              ToolInvocationResult { succeeded: false, value: message }
+  )
+  let factory = `(fn $function_name(_marker: ToolMarker) -> Tool
+    let $tool_shape = shape_of<$argument_type>()
+    let handler: ToolHandler = (arguments: String) => $invocation_body
+    __make_tool(
+      name: $exposed_name,
+      description: $exposed_description,
+      strict: $strict_value,
+      shape: $tool_shape,
+      handler: handler
+    ))
+  let visible_factory = if is_public then: `(pub $$factory) else: factory
+
+  emit_many(
+    implementation_declaration,
+    `(use pkg::agents::{ PreparedToolArguments, Tool, ToolFailed, ToolHandler, ToolInvocationResult, ToolMarker, ToolSucceeded, __format_tool_decode_error, __make_tool, __prepare_tool_arguments }),
+    `(use std::data::{ DataValue, DecodeError, DecodeOptions, RejectUnknownFields, decode }),
+    `(use std::meta::shape_of),
+    `(use std::result::types::{ Err, Ok }),
+    argument_declaration,
+    visible_factory
+  )
+
+/// Materializes a generated tool factory.
+pub fn tool_from(factory: ToolFactory) -> Tool
+  factory(ToolMarker {})
+
+pub fn invoke_tool(tool: Tool, arguments: String): (open) -> ToolInvocationResult
+  let handler = tool.handler
+  handler(arguments)
+
+pub fn tool_succeeded(output: String) -> ToolResult
+  ToolResult { outcome: ToolSucceeded { output } }
+
+pub fn tool_failed(message: String) -> ToolResult
+  ToolResult { outcome: ToolFailed { message } }
+
+/// Runtime support used by `@tool` expansions.
+pub fn __make_tool({
+  name: String,
+  description: String,
+  strict: bool,
+  shape: Shape,
+  handler: ToolHandler
+}) -> Tool
+  Tool {
+    name,
+    description,
+    parameters_shape: encode_shape(shape),
+    strict,
+    handler
+  }
+
+/// Runtime support used by `@tool` expansions.
+pub fn __prepare_tool_arguments(arguments: String, shape: Shape) -> PreparedToolArguments
+  match(json::parse(arguments))
+    Err<JsonError> { error }:
+      PreparedToolArguments {
+        data: DataNull {},
+        error: "invalid tool arguments: ".concat(error.message)
+      }
+    Ok<JsonValue> { value }:
+      match(json_to_data(value, shape.root, shape, "$".to_string()))
+        Err<ToolArgumentError> { error }:
+          PreparedToolArguments { data: DataNull {}, error: error.message }
+        Ok<DataValue> { value: data }:
+          PreparedToolArguments { data, error: "".to_string() }
+
+pub fn __format_tool_decode_error(error: DecodeError) -> String
+  format_decode_error(error)
+
+obj ToolArgumentError { message: String }
+
+fn json_to_data(
+  value: JsonValue,
+  shape: ShapeNode,
+  graph: Shape,
+  path: String
+): () -> Result<DataValue, ToolArgumentError>
+  shape.match(active)
+    BoolShape:
+      value.match(decoded)
+        JsonBool: Ok<DataValue> { value: DataBool { value: decoded.value } }
+        else: argument_type_error(path, "bool")
+    I32Shape:
+      value.match(decoded)
+        JsonNumber:
+          match(cast::to_i32_checked(decoded.value))
+            Ok<i32> { value: integer }:
+              if cast::to_f64(integer) == decoded.value then:
+                Ok<DataValue> { value: DataI32 { value: integer } }
+              else:
+                argument_type_error(path, "i32")
+            Err:
+              argument_type_error(path, "i32")
+        else: argument_type_error(path, "i32")
+    I64Shape:
+      value.match(decoded)
+        JsonNumber:
+          if decoded.value > 9007199254740991.0 or decoded.value < -9007199254740991.0 then:
+            argument_type_error(path, "i64")
+          else:
+            match(cast::to_i64_checked(decoded.value))
+              Ok<i64> { value: integer }:
+                if cast::to_f64(integer) == decoded.value then:
+                  Ok<DataValue> { value: DataI64 { value: integer } }
+                else:
+                  argument_type_error(path, "i64")
+              Err:
+                argument_type_error(path, "i64")
+        else: argument_type_error(path, "i64")
+    F32Shape:
+      value.match(decoded)
+        JsonNumber:
+          let demoted = cast::to_f32(decoded.value)
+          if is_finite(demoted) then:
+            Ok<DataValue> { value: DataF32 { value: demoted } }
+          else:
+            argument_type_error(path, "f32")
+        else: argument_type_error(path, "f32")
+    F64Shape:
+      value.match(decoded)
+        JsonNumber: Ok<DataValue> { value: DataF64 { value: decoded.value } }
+        else: argument_type_error(path, "f64")
+    StringShape:
+      value.match(decoded)
+        JsonString: Ok<DataValue> { value: DataString { value: decoded.value } }
+        else: argument_type_error(path, "string")
+    UnitShape:
+      value.match(decoded)
+        JsonNull: Ok<DataValue> { value: DataNull {} }
+        else: argument_type_error(path, "null")
+    ArrayShape:
+      value.match(decoded)
+        JsonArray: json_array_to_data(decoded.value, active.element, graph, path)
+        else: argument_type_error(path, "array")
+    RecordShape:
+      value.match(decoded)
+        JsonObject: json_object_to_data(decoded.value, active.fields, graph, path)
+        else: argument_type_error(path, active.name)
+    UnionShape:
+      value.match(decoded)
+        JsonObject: json_union_to_data(decoded.value, active, graph, path)
+        else: argument_type_error(path, active.name)
+    RefShape:
+      match(find_definition(graph.definitions, active.key))
+        Some<ShapeNode> { value: target }:
+          json_to_data(value, target, graph, path)
+        None:
+          argument_error(path.concat(" references an unknown shape"))
+
+fn json_array_to_data(
+  values: Array<JsonValue>,
+  element: ShapeNode,
+  graph: Shape,
+  path: String
+): () -> Result<DataValue, ToolArgumentError>
+  let ~data = Array<DataValue>::with_capacity(values.len())
+  var index = 0
+  while index < values.len():
+    let nested_path = path.concat("[").concat(cast::to_string(index)).concat("]")
+    match(json_to_data(values.at(index), element, graph, nested_path))
+      Err<ToolArgumentError> { error }:
+        return Err<ToolArgumentError> { error }
+      Ok<DataValue> { value }:
+        data.push(value)
+    index = index + 1
+  Ok<DataValue> { value: DataArray { values: data } }
+
+fn json_object_to_data(
+  values: Dict<String, JsonValue>,
+  fields: Array<ShapeField>,
+  graph: Shape,
+  path: String
+): () -> Result<DataValue, ToolArgumentError>
+  let entries = values.entries()
+  let ~data = Array<DataField>::with_capacity(entries.len())
+  var index = 0
+  while index < entries.len():
+    let entry = entries.at(index)
+    let name = entry.0
+    let nested_path = field_path(path, name)
+    match(find_shape_field(fields, name))
+      None:
+        return argument_error("invalid tool arguments at ".concat(nested_path).concat(": unknown field"))
+      Some<ShapeField> { value: field }:
+        if field.optional and is_json_null(entry.1):
+          void
+        else:
+          match(json_to_data(entry.1, field.shape, graph, nested_path))
+            Err<ToolArgumentError> { error }:
+              return Err<ToolArgumentError> { error }
+            Ok<DataValue> { value }:
+              data.push(DataField { name, value })
+    index = index + 1
+  Ok<DataValue> { value: DataObject { fields: data } }
+
+fn json_union_to_data(
+  values: Dict<String, JsonValue>,
+  shape: UnionShape,
+  graph: Shape,
+  path: String
+): () -> Result<DataValue, ToolArgumentError>
+  match(values.get("tag".to_string()))
+    None:
+      argument_error("invalid tool arguments at ".concat(field_path(path, "tag".to_string())).concat(": missing union tag"))
+    Some<JsonValue> { value }:
+      value.match(decoded)
+        JsonString:
+          match(find_shape_variant(shape.variants, decoded.value))
+            None:
+              argument_error("invalid tool arguments at ".concat(field_path(path, "tag".to_string())).concat(": unknown variant ").concat(decoded.value))
+            Some<ShapeVariant> { value: variant }:
+              json_variant_fields(values, variant, graph, path)
+        else:
+          argument_type_error(field_path(path, "tag".to_string()), "string")
+
+fn json_variant_fields(
+  values: Dict<String, JsonValue>,
+  variant: ShapeVariant,
+  graph: Shape,
+  path: String
+): () -> Result<DataValue, ToolArgumentError>
+  let entries = values.entries()
+  let ~data = Array<DataField>::with_capacity(entries.len())
+  var index = 0
+  while index < entries.len():
+    let entry = entries.at(index)
+    let name = entry.0
+    if name == "tag":
+      void
+    else:
+      let nested_path = field_path(path, name)
+      match(find_shape_field(variant.fields, name))
+        None:
+          return argument_error("invalid tool arguments at ".concat(nested_path).concat(": unknown field"))
+        Some<ShapeField> { value: field }:
+          if field.optional and is_json_null(entry.1):
+            void
+          else:
+            match(json_to_data(entry.1, field.shape, graph, nested_path))
+              Err<ToolArgumentError> { error }:
+                return Err<ToolArgumentError> { error }
+              Ok<DataValue> { value }:
+                data.push(DataField { name, value })
+    index = index + 1
+  Ok<DataValue> { value: DataVariant { name: variant.name, fields: data } }
+
+fn find_shape_field(fields: Array<ShapeField>, name: String) -> Option<ShapeField>
+  var index = 0
+  while index < fields.len():
+    let field = fields.at(index)
+    if field.name == name:
+      return Some<ShapeField> { value: field }
+    index = index + 1
+  None {}
+
+fn find_shape_variant(variants: Array<ShapeVariant>, name: String) -> Option<ShapeVariant>
+  var index = 0
+  while index < variants.len():
+    let variant = variants.at(index)
+    if variant.name == name:
+      return Some<ShapeVariant> { value: variant }
+    index = index + 1
+  None {}
+
+fn find_definition(definitions: Array<ShapeDefinition>, key: String) -> Option<ShapeNode>
+  var index = 0
+  while index < definitions.len():
+    let definition = definitions.at(index)
+    if definition.key == key:
+      return Some<ShapeNode> { value: definition.shape }
+    index = index + 1
+  None {}
+
+fn is_json_null(value: JsonValue) -> bool
+  value.match(decoded)
+    JsonNull: true
+    else: false
+
+fn shape_name(shape: Shape) -> String
+  shape.root.match(root)
+    RecordShape: root.name
+    else: "tool".to_string()
+
+fn shape_documentation(shape: Shape) -> String
+  shape.root.match(root)
+    RecordShape:
+      match(root.documentation)
+        Some<String> { value }: value
+        None: "".to_string()
+    else:
+      "".to_string()
+
+fn field_path(path: String, name: String) -> String
+  path.concat(".").concat(name)
+
+fn argument_type_error<T>(path: String, expected: String): () -> Result<T, ToolArgumentError>
+  argument_error("invalid tool arguments at ".concat(path).concat(": expected ").concat(expected))
+
+fn argument_error<T>(message: String): () -> Result<T, ToolArgumentError>
+  Err<ToolArgumentError> { error: ToolArgumentError { message } }
+
+fn format_decode_error(error: DecodeError) -> String
+  "invalid tool arguments at "
+    .concat(error.path)
+    .concat(": expected ")
+    .concat(error.expected)
+    .concat(", received ")
+    .concat(error.actual)

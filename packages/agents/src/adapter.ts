@@ -3,8 +3,8 @@ import type {
   EffectHandler,
 } from "@voyd-lang/js-host";
 
-export const LLM_ADAPTER_ABI_VERSION = 1 as const;
-export const LLM_EFFECT_ID = "tessyl.agents.llm.v1" as const;
+export const LLM_ADAPTER_ABI_VERSION = 2 as const;
+export const LLM_EFFECT_ID = "tessyl.agents.llm.v2" as const;
 export const LLM_HANDLER_KEYS = {
   respond: `${LLM_EFFECT_ID}::respond`,
   openStream: `${LLM_EFFECT_ID}::open_stream`,
@@ -21,9 +21,57 @@ export type LlmInputItem =
 export type LlmToolDefinition = {
   name: string;
   description: string;
-  parameters_json: string;
+  parameters: LlmShape;
   strict: boolean;
 };
+
+export type LlmShape = {
+  root: LlmShapeNode;
+  definitions: LlmShapeDefinition[];
+};
+
+export type LlmShapeDefinition = {
+  key: string;
+  name: string;
+  shape: LlmShapeNode;
+  documentation?: string;
+};
+
+export type LlmShapeField = {
+  name: string;
+  shape: LlmShapeNode;
+  optional: boolean;
+  documentation?: string;
+};
+
+export type LlmShapeVariant = {
+  name: string;
+  documentation?: string;
+  fields: LlmShapeField[];
+};
+
+export type LlmShapeNode =
+  | { tag: "BoolShape" }
+  | { tag: "I32Shape" }
+  | { tag: "I64Shape" }
+  | { tag: "F32Shape" }
+  | { tag: "F64Shape" }
+  | { tag: "StringShape" }
+  | { tag: "UnitShape" }
+  | { tag: "ArrayShape"; element: LlmShapeNode }
+  | {
+    tag: "RecordShape";
+    name: string;
+    documentation?: string;
+    fields: LlmShapeField[];
+  }
+  | {
+    tag: "UnionShape";
+    name: string;
+    documentation?: string;
+    variants: LlmShapeVariant[];
+  }
+  | { tag: "RefShape"; key: string };
 
 export type LlmModelRequest = {
   model: string;
@@ -112,12 +160,12 @@ export const defineLlmHandlers = (adapter: LlmAdapter): LlmEffectHandlers => {
   return {
     [LLM_HANDLER_KEYS.respond]: async (continuation, payload) =>
       continuation.tail(toWire(await adapter.respond(
-        fromWire(payload) as LlmModelRequest,
+        decodeModelRequest(payload),
         adapterContext(continuation),
       ))),
     [LLM_HANDLER_KEYS.openStream]: async (continuation, payload) =>
       continuation.tail(toWire(await adapter.openStream(
-        fromWire(payload) as LlmModelRequest,
+        decodeModelRequest(payload),
         adapterContext(continuation),
       ))),
     [LLM_HANDLER_KEYS.nextStream]: async (continuation, payload) =>
@@ -132,6 +180,101 @@ const adapterContext = (continuation: EffectContinuation): LlmAdapterContext => 
   registerResourceCleanup: (cleanup) =>
     continuation.registerResourceCleanup?.(cleanup),
 });
+
+const decodeModelRequest = (payload: unknown): LlmModelRequest => {
+  const request = fromWire(payload);
+  if (!isRecord(request) || !Array.isArray(request.tools)) {
+    throw new Error("Invalid LLM request payload");
+  }
+  const tools = request.tools.map((value) => {
+    if (
+      !isRecord(value) ||
+      typeof value.name !== "string" ||
+      typeof value.parameters_shape !== "string"
+    ) {
+      throw new Error("Invalid LLM tool definition payload");
+    }
+    const { parameters_shape: serializedShape, ...definition } = value;
+    return {
+      ...definition,
+      parameters: parseShape(serializedShape, value.name),
+    } as LlmToolDefinition;
+  });
+  return { ...request, tools } as LlmModelRequest;
+};
+
+const parseShape = (source: string, toolName: string): LlmShape => {
+  let value: unknown;
+  try {
+    value = JSON.parse(source);
+  } catch {
+    throw new Error(`Tool ${toolName} has an invalid serialized Shape`);
+  }
+  if (!isShape(value)) {
+    throw new Error(`Tool ${toolName} has an invalid serialized Shape`);
+  }
+  return value;
+};
+
+const isShape = (value: unknown): value is LlmShape =>
+  isRecord(value) &&
+  isShapeNode(value.root, 0) &&
+  Array.isArray(value.definitions) &&
+  value.definitions.every((definition) =>
+    isRecord(definition) &&
+    typeof definition.key === "string" &&
+    typeof definition.name === "string" &&
+    optionalString(definition.documentation) &&
+    isShapeNode(definition.shape, 0)
+  );
+
+const isShapeNode = (value: unknown, depth: number): value is LlmShapeNode => {
+  if (!isRecord(value) || typeof value.tag !== "string" || depth > 100) {
+    return false;
+  }
+  switch (value.tag) {
+    case "BoolShape":
+    case "I32Shape":
+    case "I64Shape":
+    case "F32Shape":
+    case "F64Shape":
+    case "StringShape":
+    case "UnitShape":
+      return true;
+    case "ArrayShape":
+      return isShapeNode(value.element, depth + 1);
+    case "RecordShape":
+      return typeof value.name === "string" &&
+        optionalString(value.documentation) &&
+        isShapeFields(value.fields, depth + 1);
+    case "UnionShape":
+      return typeof value.name === "string" &&
+        optionalString(value.documentation) &&
+        Array.isArray(value.variants) &&
+        value.variants.every((variant) =>
+          isRecord(variant) &&
+          typeof variant.name === "string" &&
+          optionalString(variant.documentation) &&
+          isShapeFields(variant.fields, depth + 1)
+        );
+    case "RefShape":
+      return typeof value.key === "string";
+    default:
+      return false;
+  }
+};
+
+const isShapeFields = (value: unknown, depth: number): value is LlmShapeField[] =>
+  Array.isArray(value) && value.every((field) =>
+    isRecord(field) &&
+    typeof field.name === "string" &&
+    typeof field.optional === "boolean" &&
+    optionalString(field.documentation) &&
+    isShapeNode(field.shape, depth + 1)
+  );
+
+const optionalString = (value: unknown): boolean =>
+  value === undefined || typeof value === "string";
 
 const fromWire = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(fromWire);

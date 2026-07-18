@@ -1,7 +1,7 @@
 # `@tessyl/agents`
 
 A minimal Voyd-native agent harness. The package owns the model/tool loop and
-uses the versioned `tessyl.agents.llm.v1` effect as its provider boundary. Every model
+uses the versioned `tessyl.agents.llm.v2` effect as its provider boundary. Every model
 request includes the complete transcript, so adapters can be stateful or
 stateless; provider continuation tokens are an optional optimization.
 
@@ -25,36 +25,44 @@ const compiled = await createSdk().compile({
 The Voyd module can then use `pkg::agents`:
 
 ```voyd
-use pkg::agents::{
-  Llm,
-  RunResult,
-  agent,
-  run,
-  tool,
-  tool_succeeded,
-  user_message
-}
+use pkg::agents::all
 use std::string::type::String
 
-fn lookup(arguments_json: String)
-  tool_succeeded("Voyd article")
+@tool(
+  name: "lookup_article",
+  description: "Find an article by slug"
+)
+fn lookup(
+  /// The stable slug of the article to find.
+  slug: String
+) -> ToolResult
+  if slug.equals("voyd") then:
+    tool_succeeded("Voyd article")
+  else:
+    tool_failed("Article not found")
 
 pub fn answer(): (Llm, open) -> RunResult
   let librarian = agent(
     name: "librarian",
     instructions: "Maintain the article library.",
     model: "gpt-5.6",
-    tools: [tool(
-      name: "lookup_article",
-      description: "Find an article by slug",
-      parameters_json: "{\"type\":\"object\",\"properties\":{\"slug\":{\"type\":\"string\"}},\"required\":[\"slug\"],\"additionalProperties\":false}",
-      strict: true,
-      handler: lookup
-    )]
+    tools: [lookup]
   )
 
   run(librarian, input: [user_message("Find the Voyd article")])
 ```
+
+`@tool` wraps an ordinary typed Voyd function as a `ToolFactory`. It derives a
+provider-neutral `Shape` from the parameter types, uses parameter doc comments
+as field descriptions, validates and decodes model arguments, and calls the
+function. The optional `description` and `strict` arguments default to `""` and
+`true`; `name` is required. Tool functions may perform effects, including host
+effects whose handlers return promises.
+
+The generated Shape is serialized only at the host boundary. Provider adapters
+receive it as structured `parameters`, so adapter authors can translate the
+same tool declaration to their provider's schema without embedding JSON Schema
+in Voyd source.
 
 Use `run_streamed` with an `on_event` function to receive `Started` and
 `TextDelta` events. The harness accumulates usage and stops at the configured

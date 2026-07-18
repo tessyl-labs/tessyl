@@ -1,4 +1,6 @@
 pub src::api
+pub src::shape_wire
+pub src::tool
 pub use src::api::{
   Agent,
   AgentError,
@@ -31,14 +33,9 @@ pub use src::api::{
   System,
   Text,
   TextDelta,
-  Tool,
   ToolCall,
-  ToolDefinition,
-  ToolFailed,
   ToolFailure,
   ToolOutput,
-  ToolResult,
-  ToolSucceeded,
   UnknownTool,
   User,
   Usage,
@@ -47,8 +44,27 @@ pub use src::api::{
   run,
   run_streamed,
   system_message,
-  tool,
-  tool_failed,
-  tool_succeeded,
   user_message
 }
+pub use src::tool::{
+  Tool,
+  PreparedToolArguments,
+  ToolDefinition,
+  ToolFactory,
+  ToolFailed,
+  ToolHandler,
+  ToolInvocationResult,
+  ToolMarker,
+  ToolOutcome,
+  ToolResult,
+  ToolSucceeded,
+  __format_tool_decode_error,
+  __make_tool,
+  __prepare_tool_arguments,
+  tool,
+  tool_failed,
+  tool_from,
+  tool_succeeded
+}
+pub std::data::{ DecodeError, DecodeOptions, RejectUnknownFields }
+pub std::result::types::{ Err, Ok }

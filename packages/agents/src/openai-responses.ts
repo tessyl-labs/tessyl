@@ -10,6 +10,9 @@ import {
   type LlmModelRequest,
   type LlmModelResponse,
   type LlmResult,
+  type LlmShape,
+  type LlmShapeField,
+  type LlmShapeNode,
   type LlmStreamResult,
   type LlmStreamStep,
   type LlmToolDefinition,
@@ -213,29 +216,170 @@ const mapInput = (item: LlmInputItem): Record<string, unknown> => {
 };
 
 const mapTool = (tool: LlmToolDefinition): Record<string, unknown> => {
-  let parameters: unknown;
-  try {
-    parameters = JSON.parse(tool.parameters_json);
-  } catch {
-    throw new ProviderError(
-      "invalid_tool_schema",
-      `Tool ${tool.name} has invalid parameters_json`,
-    );
-  }
-  if (!isRecord(parameters)) {
-    throw new ProviderError(
-      "invalid_tool_schema",
-      `Tool ${tool.name} parameters_json must describe a JSON object`,
-    );
-  }
   return {
     type: "function",
     name: tool.name,
     description: tool.description,
-    parameters,
+    parameters: shapeToJsonSchema(tool.parameters, tool.strict, tool.name),
     strict: tool.strict,
   };
 };
+
+type JsonSchema = Record<string, unknown>;
+
+const shapeToJsonSchema = (
+  shape: LlmShape,
+  strict: boolean,
+  toolName: string,
+): JsonSchema => {
+  const definitions = new Map(shape.definitions.map((definition) => [
+    definition.key,
+    definition,
+  ]));
+  const resolvedRoot = resolveShapeNode(shape.root, definitions, new Set());
+  if (resolvedRoot.tag !== "RecordShape") {
+    throw new ProviderError(
+      "invalid_tool_schema",
+      `Tool ${toolName} parameters must resolve to a record shape`,
+    );
+  }
+
+  const root = mapShapeNode(shape.root, definitions, strict, toolName);
+  if (shape.definitions.length === 0) return root;
+  const mappedDefinitions: Record<string, JsonSchema> = {};
+  for (const definition of shape.definitions) {
+    if (Object.hasOwn(mappedDefinitions, definition.key)) {
+      throw new ProviderError(
+        "invalid_tool_schema",
+        `Tool ${toolName} contains duplicate shape definition ${definition.key}`,
+      );
+    }
+    mappedDefinitions[definition.key] = withDescription(
+      mapShapeNode(definition.shape, definitions, strict, toolName),
+      definition.documentation,
+    );
+  }
+  return { ...root, $defs: mappedDefinitions };
+};
+
+const mapShapeNode = (
+  node: LlmShapeNode,
+  definitions: Map<string, LlmShape["definitions"][number]>,
+  strict: boolean,
+  toolName: string,
+): JsonSchema => {
+  switch (node.tag) {
+    case "BoolShape":
+      return { type: "boolean" };
+    case "I32Shape":
+      return { type: "integer" };
+    case "I64Shape":
+      return {
+        type: "integer",
+        minimum: -Number.MAX_SAFE_INTEGER,
+        maximum: Number.MAX_SAFE_INTEGER,
+      };
+    case "F32Shape":
+    case "F64Shape":
+      return { type: "number" };
+    case "StringShape":
+      return { type: "string" };
+    case "UnitShape":
+      return { type: "null" };
+    case "ArrayShape":
+      return {
+        type: "array",
+        items: mapShapeNode(node.element, definitions, strict, toolName),
+      };
+    case "RecordShape":
+      return withDescription(
+        objectSchema(node.fields, definitions, strict, toolName),
+        node.documentation,
+      );
+    case "UnionShape":
+      return withDescription({
+        anyOf: node.variants.map((variant) => {
+          if (variant.fields.some((field) => field.name === "tag")) {
+            throw new ProviderError(
+              "invalid_tool_schema",
+              `Tool ${toolName} union variant ${variant.name} reserves field name tag`,
+            );
+          }
+          const payload = objectSchema(
+            variant.fields,
+            definitions,
+            strict,
+            toolName,
+            { tag: { type: "string", enum: [variant.name] } },
+          );
+          return withDescription(payload, variant.documentation);
+        }),
+      }, node.documentation);
+    case "RefShape":
+      if (!definitions.has(node.key)) {
+        throw new ProviderError(
+          "invalid_tool_schema",
+          `Tool ${toolName} references unknown shape definition ${node.key}`,
+        );
+      }
+      return { $ref: `#/$defs/${jsonPointerSegment(node.key)}` };
+  }
+};
+
+const objectSchema = (
+  fields: LlmShapeField[],
+  definitions: Map<string, LlmShape["definitions"][number]>,
+  strict: boolean,
+  toolName: string,
+  initialProperties: Record<string, JsonSchema> = {},
+): JsonSchema => {
+  const properties = { ...initialProperties };
+  for (const field of fields) {
+    if (Object.hasOwn(properties, field.name)) {
+      throw new ProviderError(
+        "invalid_tool_schema",
+        `Tool ${toolName} contains duplicate field ${field.name}`,
+      );
+    }
+    const fieldSchema = withDescription(
+      mapShapeNode(field.shape, definitions, strict, toolName),
+      field.documentation,
+    );
+    properties[field.name] = strict && field.optional
+      ? { anyOf: [fieldSchema, { type: "null" }] }
+      : fieldSchema;
+  }
+  return {
+    type: "object",
+    properties,
+    required: [
+      ...Object.keys(initialProperties),
+      ...fields.filter((field) => strict || !field.optional).map((field) => field.name),
+    ],
+    additionalProperties: false,
+  };
+};
+
+const resolveShapeNode = (
+  node: LlmShapeNode,
+  definitions: Map<string, LlmShape["definitions"][number]>,
+  visited: Set<string>,
+): LlmShapeNode => {
+  if (node.tag !== "RefShape") return node;
+  if (visited.has(node.key)) return node;
+  const definition = definitions.get(node.key);
+  if (!definition) return node;
+  visited.add(node.key);
+  return resolveShapeNode(definition.shape, definitions, visited);
+};
+
+const withDescription = (
+  schema: JsonSchema,
+  documentation: string | undefined,
+): JsonSchema => documentation ? { ...schema, description: documentation.trim() } : schema;
+
+const jsonPointerSegment = (value: string): string =>
+  value.replaceAll("~", "~0").replaceAll("/", "~1");
 
 const mapResponse = (value: unknown): LlmModelResponse => {
   if (!isRecord(value)) {
