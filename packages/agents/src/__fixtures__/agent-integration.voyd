@@ -1,0 +1,16 @@
+use pkg::agents::{ Completed, Failed, Llm, agent, run, user_message }
+
+pub fn answer(): (Llm, open) -> i32
+  let result = run(
+    agent(
+      name: "integration",
+      instructions: "Answer briefly",
+      model: "gpt-integration"
+    ),
+    input: [user_message("Hello from Voyd")]
+  )
+  match(result)
+    Completed { output }:
+      if output.equals("Hello back") then: 42 else: 0
+    Failed:
+      -1

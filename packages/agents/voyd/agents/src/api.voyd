@@ -1,0 +1,367 @@
+//! A small, provider-neutral agent harness for Voyd.
+//!
+//! The harness owns the model/tool loop while `Llm` is the host effect that
+//! adapters implement. This keeps tools as ordinary Voyd functions and keeps
+//! provider-specific networking outside the Wasm module.
+
+use std::array::Array
+use std::msgpack::MsgPack
+use std::msgpack::self as msgpack
+use std::optional::types::all
+use std::string::type::String
+
+pub obj User {}
+pub obj Assistant {}
+pub obj System {}
+pub type Role = User | Assistant | System
+
+pub obj Message { api role: Role, api content: String }
+pub obj ToolCall {
+  api call_id: String,
+  api name: String,
+  api arguments: String
+}
+pub obj ToolOutput { api call_id: String, api output: String }
+pub type InputItem = Message | ToolCall | ToolOutput
+
+/// A boundary-safe tool declaration sent to an LLM adapter.
+pub obj ToolDefinition {
+  api name: String,
+  api description: String,
+  api parameters_json: String,
+  api strict: bool
+}
+
+/// A tool backed by an ordinary Voyd function.
+pub obj Tool {
+  name: String,
+  description: String,
+  parameters_json: String,
+  strict: bool,
+  handler: fn(String) -> ToolResult
+}
+
+pub obj ToolSucceeded { api output: String }
+pub obj ToolFailed { api message: String }
+pub type ToolResult = ToolSucceeded | ToolFailed
+
+pub obj Text { api text: String }
+pub type ModelOutput = Text | ToolCall
+
+pub obj Usage {
+  api input_tokens: i32,
+  api output_tokens: i32,
+  api total_tokens: i32
+}
+
+pub obj ModelRequest {
+  api model: String,
+  api instructions: String,
+  api input: Array<InputItem>,
+  api input_delta: Array<InputItem>,
+  api tools: Array<ToolDefinition>,
+  api continuation_token?: String
+}
+
+pub obj ModelResponse {
+  api id: String,
+  api continuation_token?: String,
+  api output: Array<ModelOutput>,
+  api usage: Usage
+}
+
+pub obj LlmError {
+  api code: String,
+  api message: String,
+  api retryable: bool
+}
+
+pub obj LlmSucceeded { api response: ModelResponse }
+pub obj LlmFailed { api error: LlmError }
+pub type LlmResult = LlmSucceeded | LlmFailed
+
+pub obj Started { api response_id: String }
+pub obj TextDelta { api delta: String }
+pub type StreamEvent = Started | TextDelta
+
+pub obj Event { api cursor: String, api event: StreamEvent }
+pub obj Done { api response: ModelResponse }
+pub type StreamStep = Event | Done
+
+pub obj StreamSucceeded { api step: StreamStep }
+pub obj StreamFailed { api error: LlmError }
+pub type StreamResult = StreamSucceeded | StreamFailed
+
+/// Provider adapter surface used by the agent harness.
+@effect(id: "tessyl.agents.llm.v1")
+pub eff Llm
+  respond(tail, payload: MsgPack) -> MsgPack
+  open_stream(tail, payload: MsgPack) -> MsgPack
+  next_stream(tail, payload: MsgPack) -> MsgPack
+
+pub obj Agent {
+  name: String,
+  instructions: String,
+  model: String,
+  tools: Array<Tool>,
+  max_turns: i32
+}
+
+pub obj InvalidConfig { api message: String }
+pub obj LlmFailure { api error: LlmError }
+pub obj UnknownTool { api name: String }
+pub obj ToolFailure { api name: String, api message: String }
+pub obj MaxTurns { api max_turns: i32 }
+pub type AgentError = InvalidConfig | LlmFailure | UnknownTool | ToolFailure | MaxTurns
+
+pub obj Completed {
+  api output: String,
+  api history: Array<InputItem>,
+  api turns: i32,
+  api usage: Usage
+}
+pub obj Failed {
+  api error: AgentError,
+  api history: Array<InputItem>,
+  api turns: i32,
+  api usage: Usage
+}
+pub type RunResult = Completed | Failed
+
+enum RunMode
+  Regular
+  Streaming { on_event: fn(StreamEvent) -> void }
+
+/// Creates a tool from a JSON Schema and an ordinary Voyd function.
+pub fn tool({
+  name: String,
+  description: String,
+  parameters_json: String,
+  strict?: bool,
+  handler: fn(String) -> ToolResult
+}) -> Tool
+  Tool {
+    name: name,
+    description: description,
+    parameters_json: parameters_json,
+    strict: strict ?? false,
+    handler: handler
+  }
+
+pub fn user_message(content: String) -> InputItem
+  Message { role: User {}, content: content }
+
+pub fn assistant_message(content: String) -> InputItem
+  Message { role: Assistant {}, content: content }
+
+pub fn system_message(content: String) -> InputItem
+  Message { role: System {}, content: content }
+
+pub fn tool_succeeded(output: String) -> ToolResult
+  ToolSucceeded { output: output }
+
+pub fn tool_failed(message: String) -> ToolResult
+  ToolFailed { message: message }
+
+/// Creates an agent. `max_turns` bounds model calls, including tool turns.
+pub fn agent({
+  name: String,
+  instructions: String,
+  model: String,
+  tools?: Array<Tool>,
+  max_turns?: i32
+}) -> Agent
+  Agent {
+    name: name,
+    instructions: instructions,
+    model: model,
+    tools: tools ?? Array<Tool>::init(),
+    max_turns: max_turns ?? 8
+  }
+
+/// Runs an agent until it produces a final text response or fails.
+pub fn run(agent: Agent, { input: Array<InputItem> }): (Llm, open) -> RunResult
+  run_loop(agent, input, RunMode::Regular {})
+
+/// Runs an agent and reports model stream events as they arrive.
+pub fn run_streamed(
+  agent: Agent,
+  { input: Array<InputItem>, on_event: fn(StreamEvent) -> void }
+): (Llm, open) -> RunResult
+  run_loop(agent, input, RunMode::Streaming { on_event: on_event })
+
+fn run_loop(agent: Agent, initial_input: Array<InputItem>, mode: RunMode): (Llm, open) -> RunResult
+  let ~history = copy_input(initial_input)
+  let definitions = tool_definitions(agent.tools)
+  var input_delta = copy_input(initial_input)
+  var continuation_token: Option<String> = None {}
+  var turns = 0
+  var usage = empty_usage()
+
+  if agent.max_turns <= 0:
+    return failed(
+      AgentError::InvalidConfig { message: "agent max_turns must be greater than zero" },
+      history,
+      turns,
+      usage
+    )
+
+  while turns < agent.max_turns:
+    turns = turns + 1
+    let request = ModelRequest {
+      model: agent.model,
+      instructions: agent.instructions,
+      input: copy_input(history),
+      input_delta: input_delta,
+      tools: definitions,
+      continuation_token: continuation_token
+    }
+    let model_result = match(mode)
+      RunMode::Regular:
+        request_model(request)
+      RunMode::Streaming { on_event }:
+        consume_stream(request, on_event)
+
+    match(model_result)
+      LlmResult::LlmFailed { error }:
+        return failed(AgentError::LlmFailure { error: error }, history, turns, usage)
+      LlmResult::LlmSucceeded { response }:
+        usage = add_usage(usage, response.usage)
+        continuation_token = response.continuation_token
+        let ~tool_calls = Array<ToolCall>::init()
+        var final_output = ""
+        var output_index = 0
+        while output_index < response.output.len():
+          match(response.output.at(output_index))
+            ModelOutput::Text { text }:
+              final_output = final_output.concat(text)
+              history.push(InputItem::Message { role: Role::Assistant {}, content: text })
+            ModelOutput::ToolCall { call_id, name, arguments }:
+              let call = ToolCall { call_id: call_id, name: name, arguments: arguments }
+              tool_calls.push(call)
+              history.push(call)
+          output_index = output_index + 1
+
+        if tool_calls.len() == 0:
+          return RunResult::Completed {
+            output: final_output,
+            history: history,
+            turns: turns,
+            usage: usage
+          }
+
+        let ~tool_outputs = Array<InputItem>::with_capacity(tool_calls.len())
+        var call_index = 0
+        while call_index < tool_calls.len():
+          let call = tool_calls.at(call_index)
+          match(find_tool(agent.tools, call.name))
+            Some<Tool> { value: selected }:
+              let handler = selected.handler
+              match(handler(call.arguments))
+                ToolResult::ToolSucceeded { output }:
+                  let item = ToolOutput { call_id: call.call_id, output: output }
+                  tool_outputs.push(item)
+                  history.push(item)
+                ToolResult::ToolFailed { message }:
+                  return failed(
+                    AgentError::ToolFailure { name: call.name, message: message },
+                    history,
+                    turns,
+                    usage
+                  )
+            None:
+              return failed(
+                AgentError::UnknownTool { name: call.name },
+                history,
+                turns,
+                usage
+              )
+          call_index = call_index + 1
+        input_delta = tool_outputs
+
+  failed(AgentError::MaxTurns { max_turns: agent.max_turns }, history, turns, usage)
+
+fn consume_stream(
+  request: ModelRequest,
+  on_event: fn(StreamEvent) -> void
+): (Llm, open) -> LlmResult
+  consume_stream_result(open_model_stream(request), on_event)
+
+fn consume_stream_result(
+  result: StreamResult,
+  on_event: fn(StreamEvent) -> void
+): (Llm, open) -> LlmResult
+  match(result)
+    StreamResult::StreamFailed { error }:
+      LlmResult::LlmFailed { error: error }
+    StreamResult::StreamSucceeded { step }:
+      match(step)
+        StreamStep::Done { response }:
+          LlmResult::LlmSucceeded { response: response }
+        StreamStep::Event { cursor, event }:
+          on_event(event)
+          consume_stream_result(next_model_stream(cursor), on_event)
+
+fn request_model(request: ModelRequest): Llm -> LlmResult
+  msgpack::unpack_boundary_value<LlmResult>(
+    Llm::respond(msgpack::pack_boundary_value<ModelRequest>(request))
+  )
+
+fn open_model_stream(request: ModelRequest): Llm -> StreamResult
+  msgpack::unpack_boundary_value<StreamResult>(
+    Llm::open_stream(msgpack::pack_boundary_value<ModelRequest>(request))
+  )
+
+fn next_model_stream(cursor: String): Llm -> StreamResult
+  msgpack::unpack_boundary_value<StreamResult>(
+    Llm::next_stream(msgpack::pack_boundary_value<String>(cursor))
+  )
+
+fn tool_definitions(tools: Array<Tool>) -> Array<ToolDefinition>
+  let ~definitions = Array<ToolDefinition>::with_capacity(tools.len())
+  var index = 0
+  while index < tools.len():
+    let current = tools.at(index)
+    definitions.push(ToolDefinition {
+      name: current.name,
+      description: current.description,
+      parameters_json: current.parameters_json,
+      strict: current.strict
+    })
+    index = index + 1
+  definitions
+
+fn find_tool(tools: Array<Tool>, name: String) -> Option<Tool>
+  var index = 0
+  while index < tools.len():
+    let current = tools.at(index)
+    if current.name.equals(name):
+      return Some<Tool> { value: current }
+    index = index + 1
+  None {}
+
+fn copy_input(input: Array<InputItem>) -> Array<InputItem>
+  let ~copy = Array<InputItem>::with_capacity(input.len())
+  var index = 0
+  while index < input.len():
+    copy.push(input.at(index))
+    index = index + 1
+  copy
+
+fn empty_usage() -> Usage
+  Usage { input_tokens: 0, output_tokens: 0, total_tokens: 0 }
+
+fn add_usage(left: Usage, right: Usage) -> Usage
+  Usage {
+    input_tokens: left.input_tokens + right.input_tokens,
+    output_tokens: left.output_tokens + right.output_tokens,
+    total_tokens: left.total_tokens + right.total_tokens
+  }
+
+fn failed(
+  error: AgentError,
+  history: Array<InputItem>,
+  turns: i32,
+  usage: Usage
+) -> RunResult
+  RunResult::Failed { error: error, history: history, turns: turns, usage: usage }

@@ -1,0 +1,46 @@
+{
+  "name": "@tessyl/agents",
+  "version": "0.0.0",
+  "description": "A minimal Voyd-native agent harness with pluggable LLM effects.",
+  "type": "module",
+  "voyd": {
+    "source": "./voyd/agents/src/pkg.voyd",
+    "packageDirectories": [
+      "./voyd"
+    ]
+  },
+  "exports": {
+    "./adapter": {
+      "types": "./dist/adapter.d.ts",
+      "import": "./dist/adapter.js"
+    },
+    "./openai-responses": {
+      "types": "./dist/openai-responses.d.ts",
+      "import": "./dist/openai-responses.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "voyd"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "prepack": "npm run clean && npm run build",
+    "test": "voyd test ./voyd/agents/src --fail-empty-tests && tsx --test src/**/*.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json && node --input-type=module -e 'import { createSdk } from \"@voyd-lang/sdk\"; const result = await createSdk().compile({ entryPath: \"./voyd/agents/src/pkg.voyd\", boundaryExports: false }); if (!result.success) { console.error(result.diagnostics); process.exit(1); }'"
+  },
+  "dependencies": {
+    "@voyd-lang/js-host": "file:../../.voyd-source/packages/js-host",
+    "@voyd-lang/std": "file:../../.voyd-source/packages/std"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.1",
+    "@voyd-lang/cli": "file:../../.voyd-source/apps/cli",
+    "@voyd-lang/sdk": "file:../../.voyd-source/packages/sdk",
+    "tsx": "^4.20.4",
+    "typescript": "^5.8.3"
+  }
+}
