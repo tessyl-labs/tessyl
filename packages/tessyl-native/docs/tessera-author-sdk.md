@@ -1,7 +1,7 @@
 # Tessera Author SDK
 
 This is the primary guide for developers who author Tesserae. It defines the
-Voyd API exposed as `pkg::tessyl_native`; examples may precede implementation.
+implemented v1 Voyd API exposed as `pkg::tessyl_native`.
 Authors do not install `@tessyl/native` or call its TypeScript integration API.
 
 ## Mental model

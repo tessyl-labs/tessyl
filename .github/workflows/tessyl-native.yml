@@ -1,0 +1,43 @@
+name: Tessyl Native
+
+on:
+  pull_request:
+    paths:
+      - "packages/tessyl-native/**"
+      - "packages/design-tokens/**"
+      - "apps/web/**"
+      - ".github/workflows/tessyl-native.yml"
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci && npx turbo run build
+        working-directory: .voyd-source
+      - run: npm ci
+      - run: npm run build --workspace=@tessyl/design-tokens
+      - run: npm run typecheck --workspace=@tessyl/native
+      - run: npm test --workspace=@tessyl/native
+
+  browsers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci && npx turbo run build
+        working-directory: .voyd-source
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium firefox webkit
+      - run: npm run test:browser --workspace=@tessyl/native

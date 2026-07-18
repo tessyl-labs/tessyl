@@ -1,5 +1,6 @@
 # Dependencies
 node_modules/
+.voyd-source
 
 # Turborepo
 .turbo/
@@ -7,7 +8,11 @@ node_modules/
 # Build output
 dist/
 build/
+!packages/tessyl-native/src/build/
+!packages/tessyl-native/src/build/**
 coverage/
+test-results/
+playwright-report/
 
 # Environment files
 .env

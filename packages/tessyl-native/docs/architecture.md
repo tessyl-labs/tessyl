@@ -140,6 +140,13 @@ Wasm as a runnable artifact. Tessyl enters this pipeline through
    an approved artifact immutably to any published revision. The server, not
    contributor-controlled data, assigns capability and resource profiles.
 
+The Node wrapper admits only the profile's bounded number of compiler children,
+uses a bounded queue with a wait deadline, strips ambient environment variables,
+and applies Node permission, V8 heap, output, and wall-time limits. Production
+deployments must additionally run the build service in an OS/container cgroup
+with an RSS and CPU quota; the V8 heap flag does not bound Binaryen or native
+allocations.
+
 No Voyd compiler changes are required initially. The Native build wrapper owns
 compiler and artifact policy. Tessyl owns review and publication policy. Richer
 compiler metadata and diagnostics can be added later without becoming the
@@ -351,9 +358,10 @@ tree and validate it afterward.
 
 ### Limits
 
-Each versioned resource profile sets maximum encoded bytes, nodes, depth,
-children per node, attributes per node, string length, event handlers, command
-nesting, subscriptions, table cells, and plotted points. Validation errors
+Each versioned resource profile sets maximum encoded bytes, boundary containers,
+boundary entries and depth, nodes, children per node, attributes per node,
+string length, event handlers, command nesting, outstanding delayed effects,
+subscriptions, table cells, and plotted points. Validation errors
 include a bounded field path for diagnostics but do not echo attacker-sized
 values.
 
@@ -387,6 +395,8 @@ Parent -> Iframe: app_result, app_error, capability_result, terminate
   values are not meaningful.
 - Bound queues and reject or replace excess events rather than allowing memory
   growth.
+- Bound and expire the page-level Worker admission queue so excess placements
+  cannot retain unlimited controllers, channels, and sandbox frames.
 
 The parent applies rolling per-Tessera quotas to every brokered dispatch RPC and
 emitted frame, regardless of whether it originated from an event, command, or
@@ -405,6 +415,12 @@ Wasm execution occurs only in the dedicated Worker. The parent starts a
 wall-clock deadline for every `init`, `render`, and `dispatch` RPC. When the
 deadline callback runs, it terminates the Worker, invalidates the generation,
 disposes the iframe runtime, and exposes a restart action.
+
+Browser artifact admission parses and caps Wasm section and resource counts
+without invoking the engine on the main thread. Engine validation and
+compilation occur only in the disposable runtime Worker under its startup/RPC
+deadline. The server performs the same work inside its restricted compiler
+child process.
 
 Budgets apply per RPC and through rolling transition/frame quotas. A profile may
 define explicit supported device classes, but its selection rules and limits

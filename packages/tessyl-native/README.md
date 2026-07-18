@@ -8,8 +8,9 @@ Only Tessyl installs `@tessyl/native`. Tessera authors use the Voyd package
 `pkg::tessyl_native`, which the restricted Native compiler supplies and pins;
 they do not install or call the TypeScript package.
 
-This package is currently documentation-first. Its documents define the product
-and technical contracts that the implementation should satisfy:
+This package contains the implemented v1 author SDK, compiler facade, isolated
+browser runtime, renderer, examples, and test suites. Its documents
+define the product and technical contracts those components satisfy:
 
 - [Product design](./docs/product-design.md) explains why Tesserae exist, the
   intended author and reader experiences, product principles, and release scope.
@@ -24,6 +25,21 @@ and technical contracts that the implementation should satisfy:
   production, runtime isolation, protocol validation, resource controls, and
   the security test plan.
 
-The documents describe a proposed design, not an already-shipped API. Any
-intentional deviation in implementation should update these documents in the
-same change.
+The documented v1 surface is implemented and tested in this package. Sections
+explicitly labeled as future work remain design guidance; any intentional
+implementation deviation should update these documents in the same change.
+
+## Run the examples locally
+
+From the repository root, start the package development server:
+
+```sh
+npm run dev --workspace=@tessyl/native
+```
+
+Open `http://127.0.0.1:3001/showcase`. The command builds the package and starts
+the package-local Vite harness under `playground/`. It is intentionally kept
+inside `@tessyl/native`: it exists to exercise package changes and examples,
+not as a separately deployed Tessyl application. The playground recompiles and
+reloads when calculator, chart, or simulation source under `examples/` changes.
+Set `TESSYL_PLAYGROUND_HOST` or `TESSYL_PLAYGROUND_PORT` to configure the listener.

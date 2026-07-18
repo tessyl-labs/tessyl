@@ -1,0 +1,466 @@
+use std::msgpack::self as msgpack
+use std::msgpack::MsgPack
+use std::dict::Dict
+use std::optional::types::all
+use std::result::types::all
+use std::string::type::String
+
+pub obj SemanticView { api frame: MsgPack }
+
+impl SemanticView
+  api fn has_metric(self, { label: String, unit?: String }) -> bool
+    find_component(self.frame, "metric", label, unit, 0)
+
+  api fn has_label(self, label: String) -> bool
+    find_label(self.frame, label, 0)
+
+  api fn has_role(self, role: String) -> bool
+    find_role(self.frame, role, 0)
+
+  api fn contains_text(self, value: String) -> bool
+    find_containing_text(self.frame, value, 0)
+
+  api fn has_chart(self, title: String) -> bool
+    find_component(self.frame, "line-chart", title, None {}, 0) or find_component(self.frame, "scatter-plot", title, None {}, 0) or find_component(self.frame, "bar-chart", title, None {}, 0) or find_component(self.frame, "histogram", title, None {}, 0)
+
+  api fn has_value(self, { label: String, value: String }) -> bool
+    find_labelled_text(self.frame, label, value, 0)
+
+  api fn has_chart_series(self, { title: String, series: String }) -> bool
+    self.has_chart(title) and find_text(self.frame, series, 0)
+
+pub fn semantic_view(value: MsgPack) -> SemanticView
+  let nodes = validate_tree(value, 0)
+  if nodes < 1 or nodes > 2000:
+    panic("semantic_view received an invalid or oversized Native tree")
+  SemanticView { frame: value }
+
+fn validate_tree(value: MsgPack, depth: i32) -> i32
+  if depth > 32:
+    return 2001
+  match(msgpack::unpack_map(value))
+    Ok { value: map }:
+      match(map.get("kind"))
+        Some<MsgPack> { value: kind_value }:
+          match(msgpack::unpack_string(kind_value))
+            Ok<String> { value: kind }:
+              if not valid_node_keys(map, kind):
+                return 2001
+              if kind == "text":
+                match(map_string(map.get("value")))
+                  Some<String> { value }:
+                    if value.byte_len() > 8192:
+                      return 2001
+                    return 1
+                  None:
+                    return 2001
+              if kind == "fragment":
+                if map.contains("key"):
+                  return 2001
+                return validate_children(map.get("children"), depth + 1)
+              if kind == "element":
+                match(map_string(map.get("tag")))
+                  Some<String> { value: tag }:
+                    if not is_native_tag(tag):
+                      return 2001
+                  None:
+                    return 2001
+                if not validate_element_fields(map):
+                  return 2001
+                return validate_children(map.get("children"), depth + 1)
+              2001
+            Err:
+              2001
+        None:
+          2001
+    Err:
+      2001
+
+fn valid_node_keys(map: Dict<String, MsgPack>, kind: String) -> bool
+  let keys = map.keys()
+  var index = 0
+  while index < keys.len():
+    let key = keys.at(index)
+    var allowed = key == "kind" or key == "children" or key == "key"
+    if kind == "text":
+      allowed = key == "kind" or key == "value" or key == "key"
+    if kind == "element":
+      allowed = allowed or key == "tag" or key == "attrs" or key == "props" or key == "events"
+    if not allowed:
+      return false
+    index = index + 1
+  true
+
+fn validate_element_fields(map: Dict<String, MsgPack>) -> bool
+  if not validate_attribute_map(map.get("attrs")) or not validate_attribute_map(map.get("props")):
+    return false
+  match(map.get("events"))
+    Some<MsgPack> { value }:
+      match(msgpack::unpack_array(value))
+        Ok { value: events }:
+          if events.len() > 256:
+            return false
+          var index = 0
+          while index < events.len():
+            match(msgpack::unpack_map(events.at(index)))
+              Ok { value: event }:
+                let keys = event.keys()
+                var key_index = 0
+                while key_index < keys.len():
+                  let key = keys.at(key_index)
+                  if key != "kind" and key != "event" and key != "handlerId" and key != "message" and key != "options" and key != "mapHandlerIds":
+                    return false
+                  key_index = key_index + 1
+                match(map_string(event.get("kind")))
+                  Some<String> { value: kind }:
+                    if kind != "event":
+                      return false
+                  None:
+                    return false
+                match(map_string(event.get("event")))
+                  Some<String> { value: name }:
+                    if name != "click" and name != "input" and name != "change" and name != "keydown":
+                      return false
+                  None:
+                    return false
+              Err:
+                return false
+            index = index + 1
+          true
+        Err:
+          false
+    None:
+      true
+
+fn validate_attribute_map(value: Option<MsgPack>) -> bool
+  match(value)
+    Some<MsgPack> { value }:
+      match(msgpack::unpack_map(value))
+        Ok { value: attrs }:
+          if attrs.len() > 24:
+            return false
+          let keys = attrs.keys()
+          var index = 0
+          while index < keys.len():
+            if not is_native_attribute(keys.at(index)):
+              return false
+            index = index + 1
+          true
+        Err:
+          false
+    None:
+      true
+
+fn is_native_attribute(name: String) -> bool
+  name == "aria-label" or name == "aria-describedby" or name == "aria-live" or name == "aria-invalid" or name == "aria-valuemin" or name == "aria-valuemax" or name == "aria-valuenow" or name == "aria-hidden" or name == "role" or name == "title" or name == "tabindex" or name == "data-native-component" or name == "data-article-slug" or name == "data-native-gap" or name == "data-native-align" or name == "data-native-width" or name == "data-native-width-px" or name == "data-native-wrap" or name == "data-native-columns" or name == "data-native-tone" or name == "data-native-padding" or name == "data-native-size" or name == "data-native-weight" or name == "data-native-language" or name == "data-native-display" or name == "data-native-series" or name == "type" or name == "min" or name == "max" or name == "step" or name == "value" or name == "checked" or name == "disabled" or name == "maxlength" or name == "placeholder" or name == "selected" or name == "scope" or name == "colspan" or name == "rowspan" or name == "viewbox" or name == "width" or name == "height" or name == "d" or name == "x1" or name == "x2" or name == "y1" or name == "y2" or name == "points" or name == "cx" or name == "cy" or name == "r" or name == "x" or name == "y" or name == "rx" or name == "text-anchor"
+
+fn validate_children(children: Option<MsgPack>, depth: i32) -> i32
+  match(children)
+    Some<MsgPack> { value }:
+      match(msgpack::unpack_array(value))
+        Ok { value: values }:
+          if values.len() > 200:
+            return 2001
+          var total = 1
+          var index = 0
+          while index < values.len():
+            total = total + validate_tree(values.at(index), depth)
+            if total > 2000:
+              return 2001
+            index = index + 1
+          total
+        Err:
+          2001
+    None:
+      1
+
+fn is_native_tag(tag: String) -> bool
+  tag == "div" or tag == "section" or tag == "article" or tag == "header" or tag == "footer" or tag == "main" or tag == "aside" or tag == "p" or tag == "span" or tag == "strong" or tag == "em" or tag == "code" or tag == "pre" or tag == "h2" or tag == "h3" or tag == "h4" or tag == "h5" or tag == "h6" or tag == "hr" or tag == "a" or tag == "button" or tag == "label" or tag == "input" or tag == "select" or tag == "option" or tag == "table" or tag == "caption" or tag == "thead" or tag == "tbody" or tag == "tr" or tag == "th" or tag == "td" or tag == "dl" or tag == "dt" or tag == "dd" or tag == "ul" or tag == "ol" or tag == "li" or tag == "figure" or tag == "figcaption" or tag == "svg" or tag == "g" or tag == "path" or tag == "line" or tag == "polyline" or tag == "circle" or tag == "rect" or tag == "text"
+
+fn map_string(value: Option<MsgPack>) -> Option<String>
+  match(value)
+    Some<MsgPack> { value }:
+      match(msgpack::unpack_string(value))
+        Ok<String> { value }:
+          Some<String> { value: value }
+        Err:
+          None {}
+    None:
+      None {}
+
+fn find_labelled_text(value: MsgPack, label: String, expected: String, depth: i32) -> bool
+  if depth > 32:
+    return false
+  match(msgpack::unpack_map(value))
+    Ok { value: map }:
+      match(map.get("attrs"))
+        Some<MsgPack> { value: attrs_value }:
+          match(msgpack::unpack_map(attrs_value))
+            Ok { value: attrs }:
+              if map_string_equals(attrs.get("aria-label"), label):
+                if find_text(value, expected, depth) or map_property_equals(map.get("props"), "value", expected) or map_property_equals(map.get("props"), "checked", expected):
+                  return true
+            Err:
+              void
+        None:
+          void
+      match(map.get("children"))
+        Some<MsgPack> { value: children }:
+          match(msgpack::unpack_array(children))
+            Ok { value: values }:
+              var index = 0
+              while index < values.len():
+                if find_labelled_text(values.at(index), label, expected, depth + 1):
+                  return true
+                index = index + 1
+            Err:
+              void
+        None:
+          void
+      false
+    Err:
+      false
+
+fn find_role(value: MsgPack, expected: String, depth: i32) -> bool
+  if depth > 32:
+    return false
+  match(msgpack::unpack_map(value))
+    Ok { value: map }:
+      match(map.get("attrs"))
+        Some<MsgPack> { value: attrs_value }:
+          match(msgpack::unpack_map(attrs_value))
+            Ok { value: attrs }:
+              if map_string_equals(attrs.get("role"), expected):
+                return true
+            Err:
+              void
+        None:
+          void
+      match(map_string(map.get("tag")))
+        Some<String> { value: tag }:
+          if implicit_role(tag, map.get("attrs")) == expected:
+            return true
+        None:
+          void
+      match(map.get("children"))
+        Some<MsgPack> { value: children }:
+          match(msgpack::unpack_array(children))
+            Ok { value: values }:
+              var index = 0
+              while index < values.len():
+                if find_role(values.at(index), expected, depth + 1):
+                  return true
+                index = index + 1
+            Err:
+              void
+        None:
+          void
+      false
+    Err:
+      false
+
+fn implicit_role(tag: String, attrs_value: Option<MsgPack>) -> String
+  if tag == "button":
+    return "button"
+  if tag == "a":
+    return "link"
+  if tag == "h2" or tag == "h3" or tag == "h4" or tag == "h5" or tag == "h6":
+    return "heading"
+  if tag == "select":
+    return "combobox"
+  if tag == "table":
+    return "table"
+  if tag == "figure":
+    return "figure"
+  if tag == "input":
+    match(attrs_value)
+      Some<MsgPack> { value }:
+        match(msgpack::unpack_map(value))
+          Ok { value: attrs }:
+            if map_string_equals(attrs.get("type"), "checkbox"):
+              return "checkbox"
+            if map_string_equals(attrs.get("type"), "range"):
+              return "slider"
+            if map_string_equals(attrs.get("type"), "number"):
+              return "spinbutton"
+          Err:
+            void
+      None:
+        void
+    return "textbox"
+  ""
+
+fn map_property_equals(value: Option<MsgPack>, name: String, expected: String) -> bool
+  match(value)
+    Some<MsgPack> { value }:
+      match(msgpack::unpack_map(value))
+        Ok { value: props }:
+          if map_string_equals(props.get(name), expected):
+            return true
+          match(props.get(name))
+            Some<MsgPack> { value: property }:
+              match(msgpack::unpack_bool(property))
+                Ok<bool> { value }:
+                  (value and expected == "true") or (not value and expected == "false")
+                Err:
+                  false
+            None:
+              false
+        Err:
+          false
+    None:
+      false
+
+fn find_component(value: MsgPack, component: String, label: String, required_text: Option<String>, depth: i32) -> bool
+  if depth > 32:
+    return false
+  match(msgpack::unpack_map(value))
+    Ok { value: map }:
+      match(map.get("attrs"))
+        Some<MsgPack> { value: attrs_value }:
+          match(msgpack::unpack_map(attrs_value))
+            Ok { value: attrs }:
+              if map_string_equals(attrs.get("data-native-component"), component) and map_string_equals(attrs.get("aria-label"), label):
+                match(required_text)
+                  Some<String> { value: text }:
+                    return find_text(value, text, depth)
+                  None:
+                    return true
+            Err:
+              void
+        None:
+          void
+      find_children_component(map.get("children"), component, label, required_text, depth + 1)
+    Err:
+      false
+
+fn find_children_component(children: Option<MsgPack>, component: String, label: String, required_text: Option<String>, depth: i32) -> bool
+  match(children)
+    Some<MsgPack> { value }:
+      match(msgpack::unpack_array(value))
+        Ok { value: values }:
+          var index = 0
+          while index < values.len():
+            if find_component(values.at(index), component, label, required_text, depth):
+              return true
+            index = index + 1
+          false
+        Err:
+          false
+    None:
+      false
+
+fn find_label(value: MsgPack, label: String, depth: i32) -> bool
+  find_attribute(value, "aria-label", label, depth)
+
+fn find_attribute(value: MsgPack, name: String, expected: String, depth: i32) -> bool
+  if depth > 32:
+    return false
+  match(msgpack::unpack_map(value))
+    Ok { value: map }:
+      match(map.get("attrs"))
+        Some<MsgPack> { value: attrs_value }:
+          match(msgpack::unpack_map(attrs_value))
+            Ok { value: attrs }:
+              if map_string_equals(attrs.get(name), expected):
+                return true
+            Err:
+              void
+        None:
+          void
+      match(map.get("children"))
+        Some<MsgPack> { value: children }:
+          match(msgpack::unpack_array(children))
+            Ok { value: values }:
+              var index = 0
+              while index < values.len():
+                if find_attribute(values.at(index), name, expected, depth + 1):
+                  return true
+                index = index + 1
+            Err:
+              void
+        None:
+          void
+      false
+    Err:
+      false
+
+fn find_text(value: MsgPack, expected: String, depth: i32) -> bool
+  if depth > 32:
+    return false
+  match(msgpack::unpack_string(value))
+    Ok<String> { value }:
+      value == expected
+    Err:
+      match(msgpack::unpack_map(value))
+        Ok { value: map }:
+          match(map.get("kind"))
+            Some<MsgPack> { value: kind }:
+              if map_string_equals(Some<MsgPack> { value: kind }, "text"):
+                return map_string_equals(map.get("value"), expected)
+            None:
+              void
+          match(map.get("children"))
+            Some<MsgPack> { value: children }:
+              match(msgpack::unpack_array(children))
+                Ok { value: values }:
+                  var index = 0
+                  while index < values.len():
+                    if find_text(values.at(index), expected, depth + 1):
+                      return true
+                    index = index + 1
+                Err:
+                  void
+            None:
+              void
+          false
+        Err:
+          false
+
+fn find_containing_text(value: MsgPack, expected: String, depth: i32) -> bool
+  if depth > 32:
+    return false
+  match(msgpack::unpack_string(value))
+    Ok<String> { value }:
+      value.contains(expected)
+    Err:
+      match(msgpack::unpack_map(value))
+        Ok { value: map }:
+          match(map.get("kind"))
+            Some<MsgPack> { value: kind }:
+              if map_string_equals(Some<MsgPack> { value: kind }, "text"):
+                match(map_string(map.get("value")))
+                  Some<String> { value: text }:
+                    return text.contains(expected)
+                  None:
+                    return false
+            None:
+              void
+          match(map.get("children"))
+            Some<MsgPack> { value: children }:
+              match(msgpack::unpack_array(children))
+                Ok { value: values }:
+                  var index = 0
+                  while index < values.len():
+                    if find_containing_text(values.at(index), expected, depth + 1):
+                      return true
+                    index = index + 1
+                Err:
+                  void
+            None:
+              void
+          false
+        Err:
+          false
+
+fn map_string_equals(value: Option<MsgPack>, expected: String) -> bool
+  match(value)
+    Some<MsgPack> { value }:
+      match(msgpack::unpack_string(value))
+        Ok<String> { value }:
+          value == expected
+        Err:
+          false
+    None:
+      false
+use std::error::panic

@@ -1,95 +1,58 @@
-import { readdirSync, statSync, watch } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-export function watchSource(root, onChange) {
-  const watchers = new Map();
-  const retryAttempts = new Map();
-  const retryTimers = new Map();
-  let closed = false;
-  const watchTree = (directory) => {
-    if (closed || !isDirectory(directory)) return;
-    watchDirectory(directory);
+export function watchSource(root, onChange, { intervalMs = 750 } = {}) {
+  let previous = snapshot(root);
+  let scanning = false;
+  const timer = setInterval(() => {
+    if (scanning) return;
+    scanning = true;
+    try {
+      const before = previous;
+      const next = snapshot(root);
+      const paths = new Set([...before.keys(), ...next.keys()]);
+      previous = next;
+      for (const path of paths) {
+        if (previousValue(before, path) !== previousValue(next, path)) onChange(path);
+      }
+    } finally {
+      scanning = false;
+    }
+  }, intervalMs);
+  timer.unref();
+  return () => clearInterval(timer);
+}
+
+function snapshot(root) {
+  const files = new Map();
+  const stack = [root];
+  while (stack.length) {
+    const directory = stack.pop();
     let entries;
     try {
       entries = readdirSync(directory, { withFileTypes: true });
-    } catch (error) {
-      scheduleWatchRetry(directory, error);
-      return;
+    } catch {
+      continue;
     }
-    entries
-      .filter((entry) => entry.isDirectory())
-      .forEach((entry) => watchTree(join(directory, entry.name)));
-  };
-  const watchDirectory = (directory) => {
-    if (closed || watchers.has(directory)) return;
-    try {
-      const watcher = watch(directory, (_event, filename) => {
-        retryAttempts.delete(directory);
-        if (!filename) {
-          reconcileWatchers();
-          onChange();
-          return;
-        }
-        const path = join(directory, filename.toString());
-        if (isDirectory(path)) {
-          watchTree(path);
-          onChange();
-          return;
-        }
-        reconcileWatchers();
-        onChange(path);
-      });
-      watchers.set(directory, watcher);
-      watcher.on("error", (error) => handleWatcherError(directory, watcher, error));
-    } catch (error) {
-      scheduleWatchRetry(directory, error);
+    for (const entry of entries) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(path);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      try {
+        const stat = statSync(path);
+        files.set(path, `${stat.mtimeMs}:${stat.size}`);
+      } catch {
+        // A file changed between directory enumeration and stat; the next poll
+        // will observe its stable state.
+      }
     }
-  };
-  const handleWatcherError = (directory, watcher, error) => {
-    console.error("Source watcher failed for " + directory, error);
-    watcher.close();
-    if (watchers.get(directory) === watcher) watchers.delete(directory);
-    scheduleWatchRetry(directory);
-    onChange();
-  };
-  const scheduleWatchRetry = (directory, error) => {
-    if (closed || retryTimers.has(directory)) return;
-    const attempt = retryAttempts.get(directory) ?? 0;
-    if (error && attempt === 0) {
-      console.error("Unable to watch source directory " + directory, error);
-    }
-    retryAttempts.set(directory, attempt + 1);
-    const timer = setTimeout(() => {
-      retryTimers.delete(directory);
-      if (isDirectory(directory)) watchDirectory(directory);
-      reconcileWatchers();
-    }, Math.min(100 * (2 ** attempt), 5000));
-    retryTimers.set(directory, timer);
-  };
-  const reconcileWatchers = () => {
-    if (closed) return;
-    watchers.forEach((watcher, directory) => {
-      if (isDirectory(directory)) return;
-      watcher.close();
-      watchers.delete(directory);
-    });
-    watchTree(root);
-  };
-  watchTree(root);
-  return () => {
-    closed = true;
-    watchers.forEach((watcher) => watcher.close());
-    retryTimers.forEach((timer) => clearTimeout(timer));
-    watchers.clear();
-    retryAttempts.clear();
-    retryTimers.clear();
-  };
+  }
+  return files;
 }
 
-function isDirectory(path) {
-  try {
-    return statSync(path).isDirectory();
-  } catch {
-    return false;
-  }
+function previousValue(values, path) {
+  return values.get(path);
 }

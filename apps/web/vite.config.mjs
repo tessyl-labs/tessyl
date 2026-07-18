@@ -20,15 +20,17 @@ const voydClient = () => ({
 
 export default defineConfig({
   plugins: [voydClient(), tailwindcss()],
-  resolve: { conditions: ["development"], preserveSymlinks: true },
+  resolve: { conditions: ["browser", "development"], preserveSymlinks: true },
   publicDir: false,
   build: {
     outDir: "public",
     emptyOutDir: false,
     rollupOptions: {
-      input: "src/client.ts",
+      input: {
+        client: "src/client.ts",
+      },
       output: {
-        entryFileNames: "assets/client.js",
+        entryFileNames: "assets/[name].js",
         assetFileNames: "assets/[name][extname]",
       },
     },

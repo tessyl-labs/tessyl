@@ -1,0 +1,36 @@
+use pkg::tessyl_native::all
+
+obj Model { amount: f64, percent: f64 }
+enum Msg
+  Amount { amount: f64 }
+  Percent { percent: f64 }
+
+pub fn app() -> Tessera<Model, Msg>
+  tessera({ init, step, view })
+
+fn init() -> Model
+  Model { amount: 48.0, percent: 20.0 }
+
+fn step(model: Model, msg: Msg) -> Update<Model, Msg>
+  match(msg)
+    Msg::Amount { amount }:
+      next(Model { amount: amount, percent: model.percent })
+    Msg::Percent { percent }:
+      next(Model { amount: model.amount, percent: percent })
+
+fn view(model: Model) -> View<Msg>
+  if model.amount >= 100.0:
+    return <Column>
+      <Heading level={2}>Tip calculator</Heading>
+      <Slider key="tip" label="Tip" unit="%" value={model.percent} min={0.0} max={40.0} on_change={(value) => Msg::Percent { percent: value }} />
+      <NumberField key="bill" label="Bill amount" unit="$" value={model.amount} min={0.0} on_change={(value) => Msg::Amount { amount: value }} />
+      <Metric label="Tip" value={model.amount * model.percent / 100.0} unit="$" precision={1} />
+      <Metric label="Total" value={model.amount * (1.0 + model.percent / 100.0)} unit="$" precision={1} />
+    </Column>
+  <Column>
+    <Heading level={2}>Tip calculator</Heading>
+    <NumberField key="bill" label="Bill amount" unit="$" value={model.amount} min={0.0} on_change={(value) => Msg::Amount { amount: value }} />
+    <Slider key="tip" label="Tip" unit="%" value={model.percent} min={0.0} max={40.0} on_change={(value) => Msg::Percent { percent: value }} />
+    <Metric label="Tip" value={model.amount * model.percent / 100.0} unit="$" precision={1} />
+    <Metric label="Total" value={model.amount * (1.0 + model.percent / 100.0)} unit="$" precision={1} />
+  </Column>

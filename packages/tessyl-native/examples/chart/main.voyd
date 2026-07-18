@@ -1,0 +1,40 @@
+use pkg::tessyl_native::all
+use std::optional::types::all
+
+obj Model { growth: f64 }
+enum Msg
+  Growth { value: f64 }
+
+pub fn app() -> Tessera<Model, Msg>
+  tessera({ init, step, view })
+
+fn init() -> Model
+  Model { growth: 1.2 }
+
+fn step(model: Model, msg: Msg) -> Update<Model, Msg>
+  match(msg)
+    Msg::Growth { value }:
+      next(Model { growth: value })
+
+fn view(model: Model) -> View<Msg>
+  <Column>
+    <Heading level={2}>Compounding growth</Heading>
+    <Slider label="Growth factor" value={model.growth} min={0.5} max={2.0} on_change={(value) => Msg::Growth { value: value }} />
+    <LineChart
+      title="Value over four periods"
+      description="The plotted value compounds by the selected factor in each period."
+      series={[Series { name: "Compounded", points: [
+        Point { x: 0.0, y: 1.0 },
+        Point { x: 1.0, y: model.growth },
+        Point { x: 2.0, y: model.growth * model.growth },
+        Point { x: 3.0, y: model.growth * model.growth * model.growth }
+      ] }, Series { name: "Baseline", points: [
+        Point { x: 0.0, y: 1.0 },
+        Point { x: 1.0, y: 1.0 },
+        Point { x: 2.0, y: 1.0 },
+        Point { x: 3.0, y: 1.0 }
+      ] }]}
+      x_axis={Axis { label: "Period", unit: None {}, min: None {}, max: None {} }}
+      y_axis={Axis { label: "Value", unit: None {}, min: None {}, max: None {} }}
+    />
+  </Column>

@@ -1,0 +1,6 @@
+{
+  "name": "tessyl_native",
+  "version": "1.0.0-local",
+  "private": true,
+  "files": ["src"]
+}

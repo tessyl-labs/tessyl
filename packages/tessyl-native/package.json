@@ -3,5 +3,48 @@
   "version": "0.0.0",
   "private": true,
   "description": "Internal Tessyl framework for compiling and running secure interactive article applications.",
-  "type": "module"
+  "type": "module",
+  "voyd": {
+    "packageDirectories": [
+      "./voyd"
+    ]
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "browser": "./dist/browser.js",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "voyd"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "dev": "node scripts/dev.mjs",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "playground": "vite --config playground/vite.config.mjs",
+    "playground:build": "npm run playground:typecheck && vite build --config playground/vite.config.mjs",
+    "playground:start": "vite preview --config playground/vite.config.mjs",
+    "playground:typecheck": "tsc --noEmit -p playground/tsconfig.json",
+    "test": "tsx --test src/**/*.test.ts",
+    "test:browser": "playwright test -c playwright.config.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json && npm run playground:typecheck"
+  },
+  "dependencies": {
+    "@tessyl/design-tokens": "*",
+    "@voyd-lang/js-host": "file:../../.voyd-source/packages/js-host",
+    "@voyd-lang/sdk": "file:../../.voyd-source/packages/sdk",
+    "@voyd-lang/vx-dom": "file:../../.voyd-source/packages/vx-dom"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@types/node": "^22.5.1",
+    "binaryen": "^125.0.0",
+    "tsx": "^4.20.4",
+    "typescript": "^5.8.3",
+    "vite": "^8.0.0"
+  }
 }
