@@ -1,0 +1,8 @@
+use src::external::IdGenerator
+use std::string::type::String
+
+pub fn id(): IdGenerator -> String
+  IdGenerator::id()
+
+pub fn word_id({ word_count: i32 = 4 }): IdGenerator -> String
+  IdGenerator::word_id(word_count)

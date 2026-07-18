@@ -1,0 +1,54 @@
+{
+  "name": "@tessyl/id",
+  "version": "0.0.0",
+  "private": true,
+  "description": "UUIDv7 and human-readable word ID generation for JavaScript and Voyd.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./adapter": {
+      "types": "./dist/host/adapter.d.ts",
+      "development": "./host/adapter.ts",
+      "import": "./dist/host/adapter.js",
+      "default": "./dist/host/adapter.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "generated",
+    "src/**/*.voyd"
+  ],
+  "voyd": {
+    "source": "./src/pkg.voyd",
+    "adapter": {
+      "abi": 1,
+      "interfaces": [
+        "tessyl:id/generator@1"
+      ],
+      "browser": "./adapter",
+      "node": "./adapter",
+      "default": "./adapter"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "generate": "node ../../.voyd-source/apps/cli/bin/voyd.js generate adapter ./src/external.voyd --out ./generated",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test src/index.test.ts host/adapter.test.ts test/voyd.integration.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@voyd-lang/package-adapter": "file:../../.voyd-source/packages/package-adapter"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.1",
+    "@voyd-lang/sdk": "file:../../.voyd-source/packages/sdk",
+    "tsx": "^4.20.4",
+    "typescript": "^5.8.3"
+  }
+}

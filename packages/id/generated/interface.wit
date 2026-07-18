@@ -1,0 +1,6 @@
+package tessyl:id@1.0.0;
+
+interface generator {
+  id: func() -> string;
+  word-id: func(arg0: s32) -> string;
+}

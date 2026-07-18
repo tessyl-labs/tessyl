@@ -1,0 +1,6 @@
+use std::string::type::String
+
+@external(id: "tessyl:id/generator@1")
+pub eff IdGenerator
+  id(tail) -> String
+  word_id(tail, word_count: i32) -> String
