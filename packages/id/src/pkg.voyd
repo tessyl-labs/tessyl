@@ -1,0 +1,5 @@
+//! UUIDv7 and human-readable word ID generation.
+
+pub self::api
+
+pub use self::api::{ id, word_id }

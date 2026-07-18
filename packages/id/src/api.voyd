@@ -1,0 +1,94 @@
+use std::array::Array
+use std::bytes::ByteBuffer
+use std::encoding::hex
+use std::error::panic
+use std::number::cast::{ to_i32_wrapping, to_i64 }
+use std::random::{ Random, fill_bytes as fill_random_bytes }
+use std::string::{ new_string }
+use std::string::type::String
+use std::time::{ SystemTime, Time }
+use src::words
+
+/// Generates an RFC 9562 UUIDv7 from cryptographic randomness and wall-clock time.
+pub fn id(): (Random, Time) -> String
+  id_at(SystemTime::now().unix_millis())
+
+fn id_at(timestamp: i64): Random -> String
+  let ~random_bytes = ByteBuffer::with_capacity(16)
+  fill_random_bytes(random_bytes, 16)
+  uuid_v7(timestamp, random_bytes.as_bytes().to_array())
+
+/// Generates dash-separated words from curated semantic categories.
+pub fn word_id({ word_count: i32 = 5 }): Random -> String
+  if word_count < 1:
+    panic("word_count must be at least 1")
+
+  let entropy_size = word_count * 2
+  let ~entropy = ByteBuffer::with_capacity(entropy_size)
+  fill_random_bytes(entropy, entropy_size)
+  word_id_from_entropy(entropy.as_bytes().to_array(), word_count)
+
+fn word_id_from_entropy(entropy: Array<i32>, word_count: i32) -> String
+  if word_count < 1:
+    panic("word_count must be at least 1")
+  if entropy.len() != word_count * 2:
+    panic("word_id requires exactly two random bytes per word")
+
+  let sets = word_sets()
+  let modifier_values = words::modifiers()
+  let ~result = Array<i32>::init()
+  var index = 0
+  while index < word_count:
+    if index > 0:
+      result.push(45)
+    let base_words = sets.at(index % sets.len())
+    let selection = entropy_index(entropy, index * 2, base_words.len() * modifier_values.len())
+    let modifier_index = selection / base_words.len()
+    if modifier_index > 0:
+      result.extend(modifier_values.at(modifier_index).to_utf8())
+      result.push(95)
+    result.extend(base_words.at(selection % base_words.len()).to_utf8())
+    index = index + 1
+  new_string(result.to_fixed_array())
+
+fn uuid_v7(timestamp: i64, random_bytes: Array<i32>) -> String
+  if timestamp < to_i64(0) or timestamp > 281474976710655i64:
+    panic("UUIDv7 timestamp must fit in 48 unsigned bits")
+  if random_bytes.len() != 16:
+    panic("UUIDv7 requires exactly 16 random bytes")
+
+  let ~bytes = random_bytes.copied()
+  var remaining = timestamp
+  var index = 5
+  while index >= 0:
+    let _ = bytes.replace(index, with: to_i32_wrapping(remaining % to_i64(256)))
+    remaining = remaining / to_i64(256)
+    index = index - 1
+
+  let _ = bytes.replace(6, with: bytes.at(6) % 16 + 112)
+  let _ = bytes.replace(8, with: bytes.at(8) % 64 + 128)
+
+  let ~buffer = ByteBuffer::with_capacity(16)
+  index = 0
+  while index < bytes.len():
+    buffer.push(bytes.at(index))
+    index = index + 1
+  format_uuid(hex::encode(buffer.as_bytes()))
+
+fn format_uuid(value: String) -> String
+  value.slice(bytes: 0, len: 8).to_string()
+    .concat("-")
+    .concat(value.slice(bytes: 8, len: 4).to_string())
+    .concat("-")
+    .concat(value.slice(bytes: 12, len: 4).to_string())
+    .concat("-")
+    .concat(value.slice(bytes: 16, len: 4).to_string())
+    .concat("-")
+    .concat(value.slice(bytes: 20, len: 12).to_string())
+
+fn entropy_index(entropy: Array<i32>, offset: i32, count: i32) -> i32
+  let value = to_i64(entropy.at(offset)) * 256i64 + to_i64(entropy.at(offset + 1))
+  to_i32_wrapping(value % to_i64(count))
+
+fn word_sets() -> Array<Array<String>>
+  words::base_sets()

@@ -1,0 +1,18 @@
+{
+  "name": "@tessyl/id",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pure Voyd UUIDv7 and human-readable word ID generation.",
+  "files": [
+    "src"
+  ],
+  "voyd": {
+    "source": "./src/pkg.voyd"
+  },
+  "scripts": {
+    "build": "node ../../.voyd-source/apps/cli/bin/voyd.js test ./src --reporter silent --fail-empty-tests && node ../../.voyd-source/apps/cli/bin/voyd.js test ./test --pkg-dir ../.. --reporter silent --fail-empty-tests",
+    "lint": "node ../../.voyd-source/apps/cli/bin/voyd.js test ./src --reporter silent --fail-empty-tests && node ../../.voyd-source/apps/cli/bin/voyd.js test ./test --pkg-dir ../.. --reporter silent --fail-empty-tests",
+    "test": "node ../../.voyd-source/apps/cli/bin/voyd.js test ./src --fail-empty-tests && node ../../.voyd-source/apps/cli/bin/voyd.js test ./test --pkg-dir ../.. --fail-empty-tests",
+    "typecheck": "node ../../.voyd-source/apps/cli/bin/voyd.js test ./src --reporter silent --fail-empty-tests && node ../../.voyd-source/apps/cli/bin/voyd.js test ./test --pkg-dir ../.. --reporter silent --fail-empty-tests"
+  }
+}

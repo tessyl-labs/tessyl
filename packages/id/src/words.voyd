@@ -1,0 +1,20 @@
+use std::array::Array
+use std::string::type::String
+
+/// Five semantic base sets. Modifiers expand each set to 512 readable entries.
+pub fn base_sets() -> Array<Array<String>>
+  [
+    ["amber", "azure", "cobalt", "coral", "crimson", "emerald", "indigo", "ivory", "jade", "lavender", "ochre", "rose", "saffron", "scarlet", "teal", "violet"],
+    ["acacia", "aspen", "bamboo", "birch", "cedar", "clover", "cypress", "fern", "iris", "juniper", "lotus", "maple", "meadow", "moss", "oak", "willow"],
+    ["arc", "aurora", "comet", "cosmos", "crescent", "eclipse", "galaxy", "halo", "helix", "lunar", "nebula", "nova", "orbit", "prism", "star", "zenith"],
+    ["anchor", "beacon", "bell", "bridge", "compass", "feather", "flute", "key", "lantern", "loom", "mirror", "quill", "ribbon", "shield", "wheel", "window"],
+    ["alpaca", "badger", "beaver", "bison", "crane", "dolphin", "fox", "heron", "koala", "otter", "panda", "raven", "tiger", "turtle", "wolf", "zebra"]
+  ]
+
+pub fn modifiers() -> Array<String>
+  [
+    "", "bright", "calm", "clear", "cool", "crisp", "deep", "fair",
+    "fresh", "gentle", "grand", "light", "mellow", "misty", "neat", "new",
+    "open", "pale", "quiet", "radiant", "round", "serene", "sharp", "soft",
+    "steady", "still", "sunny", "swift", "warm", "wide", "wild", "young"
+  ]
