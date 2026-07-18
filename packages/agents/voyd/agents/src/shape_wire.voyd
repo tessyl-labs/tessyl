@@ -1,0 +1,128 @@
+//! JSON transport for provider-neutral runtime `Shape` graphs.
+
+use std::array::Array
+use std::dict::Dict
+use std::json::{ JsonArray, JsonBool, JsonError, JsonObject, JsonString, JsonValue }
+use std::json::self as json
+use std::meta::{
+  ArrayShape,
+  BoolShape,
+  F32Shape,
+  F64Shape,
+  I32Shape,
+  I64Shape,
+  RecordShape,
+  RefShape,
+  Shape,
+  ShapeDefinition,
+  ShapeField,
+  ShapeNode,
+  ShapeVariant,
+  StringShape,
+  UnionShape,
+  UnitShape
+}
+use std::optional::types::all
+use std::result::types::all
+use std::string::type::String
+
+pub fn encode_shape(shape: Shape) -> String
+  let ~root = Dict<String, JsonValue>::init()
+  root.set("root", encode_shape_node(shape.root))
+  root.set("definitions", encode_shape_definitions(shape.definitions))
+  match(json::stringify(JsonObject { value: root }))
+    Ok<String> { value }: value
+    Err<JsonError>:
+      "{}".to_string()
+
+fn encode_shape_definitions(definitions: Array<ShapeDefinition>) -> JsonValue
+  let ~encoded = Array<JsonValue>::with_capacity(definitions.len())
+  var index = 0
+  while index < definitions.len():
+    let definition = definitions.at(index)
+    let ~fields = Dict<String, JsonValue>::init()
+    fields.set("key", json_string(definition.key))
+    fields.set("name", json_string(definition.name))
+    fields.set("shape", encode_shape_node(definition.shape))
+    set_optional_documentation(fields, definition.documentation)
+    encoded.push(JsonObject { value: fields })
+    index = index + 1
+  JsonArray { value: encoded }
+
+fn encode_shape_node(shape: ShapeNode): () -> JsonValue
+  shape.match(node)
+    BoolShape: tagged_shape("BoolShape")
+    I32Shape: tagged_shape("I32Shape")
+    I64Shape: tagged_shape("I64Shape")
+    F32Shape: tagged_shape("F32Shape")
+    F64Shape: tagged_shape("F64Shape")
+    StringShape: tagged_shape("StringShape")
+    UnitShape: tagged_shape("UnitShape")
+    ArrayShape:
+      let ~fields = tagged_shape_fields("ArrayShape")
+      fields.set("element", encode_shape_node(node.element))
+      JsonObject { value: fields }
+    RecordShape:
+      let ~fields = tagged_shape_fields("RecordShape")
+      fields.set("name", json_string(node.name))
+      fields.set("fields", encode_shape_fields(node.fields))
+      set_optional_documentation(fields, node.documentation)
+      JsonObject { value: fields }
+    UnionShape:
+      let ~fields = tagged_shape_fields("UnionShape")
+      fields.set("name", json_string(node.name))
+      fields.set("variants", encode_shape_variants(node.variants))
+      set_optional_documentation(fields, node.documentation)
+      JsonObject { value: fields }
+    RefShape:
+      let ~fields = tagged_shape_fields("RefShape")
+      fields.set("key", json_string(node.key))
+      JsonObject { value: fields }
+
+fn encode_shape_fields(shape_fields: Array<ShapeField>) -> JsonValue
+  let ~encoded = Array<JsonValue>::with_capacity(shape_fields.len())
+  var index = 0
+  while index < shape_fields.len():
+    let field = shape_fields.at(index)
+    let ~fields = Dict<String, JsonValue>::init()
+    fields.set("name", json_string(field.name))
+    fields.set("shape", encode_shape_node(field.shape))
+    fields.set("optional", JsonBool { value: field.optional })
+    set_optional_documentation(fields, field.documentation)
+    encoded.push(JsonObject { value: fields })
+    index = index + 1
+  JsonArray { value: encoded }
+
+fn encode_shape_variants(variants: Array<ShapeVariant>) -> JsonValue
+  let ~encoded = Array<JsonValue>::with_capacity(variants.len())
+  var index = 0
+  while index < variants.len():
+    let variant = variants.at(index)
+    let ~fields = Dict<String, JsonValue>::init()
+    fields.set("name", json_string(variant.name))
+    fields.set("fields", encode_shape_fields(variant.fields))
+    set_optional_documentation(fields, variant.documentation)
+    encoded.push(JsonObject { value: fields })
+    index = index + 1
+  JsonArray { value: encoded }
+
+fn tagged_shape(tag: String) -> JsonValue
+  JsonObject { value: tagged_shape_fields(tag) }
+
+fn tagged_shape_fields(tag: String) -> Dict<String, JsonValue>
+  let ~fields = Dict<String, JsonValue>::init()
+  fields.set("tag", json_string(tag))
+  fields
+
+fn set_optional_documentation(
+  ~fields: Dict<String, JsonValue>,
+  documentation: Option<String>
+) -> void
+  match(documentation)
+    Some<String> { value }:
+      fields.set("documentation", json_string(value))
+    None:
+      void
+
+fn json_string(value: String) -> JsonValue
+  JsonString { value }

@@ -1,0 +1,257 @@
+use std::array::Array
+use std::data::{ DecodeError, DecodeOptions, RejectUnknownFields }
+use std::optional::types::all
+use std::result::types::all
+use std::msgpack::MsgPack
+use std::msgpack::self as msgpack
+use std::meta::shape_of
+use std::test::assertions::all
+use super::tool::all
+
+obj I64Arguments { value: i64 }
+obj F32Arguments { value: f32 }
+
+fn usage(input: i32, output: i32) -> Usage
+  Usage {
+    input_tokens: input,
+    output_tokens: output,
+    total_tokens: input + output
+  }
+
+fn text_response(id: String, text: String, input_tokens: i32, output_tokens: i32) -> LlmResult
+  LlmResult::LlmSucceeded {
+    response: ModelResponse {
+      id: id,
+      continuation_token: id,
+      output: [ModelOutput::Text { text: text }],
+      usage: usage(input_tokens, output_tokens)
+    }
+  }
+
+fn tool_response(id: String, name: String, arguments: String) -> LlmResult
+  LlmResult::LlmSucceeded {
+    response: ModelResponse {
+      id: id,
+      continuation_token: id,
+      output: [ModelOutput::ToolCall {
+        call_id: "call-1",
+        name: name,
+        arguments: arguments
+      }],
+      usage: usage(3, 2)
+    }
+  }
+
+fn test_agent(tools: Array<ToolFactory>, max_turns: i32) -> Agent
+  agent(
+    name: "test",
+    instructions: "Be useful",
+    model: "test-model",
+    tools: tools,
+    max_turns: max_turns
+  )
+
+fn add_tool(_marker: ToolMarker) -> Tool
+  Tool {
+    name: "add",
+    description: "Add two values",
+    parameters_shape: "{}",
+    strict: true,
+    handler: (_arguments: String) => ToolInvocationResult { succeeded: true, value: "3" }
+  }
+
+fn looping_tool(_marker: ToolMarker) -> Tool
+  Tool {
+    name: "loop",
+    description: "Keep going",
+    parameters_shape: "{}",
+    strict: true,
+    handler: (_arguments: String) => ToolInvocationResult { succeeded: true, value: "again" }
+  }
+
+fn capture_delta(~deltas: Array<String>, event: StreamEvent) -> void
+  match(event)
+    StreamEvent::TextDelta { delta }:
+      deltas.push(delta)
+    StreamEvent::Started:
+      void
+
+fn run_text_case() -> RunResult
+  try open
+    run(test_agent(Array<ToolFactory>::init(), 2), input: [
+      InputItem::Message { role: Role::User {}, content: "hello" }
+    ])
+  Llm::respond(tail, payload):
+    let request = msgpack::unpack_boundary_value<ModelRequest>(payload)
+    assert(request.model.equals("test-model"), eq: true)
+    assert(request.instructions.equals("Be useful"), eq: true)
+    assert(request.input.len(), eq: 1)
+    assert(request.input_delta.len(), eq: 1)
+    tail(msgpack::pack_boundary_value<LlmResult>(text_response("response-1", "Hello!", 5, 2)))
+
+fn run_tool_case(calculator: ToolFactory) -> RunResult
+  try open
+    run(test_agent([calculator], 3), input: [
+      InputItem::Message { role: Role::User {}, content: "add" }
+    ])
+  Llm::respond(tail, payload):
+    let request = msgpack::unpack_boundary_value<ModelRequest>(payload)
+    match(request.continuation_token)
+      None:
+        assert(request.tools.len(), eq: 1)
+        tail(msgpack::pack_boundary_value<LlmResult>(tool_response("response-1", "add", "{\"a\":1,\"b\":2}")))
+      Some<String> { value }:
+        assert(value.equals("response-1"), eq: true)
+        assert(request.input.len(), eq: 3)
+        assert(request.input_delta.len(), eq: 1)
+        match(request.input.at(1))
+          InputItem::ToolCall { call_id, name, arguments }:
+            assert(call_id.equals("call-1"), eq: true)
+            assert(name.equals("add"), eq: true)
+            assert(arguments.equals("{\"a\":1,\"b\":2}"), eq: true)
+          else:
+            assert(false)
+        match(request.input.at(2))
+          InputItem::ToolOutput { call_id, output }:
+            assert(call_id.equals("call-1"), eq: true)
+            assert(output.equals("3"), eq: true)
+          else:
+            assert(false)
+        match(request.input_delta.at(0))
+          InputItem::ToolOutput { call_id, output }:
+            assert(call_id.equals("call-1"), eq: true)
+            assert(output.equals("3"), eq: true)
+          else:
+            assert(false)
+        tail(msgpack::pack_boundary_value<LlmResult>(text_response("response-2", "The answer is 3", 4, 4)))
+
+fn run_unknown_case() -> RunResult
+  try open
+    run(test_agent(Array<ToolFactory>::init(), 2), input: [
+      InputItem::Message { role: Role::User {}, content: "call it" }
+    ])
+  Llm::respond(tail, _payload):
+    tail(msgpack::pack_boundary_value<LlmResult>(tool_response("response-1", "missing", "{}")))
+
+fn run_limit_case(looping: ToolFactory) -> RunResult
+  try open
+    run(test_agent([looping], 1), input: [
+      InputItem::Message { role: Role::User {}, content: "loop" }
+    ])
+  Llm::respond(tail, _payload):
+    tail(msgpack::pack_boundary_value<LlmResult>(tool_response("response-1", "loop", "{}")))
+
+fn run_stream_case(~deltas: Array<String>) -> RunResult
+  try open
+    run_streamed(
+      test_agent(Array<ToolFactory>::init(), 2),
+      input: [InputItem::Message { role: Role::User {}, content: "hello" }],
+      on_event: (event: StreamEvent) -> void => capture_delta(deltas, event)
+    )
+  Llm::open_stream(tail, _payload):
+    tail(msgpack::pack_boundary_value<StreamResult>(StreamResult::StreamSucceeded {
+      step: StreamStep::Event {
+        cursor: "cursor-1",
+        event: StreamEvent::Started { response_id: "response-1" }
+      }
+    }))
+  Llm::next_stream(tail, payload):
+    let cursor = msgpack::unpack_boundary_value<String>(payload)
+    if cursor.equals("cursor-1"):
+      tail(msgpack::pack_boundary_value<StreamResult>(StreamResult::StreamSucceeded {
+        step: StreamStep::Event {
+          cursor: "cursor-2",
+          event: StreamEvent::TextDelta { delta: "Hel" }
+        }
+      }))
+    else:
+      tail(msgpack::pack_boundary_value<StreamResult>(StreamResult::StreamSucceeded {
+        step: StreamStep::Done {
+          response: ModelResponse {
+            id: "response-1",
+            continuation_token: "response-1",
+            output: [ModelOutput::Text { text: "Hello" }],
+            usage: usage(2, 1)
+          }
+        }
+      }))
+
+test "run returns a final response and usage":
+  let result = run_text_case()
+
+  match(result)
+    RunResult::Completed { output, turns, usage, history }:
+      assert(output.equals("Hello!"), eq: true)
+      assert(turns, eq: 1)
+      assert(usage.total_tokens, eq: 7)
+      assert(history.len(), eq: 2)
+    RunResult::Failed:
+      assert(false)
+
+test "run executes Voyd tools and preserves the provider-neutral transcript":
+  let result = run_tool_case(add_tool)
+
+  match(result)
+    RunResult::Completed { output, turns, usage, history }:
+      assert(output.equals("The answer is 3"), eq: true)
+      assert(turns, eq: 2)
+      assert(usage.total_tokens, eq: 13)
+      assert(history.len(), eq: 4)
+    RunResult::Failed:
+      assert(false)
+
+test "run reports unknown tools without another model turn":
+  let result = run_unknown_case()
+
+  match(result)
+    RunResult::Failed { error, turns }:
+      assert(turns, eq: 1)
+      match(error)
+        AgentError::UnknownTool { name }:
+          assert(name.equals("missing"), eq: true)
+        else:
+          assert(false)
+    RunResult::Completed:
+      assert(false)
+
+test "run enforces the turn limit":
+  let result = run_limit_case(looping_tool)
+
+  match(result)
+    RunResult::Failed { error, turns }:
+      assert(turns, eq: 1)
+      match(error)
+        AgentError::MaxTurns { max_turns }:
+          assert(max_turns, eq: 1)
+        else:
+          assert(false)
+    RunResult::Completed:
+      assert(false)
+
+test "run_streamed forwards deltas and returns the completed response":
+  let ~deltas = Array<String>::init()
+  let result = run_stream_case(deltas)
+
+  assert(deltas.len(), eq: 1)
+  assert(deltas.at(0).equals("Hel"), eq: true)
+  match(result)
+    RunResult::Completed { output }:
+      assert(output.equals("Hello"), eq: true)
+    RunResult::Failed:
+      assert(false)
+
+test "tool arguments reject integers that JSON cannot represent exactly":
+  let shape = shape_of<I64Arguments>()
+  let unsafe = __prepare_tool_arguments("{\"value\":9007199254740993}", shape)
+  assert(unsafe.error.byte_len() > 0, eq: true)
+
+  let safe = __prepare_tool_arguments("{\"value\":9007199254740991}", shape)
+  assert(safe.error.byte_len(), eq: 0)
+
+test "tool arguments reject numbers outside the finite f32 range":
+  let shape = shape_of<F32Arguments>()
+  let overflow = __prepare_tool_arguments("{\"value\":1e100}", shape)
+  assert(overflow.error.byte_len() > 0, eq: true)
+
+  let finite = __prepare_tool_arguments("{\"value\":3.4028234e38}", shape)
+  assert(finite.error.byte_len(), eq: 0)

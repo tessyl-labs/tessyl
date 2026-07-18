@@ -1,0 +1,66 @@
+use pkg::agents::{ Completed, Failed, Llm, ToolResult, agent, run, tool, tool_failed, tool_succeeded, user_message }
+use std::string::type::String
+
+@effect(id: "tessyl.agents.test.async-tool")
+eff AsyncTool
+  transform(resume, value: i32) -> i32
+
+@tool(name: "pure_tool", description: "Call an ordinary Voyd function")
+fn pure_tool(
+  /// The mode the tool should execute.
+  value: String,
+  /// Integer inputs used by the nested record calculation.
+  payload: { a: i32, b: i32 },
+  /// Increment added to the nested record calculation.
+  { bonus increment: i32 }
+) -> ToolResult
+  if value.equals("recurse"):
+    return pure_tool("pure", { a: 20, b: 22 }, bonus: 1)
+  if value.equals("pure") then:
+    if payload.a + payload.b + increment == 43 then:
+      return tool_succeeded("pure-result")
+  tool_failed("unexpected pure arguments")
+
+@tool(name: "async_tool", description: "Call a Voyd function that performs an async effect")
+fn async_tool(value: String): AsyncTool -> ToolResult
+  if value.equals("async") then:
+    if AsyncTool::transform(41) == 42 then:
+      tool_succeeded("async-result")
+    else:
+      tool_failed("unexpected async result")
+  else:
+    tool_failed("unexpected async arguments")
+
+pub fn answer(): (Llm, open) -> i32
+  let result = run(
+    agent(
+      name: "integration",
+      instructions: "Answer briefly",
+      model: "gpt-integration"
+    ),
+    input: [user_message("Hello from Voyd")]
+  )
+  match(result)
+    Completed { output }:
+      if output.equals("Hello back") then: 42 else: 0
+    Failed:
+      -1
+
+pub fn tool_answer(): (Llm, AsyncTool, open) -> i32
+  let result = run(
+    agent(
+      name: "tool-integration",
+      instructions: "Call both tools before answering.",
+      model: "gpt-integration",
+      tools: [
+        pure_tool,
+        async_tool
+      ]
+    ),
+    input: [user_message("Use both tools")]
+  )
+  match(result)
+    Completed { output }:
+      if output.equals("Tools complete") then: 84 else: 0
+    Failed:
+      -1
