@@ -10,8 +10,9 @@ A full-stack Turborepo application written in Voyd.
 
 ## Setup
 
-The `preinstall` hook automatically initializes the pinned Voyd submodule, so
-both `npm install` and `npm ci` work from a regular clone.
+The `preinstall` hook initializes the pinned Voyd submodule, installs its
+dependencies, and builds its packages. Both `npm install` and `npm ci` leave a
+regular clone ready to build or run without a separate Voyd setup step.
 
 ## Commands
 

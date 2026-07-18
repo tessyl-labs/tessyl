@@ -19,8 +19,6 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: npm ci && npx turbo run build
-        working-directory: .voyd-source
       - run: npm ci
       - run: npm run build --workspace=@tessyl/design-tokens
       - run: npm run typecheck --workspace=@tessyl/native
@@ -36,8 +34,6 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - run: npm ci && npx turbo run build
-        working-directory: .voyd-source
       - run: npm ci
       - run: npx playwright install --with-deps chromium firefox webkit
       - run: npm run test:browser --workspace=@tessyl/native
