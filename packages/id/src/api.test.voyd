@@ -12,19 +12,33 @@ test "UUIDv7 encodes timestamp, version, and variant":
     eq: "01234567-89ab-7000-8000-000000000000"
   )
 
-test "word dictionaries preserve default namespace capacity":
-  assert(modifiers().len(), eq: 33)
+test "word dictionaries contain five sets of 512 readable combinations":
   let sets = word_sets()
-  assert(sets.len(), eq: 4)
+  let modifier_values = words::modifiers()
+  assert(sets.len(), eq: 5)
   var index = 0
   while index < sets.len():
-    assert(sets.at(index).len(), eq: 48)
+    assert(sets.at(index).len() * modifier_values.len(), eq: 512)
     index = index + 1
 
 test "word IDs derive deterministically from cryptographic entropy":
-  let ~zeros = Array<i32>::with_capacity(32)
+  let ~zeros = Array<i32>::with_capacity(10)
   var index = 0
-  while index < 32:
+  while index < 10:
     zeros.push(0)
     index = index + 1
-  assert(word_id_from_entropy(zeros, 4), eq: "amber-acacia-arc-anchor")
+  assert(word_id_from_entropy(zeros, 5), eq: "amber-acacia-arc-anchor-alpaca")
+
+test "word modifiers are separated with underscores":
+  assert(
+    word_id_from_entropy([0, 16, 0, 16, 0, 16, 0, 16, 0, 16], 5),
+    eq: "bright_amber-bright_acacia-bright_arc-bright_anchor-bright_alpaca"
+  )
+
+test "word sets cycle for counts above five":
+  let ~zeros = Array<i32>::with_capacity(12)
+  var index = 0
+  while index < 12:
+    zeros.push(0)
+    index = index + 1
+  assert(word_id_from_entropy(zeros, 6), eq: "amber-acacia-arc-anchor-alpaca-amber")

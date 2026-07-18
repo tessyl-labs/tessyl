@@ -7,8 +7,9 @@ test "UUIDv7 runs through standard Random and Time effects":
   assert(value.slice(bytes: 14, len: 1).to_string(), eq: "7")
   assert("89ab".contains(value.slice(bytes: 19, len: 1)), eq: true)
 
-test "word IDs use curated categories and default to four words":
-  assert(word_id().split(on: 45).len(), eq: 4)
+test "word IDs use curated categories and default to five words":
+  assert(word_id().split(on: 45).len(), eq: 5)
   assert(word_id(word_count: 1).split(on: 45).len(), eq: 1)
   assert(word_id(word_count: 2).split(on: 45).len(), eq: 2)
-  assert(word_id(word_count: 3).split(on: 45).len(), eq: 3)
+  assert(word_id(word_count: 6).split(on: 45).len(), eq: 6)
+  assert(word_id(word_count: 10).split(on: 45).len(), eq: 10)
