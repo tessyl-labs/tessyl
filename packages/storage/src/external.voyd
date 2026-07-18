@@ -1,0 +1,58 @@
+use std::array::Array
+use std::msgpack::self as __std_msgpack
+use std::string::self as __std_string
+use std::string::type::String
+
+pub type StorageError = {
+  code: String,
+  message: String,
+  retryable: bool,
+  operation: String,
+  detailsJson: String
+}
+
+pub type StorageResponse = {
+  ok: bool,
+  valueJson: String,
+  error: StorageError
+}
+
+// Transactional structured-document persistence. Request and response documents
+// are bounded canonical JSON strings so recursive backend values never cross the ABI.
+@external(id: "tessyl:storage/document@1")
+pub eff Document
+  migrate_table(tail, namespace: String, definitionJson: String) -> StorageResponse
+  inspect_table(tail, namespace: String, table: String) -> StorageResponse
+  get(tail, namespace: String, table: String, key: String) -> StorageResponse
+  transact(tail, namespace: String, requestJson: String) -> StorageResponse
+  query_documents(tail, namespace: String, requestJson: String) -> StorageResponse
+  claim_outbox(tail, namespace: String, requestJson: String) -> StorageResponse
+  complete_outbox(tail, namespace: String, table: String, key: String, leaseToken: String) -> StorageResponse
+  retry_outbox(tail, namespace: String, table: String, key: String, leaseToken: String, availableAt: String, error: String) -> StorageResponse
+
+// Query-only full-text search authority.
+@external(id: "tessyl:storage/search@1")
+pub eff Search
+  search(tail, namespace: String, requestJson: String) -> StorageResponse
+
+// Search mutation and lifecycle authority. It is deliberately separate from Search.
+@external(id: "tessyl:storage/search-index@1")
+pub eff SearchIndex
+  create(tail, namespace: String, schemaJson: String) -> StorageResponse
+  inspect(tail, namespace: String, logicalName: String) -> StorageResponse
+  list_generations(tail, namespace: String, logicalName: String, limit: i32, cursor: String) -> StorageResponse
+  begin_rebuild(tail, namespace: String, schemaJson: String) -> StorageResponse
+  cutover(tail, namespace: String, logicalName: String, physicalName: String) -> StorageResponse
+  delete_generation(tail, namespace: String, physicalName: String) -> StorageResponse
+  upsert(tail, namespace: String, documentJson: String) -> StorageResponse
+  delete_document(tail, namespace: String, index: String, documentId: String, version: String) -> StorageResponse
+
+// Immutable object metadata and host-resolved transfer sessions.
+@external(id: "tessyl:storage/object@1")
+pub eff Object
+  initiate_upload(tail, namespace: String, requestJson: String) -> StorageResponse
+  complete_upload(tail, namespace: String, sessionId: String, partsJson: String) -> StorageResponse
+  stat(tail, namespace: String, key: String) -> StorageResponse
+  resolve_download(tail, namespace: String, key: String, expiresInSeconds: i32) -> StorageResponse
+  delete_object(tail, namespace: String, key: String, expectedVersion: String) -> StorageResponse
+  cleanup_abandoned(tail, namespace: String, before: String, limit: i32) -> StorageResponse

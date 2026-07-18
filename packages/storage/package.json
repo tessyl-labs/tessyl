@@ -1,0 +1,75 @@
+{
+  "name": "@tessyl/storage",
+  "version": "0.1.0",
+  "description": "Namespace-isolated document, search, and object storage contracts for Tessyl applications",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "development": "./src/index.ts",
+      "import": "./dist/src/index.js",
+      "default": "./dist/src/index.js"
+    },
+    "./adapter": {
+      "types": "./dist/host/adapter.d.ts",
+      "development": "./host/adapter.ts",
+      "import": "./dist/host/adapter.js",
+      "default": "./dist/host/adapter.js"
+    },
+    "./local": {
+      "types": "./dist/local/index.d.ts",
+      "development": "./local/index.ts",
+      "import": "./dist/local/index.js",
+      "default": "./dist/local/index.js"
+    },
+    "./hosted": {
+      "types": "./dist/hosted/index.d.ts",
+      "development": "./hosted/index.ts",
+      "import": "./dist/hosted/index.js",
+      "default": "./dist/hosted/index.js"
+    },
+    "./conformance": {
+      "types": "./dist/conformance/index.d.ts",
+      "development": "./conformance/index.ts",
+      "import": "./dist/conformance/index.js",
+      "default": "./dist/conformance/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "generated",
+    "src/*.voyd",
+    "README.md"
+  ],
+  "voyd": {
+    "source": "./src/pkg.voyd"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "generate": "voyd generate adapter ./src --out ./generated",
+    "lint": "tsc --noEmit -p tsconfig.json",
+    "test": "tsx --test tests/**/*.test.ts",
+    "test:hosted": "TESSYL_STORAGE_HOSTED_TEST=1 tsx --test tests/hosted.integration.test.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.850.0",
+    "@aws-sdk/s3-request-presigner": "^3.850.0",
+    "@opensearch-project/opensearch": "^3.5.1",
+    "@voyd-lang/package-adapter": "file:../../.voyd-source/packages/package-adapter",
+    "@voyd-lang/std": "file:../../.voyd-source/packages/std",
+    "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.14",
+    "@types/pg": "^8.15.4",
+    "@voyd-lang/cli": "file:../../.voyd-source/apps/cli",
+    "@voyd-lang/sdk": "file:../../.voyd-source/packages/sdk",
+    "tsx": "^4.20.4",
+    "typescript": "^5.8.3"
+  }
+}

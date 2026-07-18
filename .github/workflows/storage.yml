@@ -1,0 +1,82 @@
+name: Storage
+
+on:
+  pull_request:
+    paths:
+      - "packages/storage/**"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/storage.yml"
+
+jobs:
+  local:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck --workspace=@tessyl/storage
+      - run: npm test --workspace=@tessyl/storage
+      - run: npm run build --workspace=@tessyl/storage
+
+  hosted:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: tessyl_storage
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d tessyl_storage"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      opensearch:
+        image: opensearchproject/opensearch:2.17.1
+        env:
+          discovery.type: single-node
+          DISABLE_INSTALL_DEMO_CONFIG: "true"
+          DISABLE_SECURITY_PLUGIN: "true"
+          bootstrap.memory_lock: "true"
+          OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+        ports:
+          - 9200:9200
+        options: >-
+          --health-cmd "curl -fsS http://localhost:9200/_cluster/health"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Start disposable S3-compatible service
+        run: >-
+          docker run -d --name tessyl-minio
+          -p 9000:9000
+          -e MINIO_ROOT_USER=minioadmin
+          -e MINIO_ROOT_PASSWORD=minioadmin
+          minio/minio:RELEASE.2025-04-22T22-12-26Z
+          server /data --address :9000
+      - run: curl --retry 30 --retry-all-errors --retry-delay 2 -fsS http://127.0.0.1:9000/minio/health/ready
+      - run: npm run test:hosted --workspace=@tessyl/storage
+        env:
+          TESSYL_STORAGE_POSTGRES_URL: postgres://postgres:postgres@127.0.0.1:5432/tessyl_storage
+          TESSYL_STORAGE_OPENSEARCH_URL: http://127.0.0.1:9200
+          TESSYL_STORAGE_S3_ENDPOINT: http://127.0.0.1:9000
+          TESSYL_STORAGE_S3_BUCKET: tessyl-storage-test
+          TESSYL_STORAGE_S3_ACCESS_KEY: minioadmin
+          TESSYL_STORAGE_S3_SECRET_KEY: minioadmin

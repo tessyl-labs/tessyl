@@ -1,0 +1,11 @@
+//! Namespace-isolated storage contracts for Tessyl applications.
+
+pub self::external
+pub use self::external::{
+  Document,
+  Object,
+  Search,
+  SearchIndex,
+  StorageError,
+  StorageResponse
+}

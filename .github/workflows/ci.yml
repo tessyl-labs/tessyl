@@ -16,4 +16,4 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm run test:affected
+      - run: npm run test:affected -- --concurrency=2

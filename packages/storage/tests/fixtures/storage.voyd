@@ -1,0 +1,2 @@
+use std::string::type::String
+use pkg::storage::{ Document, Object, Search, SearchIndex }
