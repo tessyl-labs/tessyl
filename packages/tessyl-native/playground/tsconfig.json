@@ -6,6 +6,10 @@
     "types": ["node", "vite/client"],
     "skipLibCheck": true,
     "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@tessyl/native": ["../src/browser.ts"]
+    },
     "customConditions": ["browser", "development"],
     "isolatedModules": true,
     "moduleDetection": "force",
