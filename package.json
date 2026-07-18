@@ -12,7 +12,7 @@
   },
   "packageManager": "npm@11.16.0",
   "scripts": {
-    "preinstall": "git submodule update --init --recursive",
+    "preinstall": "node scripts/preinstall.mjs",
     "build": "turbo run build",
     "clean": "turbo run clean",
     "dev": "turbo run dev",
