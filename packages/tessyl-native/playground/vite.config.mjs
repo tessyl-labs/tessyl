@@ -2,11 +2,11 @@ import { defineConfig } from "vite";
 import { resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
-import { createTessylNative } from "@tessyl/native";
+import { createTessylNative, renderStaticArtifactHtml, staticFallbackStyles } from "@tessyl/native";
 
 const appRoot = resolve(fileURLToPath(new URL(".", import.meta.url)));
 const examplesRoot = resolve(appRoot, "../examples");
-const exampleNames = ["calculator", "chart", "simulation"];
+const exampleNames = ["calculator", "chart", "simulation", "orbital-simulation", "mathematical-diagram"];
 
 const serialize = (artifact) => JSON.stringify({
   ...artifact,
@@ -22,16 +22,19 @@ const examplesPlugin = () => {
     if (artifactsPromise) return artifactsPromise;
     artifactsPromise = (async () => {
       const native = createTessylNative();
-      const entries = await Promise.all(exampleNames.map(async (name) => {
+      const entries = [];
+      for (const name of exampleNames) {
         const root = resolve(examplesRoot, name);
-        const [source, authorManifest] = await Promise.all([
+        const [source, projectManifest] = await Promise.all([
           readFile(resolve(root, "main.voyd"), "utf8"),
           readFile(resolve(root, "tessera.json"), "utf8").then(JSON.parse),
         ]);
-        const result = await native.compile({ source: { entry: "main.voyd", files: { "main.voyd": source } }, authorManifest, profile: "standard-v1" });
+        const { entry, ...authorManifest } = projectManifest;
+        if (entry !== "main.voyd") throw new Error(`${name} Tessera declares an unsupported entry path`);
+        const result = await native.compile({ source: { entry, files: { [entry]: source } }, authorManifest, profile: "standard-v1" });
         if (!result.ok) throw new Error(`${name} Tessera failed to compile: ${result.diagnostics.map((item) => item.message).join("; ")}`);
-        return [name, serialize(result.artifact)];
-      }));
+        entries.push([name, result.artifact]);
+      }
       return new Map(entries);
     })();
     return artifactsPromise;
@@ -44,7 +47,16 @@ const examplesPlugin = () => {
     configResolved(config) { command = config.command; },
     async buildStart() {
       if (command !== "build") return;
-      for (const [name, source] of await compileExamples()) this.emitFile({ type: "asset", fileName: `assets/showcase/${name}.json`, source });
+      for (const [name, artifact] of await compileExamples()) this.emitFile({ type: "asset", fileName: `assets/showcase/${name}.json`, source: serialize(artifact) });
+    },
+    async transformIndexHtml(html) {
+      let transformed = html.replace("</head>", `<style data-tessyl-fallback-styles>${staticFallbackStyles}</style></head>`);
+      for (const [name, artifact] of await compileExamples()) {
+        const fallback = `<section class="fallback" role="region" aria-label="${escapeAttribute(artifact.metadata.accessibleName)}">${await renderStaticArtifactHtml(artifact)}</section>`;
+        const stage = new RegExp(`(<div class="tessera-stage"[^>]*data-tessera-id="${name}"[^>]*>)[\\s\\S]*?(</div>\\s*<p class="status-line")`);
+        transformed = transformed.replace(stage, `$1${fallback}$2`);
+      }
+      return transformed;
     },
     async configureServer(server) {
       server.watcher.add(examplesRoot);
@@ -58,7 +70,7 @@ const examplesPlugin = () => {
         response.statusCode = 200;
         response.setHeader("Content-Type", "application/json; charset=utf-8");
         response.setHeader("Cache-Control", "no-store");
-        response.end(source);
+        response.end(serialize(source));
       });
       server.watcher.on("change", (file) => {
         if (!owns(file)) return;
@@ -68,6 +80,8 @@ const examplesPlugin = () => {
     },
   };
 };
+
+const escapeAttribute = (value) => String(value).replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
 
 const port = Number.parseInt(process.env.TESSYL_PLAYGROUND_PORT ?? "3001", 10);
 

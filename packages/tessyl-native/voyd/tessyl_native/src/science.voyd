@@ -1,0 +1,200 @@
+//! Deterministic, pure numerical foundations for Tesserae.
+
+use std::array::Array
+use std::math::float::{ abs, cos, floor, is_finite, pow, sin, sqrt }
+use std::number::cast::to_f64
+
+pub val Vec2 { api x: f64, api y: f64 }
+pub val Matrix2 { api m11: f64, api m12: f64, api m21: f64, api m22: f64 }
+pub val Complex { api real: f64, api imaginary: f64 }
+pub val Dimension { api mass: i32, api length: i32, api time: i32, api current: i32, api temperature: i32 }
+pub val Quantity { api value: f64, mass: i32, length: i32, time: i32, current: i32, temperature: i32 }
+pub val ScalarState { api time: f64, api value: f64 }
+pub val RandomState { api seed: i64 }
+pub val RandomSample { api state: RandomState, api value: f64 }
+pub obj Body2 { api position: Vec2, api velocity: Vec2, api mass: f64 }
+
+impl Quantity
+  api fn dimension(self) -> Dimension
+    Dimension { mass: self.mass, length: self.length, time: self.time, current: self.current, temperature: self.temperature }
+
+pub fn quantity({ value: f64, dimension: Dimension }) -> Quantity
+  if not is_finite(value): panic("Quantities require finite values")
+  Quantity { value, mass: dimension.mass, length: dimension.length, time: dimension.time, current: dimension.current, temperature: dimension.temperature }
+
+pub fn speed_of_light() -> Quantity
+  quantity(value: 299792458.0, dimension: Dimension { mass: 0, length: 1, time: -1, current: 0, temperature: 0 })
+
+pub fn gravitational_constant() -> Quantity
+  quantity(value: 6.67430 / 100000000000.0, dimension: Dimension { mass: -1, length: 3, time: -2, current: 0, temperature: 0 })
+
+pub fn planck_constant() -> Quantity
+  quantity(value: 6.62607015 * pow(10.0, -34.0), dimension: Dimension { mass: 1, length: 2, time: -1, current: 0, temperature: 0 })
+
+pub fn vec2(x: f64, y: f64) -> Vec2
+  Vec2 { x, y }
+
+pub fn add(left: Vec2, right: Vec2) -> Vec2
+  Vec2 { x: left.x + right.x, y: left.y + right.y }
+
+pub fn subtract(left: Vec2, right: Vec2) -> Vec2
+  Vec2 { x: left.x - right.x, y: left.y - right.y }
+
+pub fn scale(vector: Vec2, factor: f64) -> Vec2
+  Vec2 { x: vector.x * factor, y: vector.y * factor }
+
+pub fn dot(left: Vec2, right: Vec2) -> f64
+  left.x * right.x + left.y * right.y
+
+pub fn magnitude(vector: Vec2) -> f64
+  sqrt(dot(vector, vector))
+
+pub fn normalize(vector: Vec2) -> Vec2
+  let length = magnitude(vector)
+  if length == 0.0 then: Vec2 { x: 0.0, y: 0.0 } else: scale(vector, 1.0 / length)
+
+pub fn rotate(vector: Vec2, radians: f64) -> Vec2
+  Vec2 { x: vector.x * cos(radians) - vector.y * sin(radians), y: vector.x * sin(radians) + vector.y * cos(radians) }
+
+pub fn transform(matrix: Matrix2, vector: Vec2) -> Vec2
+  Vec2 { x: matrix.m11 * vector.x + matrix.m12 * vector.y, y: matrix.m21 * vector.x + matrix.m22 * vector.y }
+
+pub fn matrix_multiply(left: Matrix2, right: Matrix2) -> Matrix2
+  Matrix2 {
+    m11: left.m11 * right.m11 + left.m12 * right.m21,
+    m12: left.m11 * right.m12 + left.m12 * right.m22,
+    m21: left.m21 * right.m11 + left.m22 * right.m21,
+    m22: left.m21 * right.m12 + left.m22 * right.m22
+  }
+
+pub fn distance(left: Vec2, right: Vec2) -> f64
+  magnitude(subtract(left, right))
+
+pub fn complex_add(left: Complex, right: Complex) -> Complex
+  Complex { real: left.real + right.real, imaginary: left.imaginary + right.imaginary }
+
+pub fn complex_multiply(left: Complex, right: Complex) -> Complex
+  Complex { real: left.real * right.real - left.imaginary * right.imaginary, imaginary: left.real * right.imaginary + left.imaginary * right.real }
+
+pub fn quantity_add(left: Quantity, right: Quantity) -> Quantity
+  if left.mass != right.mass or left.length != right.length or left.time != right.time or left.current != right.current or left.temperature != right.temperature:
+    panic("Cannot add quantities with different dimensions")
+  Quantity { value: left.value + right.value, mass: left.mass, length: left.length, time: left.time, current: left.current, temperature: left.temperature }
+
+pub fn quantity_multiply(left: Quantity, right: Quantity) -> Quantity
+  Quantity { value: left.value * right.value, mass: left.mass + right.mass, length: left.length + right.length, time: left.time + right.time, current: left.current + right.current, temperature: left.temperature + right.temperature }
+
+pub fn round_significant(value: f64, digits: i32) -> f64
+  if not is_finite(value) or digits < 1 or digits > 12: panic("Significant figures require a finite value and 1 through 12 digits")
+  if value == 0.0:
+    return 0.0
+  var magnitude = abs(value)
+  var scale_factor = 1.0
+  var exponent = 0
+  while magnitude >= 10.0 and exponent < 308:
+    magnitude = magnitude / 10.0
+    scale_factor = scale_factor * 10.0
+    exponent = exponent + 1
+  while magnitude < 1.0 and exponent > -308:
+    magnitude = magnitude * 10.0
+    scale_factor = scale_factor / 10.0
+    exponent = exponent - 1
+  let places = pow(10.0, to_f64(digits - 1))
+  floor(magnitude * places + 0.5) / places * scale_factor * (if value < 0.0 then: -1.0 else: 1.0)
+
+pub fn mean(values: Array<f64>) -> f64
+  if values.is_empty(): panic("mean requires at least one value")
+  var sum = 0.0
+  var index = 0
+  while index < values.len():
+    if not is_finite(values.at(index)): panic("Statistics require finite values")
+    sum = sum + values.at(index)
+    index = index + 1
+  sum / to_f64(values.len())
+
+pub fn variance(values: Array<f64>) -> f64
+  let average = mean(values)
+  var total = 0.0
+  var index = 0
+  while index < values.len():
+    let delta = values.at(index) - average
+    total = total + delta * delta
+    index = index + 1
+  total / to_f64(values.len())
+
+pub fn interpolate({ from: f64, to: f64, fraction: f64 }) -> f64
+  if not is_finite(fraction): panic("Interpolation fraction must be finite")
+  from + (to - from) * fraction
+
+pub fn integrate({ function: fn(f64) -> f64, from: f64, to: f64, steps: i32 }) -> f64
+  if steps < 1 or steps > 10000 or not is_finite(from) or not is_finite(to): panic("Integration requires finite bounds and 1 through 10000 steps")
+  let width = (to - from) / to_f64(steps)
+  let first = function(from)
+  let last = function(to)
+  if not is_finite(first) or not is_finite(last): panic("Integration function returned a non-finite value")
+  var total = 0.5 * (first + last)
+  var index = 1
+  while index < steps:
+    let sample = function(from + to_f64(index) * width)
+    if not is_finite(sample): panic("Integration function returned a non-finite value")
+    total = total + sample
+    index = index + 1
+  total * width
+
+pub fn root_bisection({ function: fn(f64) -> f64, lower: f64, upper: f64, tolerance: f64, iterations: i32 }) -> f64
+  if not is_finite(lower) or not is_finite(upper) or not is_finite(tolerance) or lower >= upper or tolerance <= 0.0 or iterations < 1 or iterations > 256: panic("Root finding bounds are invalid")
+  var left = lower
+  var right = upper
+  var left_value = function(left)
+  let right_value = function(right)
+  if not is_finite(left_value) or not is_finite(right_value): panic("Root function returned a non-finite value")
+  if left_value == 0.0:
+    return left
+  if right_value == 0.0:
+    return right
+  if (left_value < 0.0 and right_value < 0.0) or (left_value > 0.0 and right_value > 0.0): panic("Root finding interval must bracket a root")
+  var index = 0
+  while index < iterations and right - left > tolerance:
+    let middle = left / 2.0 + right / 2.0
+    let middle_value = function(middle)
+    if not is_finite(middle_value): panic("Root function returned a non-finite value")
+    if middle_value == 0.0:
+      return middle
+    if (left_value < 0.0 and middle_value > 0.0) or (left_value > 0.0 and middle_value < 0.0):
+      right = middle
+    else:
+      left = middle
+      left_value = middle_value
+    index = index + 1
+  left / 2.0 + right / 2.0
+
+pub fn rk4_step({ state: ScalarState, dt: f64, derivative: fn(ScalarState) -> f64 }) -> ScalarState
+  if not is_finite(state.time) or not is_finite(state.value) or not is_finite(dt) or dt <= 0.0: panic("ODE state and timestep must be finite, with a positive timestep")
+  let k1 = derivative(state)
+  if not is_finite(k1): panic("ODE derivative returned a non-finite value")
+  let k2 = derivative(ScalarState { time: state.time + dt / 2.0, value: state.value + dt * k1 / 2.0 })
+  if not is_finite(k2): panic("ODE derivative returned a non-finite value")
+  let k3 = derivative(ScalarState { time: state.time + dt / 2.0, value: state.value + dt * k2 / 2.0 })
+  if not is_finite(k3): panic("ODE derivative returned a non-finite value")
+  let k4 = derivative(ScalarState { time: state.time + dt, value: state.value + dt * k3 })
+  if not is_finite(k4): panic("ODE derivative returned a non-finite value")
+  ScalarState { time: state.time + dt, value: state.value + dt * (k1 + 2.0 * k2 + 2.0 * k3 + k4) / 6.0 }
+
+pub fn random(seed: i64) -> RandomState
+  let remainder = if seed <= 0i64 then: 1i64 else: seed % 2147483647i64
+  let normalized = if remainder == 0i64 then: 1i64 else: remainder
+  RandomState { seed: normalized }
+
+pub fn random_next(state: RandomState) -> RandomSample
+  let next = state.seed * 48271i64 % 2147483647i64
+  RandomSample { state: RandomState { seed: next }, value: to_f64(next) / 2147483647.0 }
+
+pub fn mechanics_step({ body: Body2, acceleration: Vec2, dt: f64 }) -> Body2
+  if not is_finite(body.position.x) or not is_finite(body.position.y) or not is_finite(body.velocity.x) or not is_finite(body.velocity.y) or not is_finite(body.mass) or not is_finite(acceleration.x) or not is_finite(acceleration.y) or not is_finite(dt) or body.mass <= 0.0 or dt <= 0.0: panic("Mechanics requires finite vectors, positive mass, and positive timestep")
+  let velocity = add(body.velocity, scale(acceleration, dt))
+  Body2 { position: add(body.position, scale(velocity, dt)), velocity, mass: body.mass }
+
+pub fn orbital_acceleration({ position: Vec2, central_mass: f64 }) -> Vec2
+  let radius = magnitude(position)
+  if not is_finite(position.x) or not is_finite(position.y) or not is_finite(radius) or not is_finite(central_mass) or radius <= 0.0 or central_mass <= 0.0: panic("Orbital helpers require finite position, positive radius, and positive mass")
+  scale(normalize(position), 0.0 - (6.67430 / 100000000000.0) * central_mass / (radius * radius))

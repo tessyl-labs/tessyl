@@ -1,20 +1,24 @@
 import { TessylNativeError } from "../errors.js";
 import { resourceProfile } from "../profiles.js";
 import { validateRuntimeResponse, type RuntimeRequest, type RuntimeResponse } from "../protocol/messages.js";
-import { validateBoundaryValue, validateFrame, validateRuntimeStep } from "../protocol/validate.js";
+import { isCanonicalArticleSlug, validateBoundaryValue, validateFrame, validateRuntimeStep } from "../protocol/validate.js";
 import { RENDERER_SRCDOC } from "../renderer/srcdoc.js";
+import { renderValidatedStaticArtifact, renderValidatedStaticArtifactHtml, renderStaticFallback, staticFallbackStyles } from "../fallback-renderer.js";
 import type { InitializeTesseraInput, NativeFrameV1, NativeNode, TesseraInstance, TesseraStatus, TessylNativeConfig } from "../types.js";
 import { assertOutstandingDelayCapacity } from "./command-limits.js";
 import { runtimeScheduler } from "./runtime-scheduler.js";
+import { createNativeShell, type NativeShell } from "./shell.js";
+import { projectStaticFallback } from "../build/fallback.js";
 
 type Pending = { generation: number; resolve(value: unknown): void; reject(error: unknown): void; timeout: ReturnType<typeof setTimeout> };
-type QueuedMessage = { message: unknown; releaseIds: number[]; handlerIds: number[]; coalesceKey?: string };
+type QueuedMessage = { message: unknown; releaseIds: number[]; handlerIds: number[]; coalesceKey?: string; purgeKey?: string; simulationAdvanceMs?: number };
 type RendererPending = { generation: number; resolve(): void; reject(error: unknown): void; timeout: ReturnType<typeof setTimeout> };
-type ActiveSubscription = { kind: "animation_frame" | "container_size"; mapHandlerIds: number[]; ownedHandlerIds: number[]; cancel(): void };
+type SubscriptionKind = "animation_frame" | "fixed_timestep" | "reduced_motion" | "container_size" | "native_input_number" | "native_input_string" | "native_input_boolean" | "native_dataset_text" | "native_shareable_state";
+type ActiveSubscription = { kind: SubscriptionKind; mapHandlerIds: number[]; ownedHandlerIds: number[]; cancel(): void };
 type FlatSubscription = Omit<ActiveSubscription, "cancel"> & { identity: string; key: string };
 
 export class BrowserTesseraInstance implements TesseraInstance {
-  #status: TesseraStatus = "initialized";
+  #status: TesseraStatus = "loading";
   #generation = 0;
   #requestId = 0;
   #rendererRequestId = 0;
@@ -38,6 +42,8 @@ export class BrowserTesseraInstance implements TesseraInstance {
   #commandTimers = new Map<ReturnType<typeof setTimeout>, number[]>();
   #commandHandlerRefs = new Map<number, number>();
   #subscriptions = new Map<string, ActiveSubscription>();
+  #inFlightHandlerIds = new Set<number>();
+  #deferredSubscriptionHandlerReleases = new Set<number>();
   #frameHandlerIds = new Set<number>();
   #transitionTimes: number[] = [];
   #runStartedAt = 0;
@@ -45,7 +51,16 @@ export class BrowserTesseraInstance implements TesseraInstance {
   readonly #id = `tessera-${crypto.randomUUID()}`;
   readonly #profile = resourceProfile("standard-v1");
   readonly #input: InitializeTesseraInput;
+  readonly #hostContainer: HTMLElement;
   readonly #config: TessylNativeConfig;
+  readonly #shell: NativeShell;
+  readonly #rendererAssets: Readonly<Record<string, string>>;
+  readonly #initialShareableState: string;
+  #shareableState: string;
+  #animationGenerationStartedAt = 0;
+  #fixedStepElapsed = new Map<string, number>();
+  #latestFrame?: NativeFrameV1;
+  #expandedView = false;
 
   readonly #onVisibilityChange = (): void => this.#recomputeActive();
   readonly #onPageHide = (): void => { this.#pageSuspended = true; this.#recomputeActive(); };
@@ -53,10 +68,39 @@ export class BrowserTesseraInstance implements TesseraInstance {
   readonly #onAbort = (): void => this.dispose();
 
   constructor(input: InitializeTesseraInput, config: TessylNativeConfig) {
-    this.#input = input;
+    this.#hostContainer = input.container;
     this.#config = config;
-    renderTrustedFrame(input.container, input.artifact.fallback.root);
-    input.container.dataset.tessylNativeStatus = "initialized";
+    this.#initialShareableState = boundedShareableState(input.shareableState ?? "");
+    this.#shareableState = this.#initialShareableState;
+    this.#rendererAssets = Object.fromEntries(input.artifact.resources.assets.flatMap((definition) => {
+      const bytes = input.assets?.[definition.id];
+      return bytes ? [[definition.id, dataUrl(bytes, definition.mediaType)]] : [];
+    }));
+    this.#shell = createNativeShell({
+      container: input.container,
+      metadata: input.artifact.metadata,
+      expanded: input.presentation?.expandedView === true,
+      onReset: () => { void this.reset().catch(() => undefined); },
+      onRestart: () => { void this.restart().catch(() => undefined); },
+      onExpandedChange: (expanded) => {
+        this.#expandedView = expanded;
+        if (this.#iframe) {
+          this.#iframe.style.height = expanded ? "min(82vh, 52rem)" : presentationHeight(input.presentation?.height);
+          this.#iframe.dataset.tessylExpandedView = String(expanded);
+        }
+        try { this.#config.runtime?.onExpandedViewChange?.(expanded); } catch { /* Shell adapters are observational. */ }
+      },
+      onExport: () => this.exportResult(),
+      onInspectSource: () => this.#inspectSource(),
+      onInspectProvenance: () => this.#inspectProvenance(),
+    });
+    this.#input = {
+      ...input,
+      container: this.#shell.content,
+      ...(input.datasets ? { datasets: cloneByteEntries(input.datasets) } : {}),
+      ...(input.assets ? { assets: cloneByteEntries(input.assets) } : {}),
+    };
+    renderStaticFallback(this.#input.container, input.artifact.fallback);
     input.signal?.addEventListener("abort", this.#onAbort, { once: true });
     document.addEventListener("visibilitychange", this.#onVisibilityChange);
     window.addEventListener("pagehide", this.#onPageHide);
@@ -70,14 +114,14 @@ export class BrowserTesseraInstance implements TesseraInstance {
         this.#nearViewport = entry.isIntersecting;
         this.#recomputeActive();
       }, { rootMargin: "320px" });
-      this.#intersection.observe(input.container);
+      this.#intersection.observe(this.#hostContainer);
     }
     this.#recomputeActive();
   }
 
   get status(): TesseraStatus { return this.#status; }
 
-  async initializeRenderer(): Promise<void> {
+  async initializeRenderer(publishStatus = true): Promise<void> {
     if (this.#status === "disposed") throw disposed();
     if (this.#iframe && this.#rendererPort) return;
     const iframe = document.createElement("iframe");
@@ -87,9 +131,7 @@ export class BrowserTesseraInstance implements TesseraInstance {
     iframe.srcdoc = RENDERER_SRCDOC;
     iframe.style.width = "100%";
     iframe.style.border = "0";
-    iframe.style.height = this.#input.presentation?.expandedView
-      ? "min(64vh, 34rem)"
-      : ({ compact: "18rem", standard: "28rem", tall: "40rem" } as const)[this.#input.presentation?.height ?? "standard"];
+    iframe.style.height = this.#input.presentation?.expandedView ? "min(82vh, 52rem)" : presentationHeight(this.#input.presentation?.height);
     iframe.dataset.tessylExpandedView = String(this.#input.presentation?.expandedView === true);
     iframe.hidden = true;
     const channel = new MessageChannel();
@@ -101,7 +143,7 @@ export class BrowserTesseraInstance implements TesseraInstance {
       const timeout = setTimeout(() => { this.#rendererReady = undefined; reject(this.#rendererFailure("Renderer initialization timed out", "timeout")); }, this.#profile.startupTimeoutMs);
       this.#rendererReady = { resolve, reject, timeout };
     });
-    iframe.addEventListener("load", () => iframe.contentWindow?.postMessage({ version: 1, kind: "tessyl_renderer_boot" }, "*", [channel.port2]), { once: true });
+    iframe.addEventListener("load", () => iframe.contentWindow?.postMessage({ version: 1, kind: "tessyl_renderer_boot", assets: this.#rendererAssets }, "*", [channel.port2]), { once: true });
     iframe.addEventListener("error", () => {
       const pending = this.#rendererReady;
       if (!pending) return;
@@ -109,6 +151,7 @@ export class BrowserTesseraInstance implements TesseraInstance {
     }, { once: true });
     this.#input.container.append(iframe);
     await ready;
+    if (publishStatus) this.#setStatus(this.#active ? "initialized" : "paused");
   }
 
   run(): Promise<void> {
@@ -120,10 +163,19 @@ export class BrowserTesseraInstance implements TesseraInstance {
       if (this.status === "disposed") throw disposed();
       this.#terminateGeneration();
       this.#disposeRenderer();
-      renderTrustedFrame(this.#input.container, this.#input.artifact.fallback.root);
+      this.#latestFrame = undefined;
+      this.#shareableState = this.#initialShareableState;
+      try { this.#config.runtime?.onShareableStateChange?.(this.#shareableState); } catch { /* Share adapters are observational. */ }
+      renderStaticFallback(this.#input.container, this.#input.artifact.fallback);
       this.#setStatus(this.#active ? "initialized" : "paused");
       if (this.#active) await this.#runLocked();
     });
+  }
+
+  async restart(): Promise<void> {
+    const started = performance.now();
+    await this.reset();
+    try { this.#config.telemetry?.record({ phase: "run", outcome: "success", durationMs: performance.now() - started, revision: this.#input.artifact.metadata.revision, restartCategory: "manual", capabilitySource: "host" }); } catch { /* Observability cannot control recovery. */ }
   }
 
   setActive(active: boolean): void {
@@ -132,8 +184,22 @@ export class BrowserTesseraInstance implements TesseraInstance {
     this.#recomputeActive();
   }
 
+  setExpandedView(expanded: boolean): void {
+    if (this.#status === "disposed") return;
+    this.#shell.setExpanded(expanded);
+  }
+
+  getShareableState(): string { return this.#shareableState; }
+
+  async exportResult(): Promise<Blob> {
+    const fallback = this.#latestFrame ? projectStaticFallback(this.#latestFrame, this.#profile) : this.#input.artifact.fallback;
+    const html = `<!doctype html><meta charset="utf-8"><style>${staticFallbackStyles}</style>${renderValidatedStaticArtifactHtml(this.#input.artifact, fallback)}`;
+    return new Blob([html], { type: "text/html" });
+  }
+
   dispose(): void {
     if (this.#status === "disposed") return;
+    const fallback = this.#latestFrame ? projectStaticFallback(this.#latestFrame, this.#profile) : this.#input.artifact.fallback;
     this.#setStatus("disposed");
     this.#requestedActive = false;
     this.#active = false;
@@ -146,7 +212,13 @@ export class BrowserTesseraInstance implements TesseraInstance {
     document.removeEventListener("resume", this.#onPageShow);
     this.#terminateGeneration();
     this.#disposeRenderer();
-    renderTrustedFrame(this.#input.container, this.#input.artifact.fallback.root);
+    this.#latestFrame = undefined;
+    if (this.#expandedView) {
+      this.#expandedView = false;
+      try { this.#config.runtime?.onExpandedViewChange?.(false); } catch { /* Shell adapters are observational. */ }
+    }
+    this.#shell.dispose();
+    renderValidatedStaticArtifact(this.#hostContainer, this.#input.artifact, fallback);
     runtimeScheduler.cancel(this);
     this.#queue = [];
   }
@@ -159,12 +231,13 @@ export class BrowserTesseraInstance implements TesseraInstance {
 
   async #runLocked(): Promise<void> {
     if (this.#status === "disposed") throw disposed();
+    delete this.#hostContainer.dataset.tessylNativeFailureCode;
     if (this.#status === "running") return;
     if (!this.#active) { this.#setStatus("paused"); return; }
     this.#setStatus("starting");
     this.#runStartedAt = performance.now();
     try {
-      if (!this.#iframe) await this.initializeRenderer();
+      if (!this.#iframe) await this.initializeRenderer(false);
       await this.#startGeneration();
       if (!this.#active) { this.#terminateGeneration(); this.#setStatus("paused"); return; }
       this.#setStatus("running");
@@ -183,6 +256,8 @@ export class BrowserTesseraInstance implements TesseraInstance {
     const release = await runtimeScheduler.acquire(this);
     if (this.#status === "disposed" || !this.#active || generation !== this.#generation) { release(); throw disposed("Runtime start was cancelled"); }
     this.#releaseWorkerSlot = release;
+    this.#animationGenerationStartedAt = performance.now();
+    this.#fixedStepElapsed.clear();
     this.#requestId = 0;
     const worker = new Worker(new URL("../worker/entry.js", import.meta.url), { type: "module", name: this.#id });
     const channel = new MessageChannel();
@@ -289,7 +364,7 @@ export class BrowserTesseraInstance implements TesseraInstance {
       }
       if (record.kind === "article_link") {
         if (this.#status !== "running") return;
-        if (Object.keys(record).some((key) => !["version", "kind", "slug"].includes(key)) || typeof record.slug !== "string" || !/^[a-z0-9][a-z0-9_-]{0,79}$/.test(record.slug)) throw this.#protocolFailure("Invalid article link activation");
+        if (Object.keys(record).some((key) => !["version", "kind", "slug"].includes(key)) || typeof record.slug !== "string" || !isCanonicalArticleSlug(record.slug)) throw this.#protocolFailure("Invalid article link activation");
         try { this.#config.runtime?.onArticleLink(record.slug); } catch { /* Host navigation adapters cannot corrupt a runtime. */ }
         return;
       }
@@ -297,17 +372,32 @@ export class BrowserTesseraInstance implements TesseraInstance {
     } catch (error) { this.#fail(error); }
   }
 
-  #enqueue(message: unknown, releaseIds: number[] = [], coalesceKey?: string, handlerIds: number[] = []): boolean {
+  #enqueue(message: unknown, releaseIds: number[] = [], coalesceKey?: string, handlerIds: number[] = [], purgeKey?: string, simulationAdvanceMs?: number): boolean {
     try { validateBoundaryValue(message, this.#profile.maxBoundaryBytes, "event", this.#profile); }
     catch (error) { this.#fail(error); return false; }
     if (coalesceKey) {
-      const existing = this.#queue.at(-1)?.coalesceKey === coalesceKey ? this.#queue.at(-1) : undefined;
-      if (existing) { existing.message = message; existing.releaseIds.push(...releaseIds); existing.handlerIds = [...new Set([...existing.handlerIds, ...handlerIds])]; return true; }
+      const existingIndex = this.#queue.findIndex((queued) => queued.coalesceKey === coalesceKey);
+      if (existingIndex >= 0) {
+        const existing = this.#queue.splice(existingIndex, 1)[0]!;
+        existing.message = message; existing.releaseIds.push(...releaseIds); existing.handlerIds = [...new Set([...existing.handlerIds, ...handlerIds])];
+        this.#queue.push(existing);
+        return true;
+      }
     }
     if (this.#queue.length >= this.#profile.maxQueue) { this.#fail(new TessylNativeError({ code: "resource_limit", phase: "run", message: "Event queue limit exceeded", recoverable: true })); return false; }
-    this.#queue.push({ message, releaseIds, handlerIds, ...(coalesceKey ? { coalesceKey } : {}) });
+    this.#queue.push({ message, releaseIds, handlerIds, ...(coalesceKey ? { coalesceKey } : {}), ...(purgeKey ? { purgeKey } : {}), ...(simulationAdvanceMs ? { simulationAdvanceMs } : {}) });
     void this.#drain();
     return true;
+  }
+
+  #purgeQueuedSimulation(purgeKey: string): number {
+    let discardedAdvance = 0;
+    this.#queue = this.#queue.filter((queued) => {
+      if (queued.purgeKey !== purgeKey) return true;
+      discardedAdvance += queued.simulationAdvanceMs ?? 0;
+      return false;
+    });
+    return discardedAdvance;
   }
 
   async #drain(): Promise<void> {
@@ -318,17 +408,22 @@ export class BrowserTesseraInstance implements TesseraInstance {
     try {
       while (this.#queue.length && this.#active && generation === this.#generation) {
         const queued = this.#queue.shift()!;
+        this.#inFlightHandlerIds = new Set(queued.handlerIds);
         const step = validateRuntimeStep(await this.#request("dispatch", queued.message), this.#profile);
         this.#assertGeneration(generation);
         await this.#acceptStep(step);
         this.#assertGeneration(generation);
         await this.#finishCommandHandlers(queued.releaseIds);
         this.#assertGeneration(generation);
+        this.#inFlightHandlerIds.clear();
+        await this.#flushDeferredSubscriptionHandlerReleases();
+        this.#assertGeneration(generation);
         batch += 1;
         if (batch >= 8) { batch = 0; await new Promise<void>((resolve) => setTimeout(resolve, 0)); }
       }
     } catch (error) { if (generation === this.#generation) this.#fail(error); }
     finally {
+      this.#inFlightHandlerIds.clear();
       if (this.#drainGeneration === generation) {
         this.#drainGeneration = undefined;
         if (this.#queue.length && this.#active) void this.#drain();
@@ -344,6 +439,8 @@ export class BrowserTesseraInstance implements TesseraInstance {
   }
 
   async #renderFrame(frame: NativeFrameV1): Promise<void> {
+    assertFrameAssets(frame, new Map(this.#input.artifact.resources.assets.map((definition) => [definition.id, definition.accessibleName])));
+    this.#latestFrame = structuredClone(frame);
     const handlerIds = collectFrameHandlerIds(frame);
     const requestId = ++this.#rendererRequestId;
     const rendered = new Promise<void>((resolve, reject) => {
@@ -369,7 +466,7 @@ export class BrowserTesseraInstance implements TesseraInstance {
   }
 
   async #runCommand(raw: unknown): Promise<void> {
-    type Effect = { kind: "message"; value: unknown; mapHandlerIds: number[]; ownedHandlerIds: number[] } | { kind: "delay"; value: unknown; ms: number; mapHandlerIds: number[]; ownedHandlerIds: number[] } | { kind: "none"; ownedHandlerIds: number[] };
+    type Effect = { kind: "message"; value: unknown; mapHandlerIds: number[]; ownedHandlerIds: number[] } | { kind: "delay"; value: unknown; ms: number; mapHandlerIds: number[]; ownedHandlerIds: number[] } | { kind: "share"; value: string; ownedHandlerIds: number[] } | { kind: "none"; ownedHandlerIds: number[] };
     const effects: Effect[] = [];
     const visit = (value: unknown, mapHandlerIds: number[] = [], ownedHandlerIds: number[] = []): void => {
       const command = value as Record<string, unknown>;
@@ -381,6 +478,7 @@ export class BrowserTesseraInstance implements TesseraInstance {
       }
       if (command.kind === "message") effects.push({ kind: "message", value: command.value, mapHandlerIds, ownedHandlerIds });
       else if (command.kind === "delay") effects.push({ kind: "delay", value: command.value, ms: Number(command.ms), mapHandlerIds, ownedHandlerIds });
+      else if (command.kind === "native_share_state") effects.push({ kind: "share", value: String(command.value), ownedHandlerIds });
       else effects.push({ kind: "none", ownedHandlerIds });
     };
     visit(raw);
@@ -389,7 +487,7 @@ export class BrowserTesseraInstance implements TesseraInstance {
     assertOutstandingDelayCapacity(this.#commandTimers.size, delayCount, this.#profile);
     const mappedMessages = new Map<Effect, unknown>();
     for (const effect of effects) {
-      if (effect.kind === "none") continue;
+      if (effect.kind === "none" || effect.kind === "share") continue;
       const message = mapRuntimeMessage({ kind: "msgpack", value: effect.value }, effect.mapHandlerIds);
       validateBoundaryValue(message, this.#profile.maxBoundaryBytes, "command message", this.#profile);
       mappedMessages.set(effect, message);
@@ -402,6 +500,12 @@ export class BrowserTesseraInstance implements TesseraInstance {
     for (const effect of effects) {
       if (generation !== this.#generation || this.#status === "failed" || this.#status === "disposed") return;
       if (effect.kind === "none") { await this.#finishCommandHandlers(effect.ownedHandlerIds); continue; }
+      if (effect.kind === "share") {
+        this.#shareableState = boundedShareableState(effect.value);
+        try { this.#config.runtime?.onShareableStateChange?.(this.#shareableState); } catch { /* Share adapters are observational. */ }
+        await this.#finishCommandHandlers(effect.ownedHandlerIds);
+        continue;
+      }
       const message = mappedMessages.get(effect);
       if (effect.kind === "message") {
         if (!this.#enqueue(message, effect.ownedHandlerIds)) return;
@@ -432,7 +536,7 @@ export class BrowserTesseraInstance implements TesseraInstance {
     const release: number[] = [];
     for (const [identity, current] of this.#subscriptions) {
       if (nextIds.has(identity)) continue;
-      current.cancel(); this.#subscriptions.delete(identity); release.push(...current.ownedHandlerIds);
+      current.cancel(); this.#purgeQueuedSimulation(`subscription:${identity}`); this.#subscriptions.delete(identity); release.push(...current.ownedHandlerIds);
     }
     for (const item of next) {
       const current = this.#subscriptions.get(item.identity);
@@ -446,27 +550,153 @@ export class BrowserTesseraInstance implements TesseraInstance {
       if (item.kind === "animation_frame") {
         let previous = performance.now();
         let animation: number | undefined;
+        const media = matchMedia("(prefers-reduced-motion: reduce)");
+        let reduced: boolean | undefined;
         const tick = (now: number): void => {
           if (!this.#active || this.#status === "failed" || this.#status === "disposed") return;
-          const base = { kind: "subscription", subscriptionKind: "animation_frame", key: item.key, payload: { elapsed_ms: now, delta_ms: Math.min(Math.max(now - previous, 0), 100) } };
-          previous = now; animation = requestAnimationFrame(tick); this.#enqueue(mapRuntimeMessage(base, record.mapHandlerIds), [], `subscription:${item.identity}`);
+          if (now - previous + 0.1 < 1_000 / this.#profile.maxAnimationUpdatesPerSecond) { animation = requestAnimationFrame(tick); return; }
+          const delta = Math.min(Math.max(now - previous, 0), 100);
+          const elapsed = Math.max(0, now - this.#animationGenerationStartedAt);
+          const base = { kind: "subscription", subscriptionKind: "animation_frame", key: item.key, payload: { elapsed_ms: elapsed, delta_ms: delta, reduced_motion: false } };
+          previous = now; animation = requestAnimationFrame(tick); this.#enqueue(mapRuntimeMessage(base, record.mapHandlerIds), [], `subscription:${item.identity}`, record.mapHandlerIds, `subscription:${item.identity}`);
         };
-        if (!matchMedia("(prefers-reduced-motion: reduce)").matches) animation = requestAnimationFrame(tick);
-        record.cancel = () => { if (animation !== undefined) cancelAnimationFrame(animation); };
-      } else {
+        const updateMotion = (): void => {
+          const nextReduced = media.matches;
+          if (nextReduced === reduced) return;
+          reduced = nextReduced;
+          if (nextReduced) {
+            if (animation !== undefined) cancelAnimationFrame(animation);
+            animation = undefined;
+            const elapsed = Math.max(0, performance.now() - this.#animationGenerationStartedAt);
+            const base = { kind: "subscription", subscriptionKind: "animation_frame", key: item.key, payload: { elapsed_ms: elapsed, delta_ms: 0, reduced_motion: true } };
+            this.#enqueue(mapRuntimeMessage(base, record.mapHandlerIds), [], `subscription:${item.identity}`, record.mapHandlerIds, `subscription:${item.identity}`);
+          } else if (animation === undefined) {
+            previous = performance.now();
+            animation = requestAnimationFrame(tick);
+          }
+        };
+        media.addEventListener("change", updateMotion);
+        const motionPoll = setInterval(updateMotion, 100);
+        updateMotion();
+        record.cancel = () => { media.removeEventListener("change", updateMotion); clearInterval(motionPoll); if (animation !== undefined) cancelAnimationFrame(animation); };
+      } else if (item.kind === "fixed_timestep") {
+        const hz = Number(item.key);
+        if (!Number.isInteger(hz) || hz < 1 || hz > this.#profile.maxAnimationUpdatesPerSecond) throw new TessylNativeError({ code: "protocol_violation", phase: "run", message: "Fixed timestep frequency is invalid", recoverable: true });
+        const stepMs = 1_000 / hz;
+        const media = matchMedia("(prefers-reduced-motion: reduce)");
+        let previous = performance.now();
+        let accumulator = 0;
+        let simulatedElapsed = this.#fixedStepElapsed.get(item.identity) ?? 0;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        let reduced: boolean | undefined;
+        const purgeKey = `subscription:${item.identity}`;
+        const schedule = (): void => { timer = setTimeout(tick, stepMs); };
+        const tick = (): void => {
+          timer = undefined;
+          if (!this.#active || this.#status === "failed" || this.#status === "disposed") return;
+          const now = performance.now();
+          if (this.#queue.some((queued) => queued.purgeKey === purgeKey)) {
+            previous = now; accumulator = 0; schedule(); return;
+          }
+          accumulator += Math.min(Math.max(now - previous, 0), 100);
+          previous = now;
+          const availableSteps = Math.floor(accumulator / stepMs);
+          const steps = Math.min(availableSteps, this.#profile.maxSimulationStepsPerFrame);
+          accumulator = availableSteps > this.#profile.maxSimulationStepsPerFrame ? accumulator % stepMs : accumulator - steps * stepMs;
+          simulatedElapsed += steps * stepMs;
+          this.#fixedStepElapsed.set(item.identity, simulatedElapsed);
+          const base = { kind: "subscription", subscriptionKind: "fixed_timestep", key: item.key, payload: { elapsed_ms: simulatedElapsed, step_ms: stepMs, steps, alpha: accumulator / stepMs, reduced_motion: false } };
+          schedule();
+          this.#enqueue(mapRuntimeMessage(base, record.mapHandlerIds), [], undefined, record.mapHandlerIds, purgeKey, steps * stepMs);
+        };
+        const updateMotion = (): void => {
+          const nextReduced = media.matches;
+          if (nextReduced === reduced) return;
+          reduced = nextReduced;
+          if (nextReduced) {
+            if (timer !== undefined) clearTimeout(timer);
+            timer = undefined; previous = performance.now(); accumulator = 0;
+            simulatedElapsed = Math.max(0, simulatedElapsed - this.#purgeQueuedSimulation(purgeKey));
+            this.#fixedStepElapsed.set(item.identity, simulatedElapsed);
+            const base = { kind: "subscription", subscriptionKind: "fixed_timestep", key: item.key, payload: { elapsed_ms: simulatedElapsed, step_ms: stepMs, steps: 0, alpha: 0, reduced_motion: true } };
+            this.#enqueue(mapRuntimeMessage(base, record.mapHandlerIds), [], undefined, record.mapHandlerIds, purgeKey);
+          } else if (timer === undefined) {
+            previous = performance.now();
+            schedule();
+          }
+        };
+        media.addEventListener("change", updateMotion);
+        const motionPoll = setInterval(updateMotion, 100);
+        updateMotion();
+        record.cancel = () => {
+          media.removeEventListener("change", updateMotion); clearInterval(motionPoll); if (timer !== undefined) clearTimeout(timer);
+          simulatedElapsed = Math.max(0, simulatedElapsed - this.#purgeQueuedSimulation(purgeKey));
+          this.#fixedStepElapsed.set(item.identity, simulatedElapsed);
+        };
+      } else if (item.kind === "reduced_motion") {
+        const media = matchMedia("(prefers-reduced-motion: reduce)");
+        let reduced: boolean | undefined;
+        const emit = (): void => {
+          if (media.matches === reduced) return;
+          reduced = media.matches;
+          const base = { kind: "subscription", subscriptionKind: "reduced_motion", key: item.key, payload: media.matches };
+          this.#enqueue(mapRuntimeMessage(base, record.mapHandlerIds), [], `subscription:${item.identity}`, record.mapHandlerIds, `subscription:${item.identity}`);
+        };
+        media.addEventListener("change", emit);
+        const motionPoll = setInterval(emit, 100);
+        emit();
+        record.cancel = () => { media.removeEventListener("change", emit); clearInterval(motionPoll); };
+      } else if (item.kind === "container_size") {
         const observer = new ResizeObserver((entries) => {
           const box = entries[0]?.contentRect;
           if (!box || !this.#active) return;
           const base = { kind: "subscription", subscriptionKind: "container_size", key: item.key, payload: { width: box.width, height: box.height } };
-          this.#enqueue(mapRuntimeMessage(base, record.mapHandlerIds), [], `subscription:${item.identity}`);
+          this.#enqueue(mapRuntimeMessage(base, record.mapHandlerIds), [], `subscription:${item.identity}`, record.mapHandlerIds, `subscription:${item.identity}`);
         });
         observer.observe(this.#input.container);
         record.cancel = () => observer.disconnect();
+      } else if (item.kind.startsWith("native_input_")) {
+        const definition = this.#input.artifact.resources.inputs.find((candidate) => candidate.name === item.key);
+        const expectedType = item.kind.slice("native_input_".length);
+        if (!definition || definition.type !== expectedType) throw new TessylNativeError({ code: "protocol_violation", phase: "run", message: `Input subscription is not declared: ${item.key.slice(0, 64)}`, recoverable: true });
+        const value = this.#input.inputs?.[item.key] ?? definition.default;
+        if (value !== undefined) {
+          const base = { kind: "subscription", subscriptionKind: item.kind, key: item.key, payload: value };
+          this.#enqueue(mapRuntimeMessage(base, record.mapHandlerIds), [], `subscription:${item.identity}`, record.mapHandlerIds, `subscription:${item.identity}`);
+        }
+      } else if (item.kind === "native_dataset_text") {
+        const definition = this.#input.artifact.resources.datasets.find((candidate) => candidate.id === item.key);
+        const bytes = this.#input.datasets?.[item.key];
+        if (!definition || !bytes) throw new TessylNativeError({ code: "protocol_violation", phase: "run", message: `Dataset subscription is not declared or supplied: ${item.key.slice(0, 64)}`, recoverable: true });
+        const payload = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+        const base = { kind: "subscription", subscriptionKind: item.kind, key: item.key, payload };
+        this.#enqueue(mapRuntimeMessage(base, record.mapHandlerIds), [], `subscription:${item.identity}`, record.mapHandlerIds, `subscription:${item.identity}`);
+      } else {
+        const base = { kind: "subscription", subscriptionKind: "native_shareable_state", key: item.key, payload: this.#initialShareableState };
+        this.#enqueue(mapRuntimeMessage(base, record.mapHandlerIds), [], `subscription:${item.identity}`, record.mapHandlerIds, `subscription:${item.identity}`);
       }
       this.#subscriptions.set(item.identity, record);
     }
     const stillOwned = new Set([...this.#subscriptions.values()].flatMap((subscription) => subscription.ownedHandlerIds));
-    await this.#releaseHandlers(release.filter((id) => !stillOwned.has(id)));
+    const queued = new Set(this.#queue.flatMap((item) => item.handlerIds));
+    const immediate: number[] = [];
+    for (const id of release.filter((candidate) => !stillOwned.has(candidate))) {
+      if (queued.has(id) || this.#inFlightHandlerIds.has(id)) this.#deferredSubscriptionHandlerReleases.add(id);
+      else immediate.push(id);
+    }
+    await this.#releaseHandlers(immediate);
+  }
+
+  async #flushDeferredSubscriptionHandlerReleases(): Promise<void> {
+    if (!this.#deferredSubscriptionHandlerReleases.size) return;
+    const protectedIds = new Set([
+      ...this.#inFlightHandlerIds,
+      ...this.#queue.flatMap((item) => item.handlerIds),
+      ...[...this.#subscriptions.values()].flatMap((subscription) => [...subscription.mapHandlerIds, ...subscription.ownedHandlerIds]),
+    ]);
+    const releasable = [...this.#deferredSubscriptionHandlerReleases].filter((id) => !protectedIds.has(id));
+    for (const id of releasable) this.#deferredSubscriptionHandlerReleases.delete(id);
+    await this.#releaseHandlers(releasable);
   }
 
   #clearRuntimeEffects(): void {
@@ -474,6 +704,7 @@ export class BrowserTesseraInstance implements TesseraInstance {
     this.#commandTimers.clear(); this.#commandHandlerRefs.clear();
     for (const subscription of this.#subscriptions.values()) subscription.cancel();
     this.#subscriptions.clear(); this.#frameHandlerIds.clear();
+    this.#inFlightHandlerIds.clear(); this.#deferredSubscriptionHandlerReleases.clear();
   }
 
   async #releaseHandlers(ids: number[]): Promise<void> {
@@ -542,19 +773,49 @@ export class BrowserTesseraInstance implements TesseraInstance {
 
   #setStatus(status: TesseraStatus): void {
     this.#status = status;
-    this.#input.container.dataset.tessylNativeStatus = status;
+    this.#shell.setStatus(status);
     try { this.#input.onStatusChange?.(status); } catch { /* Integration callbacks are observational. */ }
   }
   #fail(error: unknown): void {
     if (this.#status === "disposed" || this.#status === "failed" || (!this.#active && this.#status === "paused")) return;
     const code = error instanceof TessylNativeError ? error.code : "trap";
+    this.#hostContainer.dataset.tessylNativeFailureCode = code;
     this.#terminateGeneration(); this.#disposeRenderer();
-    renderTrustedFrame(this.#input.container, this.#input.artifact.fallback.root);
+    this.#latestFrame = undefined;
+    renderStaticFallback(this.#input.container, this.#input.artifact.fallback);
     this.#setStatus("failed");
-    try { this.#config.telemetry?.record({ phase: "run", outcome: "failed", code, durationMs: Math.max(0, performance.now() - this.#runStartedAt) }); } catch { /* Observability must not control lifecycle correctness. */ }
+    try { this.#config.telemetry?.record({ phase: "run", outcome: "failed", code, durationMs: Math.max(0, performance.now() - this.#runStartedAt), revision: this.#input.artifact.metadata.revision, ...(code === "resource_limit" ? { resourceBucket: "runtime" } : {}), capabilitySource: "author", restartCategory: "failure" }); } catch { /* Observability must not control lifecycle correctness. */ }
   }
   #protocolFailure(message: string): TessylNativeError { return new TessylNativeError({ code: "protocol_violation", phase: "run", message, recoverable: true }); }
   #rendererFailure(message: string, code: "protocol_violation" | "timeout" = "protocol_violation"): TessylNativeError { return new TessylNativeError({ code, phase: "run", message, recoverable: true }); }
+
+  #inspectSource(): void {
+    try {
+      const decoded = JSON.parse(new TextDecoder().decode(this.#input.artifact.sourceBundle)) as { files?: Record<string, string> };
+      const files = Object.freeze({ ...(decoded.files ?? {}) });
+      this.#shell.showInspection("Tessera source", Object.entries(files).map(([label, text]) => ({ label, text })));
+      this.#config.runtime?.onInspectSource?.(files, this.#input.artifact.metadata);
+    } catch { /* A validated artifact remains usable if an inspection adapter fails. */ }
+  }
+
+  #inspectProvenance(): void {
+    try {
+      const artifact = this.#input.artifact;
+      this.#shell.showInspection("Revision and provenance", [
+        { label: "Revision", text: artifact.metadata.revision },
+        { label: "Build", text: `${artifact.buildProvenance.builder} · ${artifact.manifest.capabilityProfile} · SDK ${artifact.manifest.sdkVersion}` },
+        { label: "Content hashes", text: `source ${artifact.manifest.sourceHash}\nwasm ${artifact.manifest.wasmHash}\nfallback ${artifact.manifest.fallbackHash}` },
+        { label: "Dependencies", text: artifact.dependencyLock.packages.map((item) => `${item.name}@${item.version} ${item.contentHash}`).join("\n") },
+        { label: "Reviewed resources", text: [...artifact.resources.datasets.map((item) => `dataset ${item.id}@${item.revision} — ${item.citation}`), ...artifact.resources.assets.map((item) => `asset ${item.id}@${item.revision} — ${item.license}`)].join("\n") || "None" },
+      ]);
+      if (this.#config.runtime?.onInspectProvenance) {
+        const copy = structuredClone(artifact);
+        copy.wasm = artifact.wasm.slice();
+        copy.sourceBundle = artifact.sourceBundle.slice();
+        this.#config.runtime.onInspectProvenance(copy);
+      }
+    } catch { /* Inspection is observational. */ }
+  }
 }
 
 const flattenSubscriptions = (raw: unknown): FlatSubscription[] => {
@@ -569,7 +830,7 @@ const flattenSubscriptions = (raw: unknown): FlatSubscription[] => {
       visit(subscription.child, [...mapHandlerIds, handlerId], [...mapHandlerKeys, String(subscription.handlerKey ?? `id:${handlerId}`)], [...ownedHandlerIds, ...owned]);
       return;
     }
-    const kind = subscription.kind as "animation_frame" | "container_size";
+    const kind = subscription.kind as SubscriptionKind;
     const key = String(subscription.key);
     out.push({ identity: `${kind}:${key}:${mapHandlerKeys.join("/")}`, kind, key, mapHandlerIds, ownedHandlerIds: [...new Set(ownedHandlerIds)] });
   };
@@ -597,16 +858,33 @@ const collectFrameHandlerIds = (frame: NativeFrameV1): Set<number> => {
 
 const disposed = (message = "Tessera instance is disposed"): TessylNativeError => new TessylNativeError({ code: "disposed", phase: "run", message });
 
-const renderTrustedFrame = (container: HTMLElement, root: NativeNode): void => {
-  const svgTags = new Set(["svg", "g", "path", "line", "polyline", "circle", "rect", "text"]);
-  const render = (node: NativeNode, inSvg = false): Node => {
-    if (node.kind === "text") return document.createTextNode(node.value);
-    if (node.kind === "fragment") { const fragment = document.createDocumentFragment(); node.children.forEach((child) => fragment.append(render(child, inSvg))); return fragment; }
-    const useSvg = inSvg || svgTags.has(node.tag);
-    const element = useSvg ? document.createElementNS("http://www.w3.org/2000/svg", node.tag) : document.createElement(node.tag);
-    for (const [name, value] of Object.entries(node.attrs ?? {})) element.setAttribute(name === "viewbox" ? "viewBox" : name, String(value));
-    (node.children ?? []).forEach((child) => element.append(render(child, useSvg)));
-    return element;
-  };
-  container.replaceChildren(render(root));
+const presentationHeight = (height: "compact" | "standard" | "tall" | undefined): string => ({ compact: "18rem", standard: "28rem", tall: "40rem" })[height ?? "standard"];
+
+const boundedShareableState = (value: string): string => {
+  if (typeof value !== "string") throw new TessylNativeError({ code: "invalid_artifact", phase: "initialize", message: "Shareable state must be a string" });
+  if (new TextEncoder().encode(value).byteLength > 8_192) throw new TessylNativeError({ code: "resource_limit", phase: "initialize", message: "Shareable state exceeds 8192 bytes", recoverable: true });
+  return value;
 };
+
+const assertFrameAssets = (frame: NativeFrameV1, declared: ReadonlyMap<string, string>): void => {
+  const stack: NativeNode[] = [frame.root];
+  while (stack.length) {
+    const node = stack.pop()!;
+    if (node.kind === "fragment") { stack.push(...node.children); continue; }
+    if (node.kind !== "element") continue;
+    const id = node.attrs?.["data-native-asset-id"];
+    if (id !== undefined) {
+      if (typeof id !== "string" || !declared.has(id)) throw new TessylNativeError({ code: "protocol_violation", phase: "run", message: "Frame requested an undeclared reviewed asset", recoverable: true });
+      if (node.tag !== "img" || node.attrs?.["aria-label"] !== declared.get(id)) throw new TessylNativeError({ code: "protocol_violation", phase: "run", message: "Frame changed reviewed asset accessibility metadata", recoverable: true });
+    }
+    stack.push(...(node.children ?? []));
+  }
+};
+
+const dataUrl = (bytes: Uint8Array, mediaType: string): string => {
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 16_384) binary += String.fromCharCode(...bytes.subarray(offset, offset + 16_384));
+  return `data:${mediaType};base64,${btoa(binary)}`;
+};
+
+const cloneByteEntries = (entries: Readonly<Record<string, Uint8Array>>): Readonly<Record<string, Uint8Array>> => Object.freeze(Object.fromEntries(Object.entries(entries).map(([key, bytes]) => [key, bytes.slice()])));

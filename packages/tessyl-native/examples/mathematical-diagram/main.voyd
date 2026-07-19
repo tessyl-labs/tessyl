@@ -1,0 +1,75 @@
+use pkg::tessyl_native::all
+
+obj Model { point: Vec2, dragging: bool, interaction: String }
+enum Msg
+  Pointer { gesture: PointerGesture }
+  Hover { gesture: PointerGesture }
+  Wheel { gesture: PointerGesture }
+  Focus { gesture: FocusGesture }
+  Key { gesture: KeyboardGesture }
+
+pub fn app() -> Tessera<Model, Msg>
+  tessera({ init, step, view, subscriptions })
+
+fn subscriptions(_model: Model) -> Sub<Msg>
+  Sub<Msg>::none()
+
+fn init() -> Model
+  Model { point: Vec2 { x: 70.0, y: 30.0 }, dragging: false, interaction: "Idle" }
+
+fn bounded(value: f64) -> f64
+  if value < 5.0:
+    return 5.0
+  if value > 95.0:
+    return 95.0
+  value
+
+fn step(model: Model, msg: Msg) -> Update<Model, Msg>
+  match(msg)
+    Msg::Pointer { gesture }:
+      if gesture.phase == "pointerdown":
+        return next(Model { point: Vec2 { x: bounded(gesture.x), y: bounded(gesture.y) }, dragging: true, interaction: "Dragging" })
+      if gesture.phase == "pointermove" and model.dragging:
+        return next(Model { point: Vec2 { x: bounded(gesture.x), y: bounded(gesture.y) }, dragging: true, interaction: "Dragging" })
+      if gesture.phase == "pointerup" or gesture.phase == "pointercancel":
+        return next(Model { point: model.point, dragging: false, interaction: "Pointer released" })
+      next(model)
+    Msg::Hover { gesture }:
+      next(Model { point: model.point, dragging: model.dragging, interaction: if gesture.phase == "mouseenter" then: "Pointer hovering" else: "Pointer left" })
+    Msg::Wheel { gesture }:
+      next(Model { point: Vec2 { x: model.point.x, y: bounded(model.point.y + gesture.delta_y / 20.0) }, dragging: model.dragging, interaction: "Wheel adjusted" })
+    Msg::Focus { gesture }:
+      next(Model { point: model.point, dragging: model.dragging, interaction: if gesture.event == "focus" then: "Diagram focused" else: "Diagram blurred" })
+    Msg::Key { gesture }:
+      if gesture.key == "ArrowLeft":
+        return next(Model { point: Vec2 { x: bounded(model.point.x - 2.0), y: model.point.y }, dragging: model.dragging, interaction: "Keyboard adjusted" })
+      if gesture.key == "ArrowRight":
+        return next(Model { point: Vec2 { x: bounded(model.point.x + 2.0), y: model.point.y }, dragging: model.dragging, interaction: "Keyboard adjusted" })
+      if gesture.key == "ArrowUp":
+        return next(Model { point: Vec2 { x: model.point.x, y: bounded(model.point.y - 2.0) }, dragging: model.dragging, interaction: "Keyboard adjusted" })
+      if gesture.key == "ArrowDown":
+        return next(Model { point: Vec2 { x: model.point.x, y: bounded(model.point.y + 2.0) }, dragging: model.dragging, interaction: "Keyboard adjusted" })
+      next(model)
+
+fn view(model: Model) -> View<Msg>
+  <Column width={content_width()}>
+    <Heading level={2}>Vector decomposition</Heading>
+    <Text>Drag the endpoint, use the wheel, or focus the diagram and press an arrow key.</Text>
+    <Text>Interaction state: {model.interaction}</Text>
+    <Column width={visualization_width()}>
+      <InteractiveScene
+      title="Vector decomposition diagram"
+      description="A movable vector endpoint on Cartesian coordinates. The endpoint is keyboard controllable."
+      objects={[
+        coordinates(x_label: "x", y_label: "y"),
+        arrow_mark(from: Vec2 { x: 50.0, y: 50.0 }, to: model.point, label: "Vector from origin to endpoint"),
+        point_mark(position: model.point, radius: 3.0, label: "Movable endpoint")
+      ]}
+      on_pointer={(gesture: PointerGesture) -> Msg => Msg::Pointer { gesture }}
+      on_hover={(gesture: PointerGesture) -> Msg => Msg::Hover { gesture }}
+      on_wheel={(gesture: PointerGesture) -> Msg => Msg::Wheel { gesture }}
+      on_focus={(gesture: FocusGesture) -> Msg => Msg::Focus { gesture }}
+      on_key={(gesture: KeyboardGesture) -> Msg => Msg::Key { gesture }}
+      />
+    </Column>
+  </Column>

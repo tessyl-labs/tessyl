@@ -16,7 +16,10 @@ const TAG_ATTRS: Readonly<Record<string, ReadonlySet<string>>> = Object.fromEntr
 const ALLOWED_EVENTS = new Set<string>(RENDER_POLICY.events);
 const SAFE_INPUT_TYPES = new Set<string>(RENDER_POLICY.safeInputTypes);
 
-type ValidationState = { nodes: number; handlers: number; stringBytes: number };
+export const isCanonicalArticleSlug = (value: string): boolean =>
+  value.length <= 80 && /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(value);
+
+type ValidationState = { nodes: number; handlers: number; stringBytes: number; plottedPoints: number; tableCells: number; sceneObjects: number; particles: number };
 const utf8Length = (value: string): number => new TextEncoder().encode(value).byteLength;
 
 const fail = (message: string): never => {
@@ -129,17 +132,60 @@ const validateElement = (
   }
   const attrs = node.attrs as Record<string, unknown> | undefined;
   const props = node.props as Record<string, unknown> | undefined;
-  if (tag === "a" && (typeof attrs?.["data-article-slug"] !== "string" || !/^[a-z0-9][a-z0-9_-]{0,79}$/.test(attrs["data-article-slug"] as string))) {
+  if (tag === "a" && (typeof attrs?.["data-article-slug"] !== "string" || !isCanonicalArticleSlug(attrs["data-article-slug"] as string))) {
     fail(`${path}: invalid article slug`);
   }
   if (attrs?.["data-native-width"] === "fixed") {
     const pixels = Number(attrs["data-native-width-px"]);
     if (!Number.isFinite(pixels) || pixels <= 0 || pixels > 1_200) fail(`${path}: invalid fixed width`);
   }
+  if (tag === "circle") {
+    for (const name of ["fill-opacity", "stroke-opacity"] as const) {
+      if (attrs?.[name] === undefined) continue;
+      const opacity = Number(attrs[name]);
+      if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) fail(`${path}: invalid ${name}`);
+    }
+    if (attrs?.["stroke-width"] !== undefined) {
+      const width = Number(attrs["stroke-width"]);
+      if (!Number.isFinite(width) || width < 0 || width > 144) fail(`${path}: invalid stroke-width`);
+    }
+  }
+  if (attrs?.["data-native-asset-id"] !== undefined && (typeof attrs["data-native-asset-id"] !== "string" || !/^[a-z][a-z0-9_-]{0,63}$/.test(attrs["data-native-asset-id"] as string))) fail(`${path}: invalid reviewed asset id`);
+  if (attrs?.["data-native-particle-buffer"] !== undefined) {
+    const buffer = attrs["data-native-particle-buffer"];
+    const entries = typeof buffer === "string" && /^[0-9eE.,+;\-\s]+$/.test(buffer) ? buffer.split(";").filter(Boolean) : [];
+    if (!entries.length || entries.some((entry) => {
+      const values = entry.split(",").map(Number);
+      if ((values.length !== 3 && values.length !== 6) || values.some((value) => !Number.isFinite(value))) return true;
+      if (values.length === 3) return false;
+      const [, , , tone, opacity, glow] = values;
+      return !Number.isInteger(tone) || tone < 0 || tone > 5 || opacity < 0 || opacity > 1 || glow < 0 || glow > 4;
+    })) fail(`${path}: invalid particle data`);
+    state.particles += entries.length;
+    if (state.particles > profile.maxSceneObjects) fail(`${path}: particle limit exceeded`);
+  }
   if (tag === "input") {
     if (attrs?.type !== undefined && props?.type !== undefined && String(attrs.type) !== String(props.type)) fail(`${path}: conflicting input type`);
     const inputType = props?.type ?? attrs?.type;
     if (inputType !== undefined && !SAFE_INPUT_TYPES.has(String(inputType))) fail(`${path}: unsafe input type`);
+  }
+  if (["circle", "rect", "line", "path", "polyline", "polygon", "text"].includes(tag) && attrs?.["data-native-series"] === undefined) {
+    state.sceneObjects += 1;
+    if (state.sceneObjects > profile.maxSceneObjects) fail(`${path}: scene object limit exceeded`);
+  }
+  if (["circle", "rect", "polyline", "polygon"].includes(tag) && attrs?.["data-native-series"] !== undefined) {
+    state.plottedPoints += tag === "polyline" ? String(attrs.points ?? "").trim().split(/\s+/).length : 1;
+    if (state.plottedPoints > profile.maxPlottedPoints) fail(`${path}: plotted point limit exceeded`);
+  }
+  if (tag === "td" || tag === "th") {
+    state.tableCells += 1;
+    if (state.tableCells > profile.maxTableCells) fail(`${path}: table cell limit exceeded`);
+  }
+  if (tag === "canvas") {
+    const width = Number(attrs?.width ?? 0);
+    const height = Number(attrs?.height ?? 0);
+    if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width * height > profile.maxCanvasPixels) fail(`${path}: canvas pixel limit exceeded`);
+    if (attrs?.["data-native-particles"] !== true) fail(`${path}: canvas particle marker is invalid`);
   }
   if (node.events !== undefined) {
     const events = safeArray(node.events, `${path}.events`);
@@ -153,7 +199,7 @@ export const validateFrame = (value: unknown, profile: ResourceProfile): NativeF
   const frame = safeRecord(value, "frame");
   exactKeys(frame, ["version", "root"], "frame");
   if (frame.version !== 1) fail("frame: unsupported version");
-  const state: ValidationState = { nodes: 0, handlers: 0, stringBytes: 0 };
+  const state: ValidationState = { nodes: 0, handlers: 0, stringBytes: 0, plottedPoints: 0, tableCells: 0, sceneObjects: 0, particles: 0 };
   const active = new Set<object>();
   const stack: { value: unknown; depth: number; path: string; exit?: boolean }[] = [
     { value: frame.root, depth: 0, path: "frame.root" },
@@ -332,7 +378,12 @@ const validateRuntimeLeaf = (node: Record<string, unknown>, type: "cmd" | "sub",
     validateBoundaryValue(node.value, profile.maxBoundaryBytes, `${type}.value`, profile);
     return;
   }
-  if (type === "sub" && (node.kind === "animation_frame" || node.kind === "container_size")) {
+  if (type === "cmd" && node.kind === "native_share_state") {
+    exactKeys(node, ["type", "kind", "value"], type);
+    if (typeof node.value !== "string" || utf8Length(node.value) > 8_192) fail("cmd: invalid shareable state");
+    return;
+  }
+  if (type === "sub" && ["animation_frame", "fixed_timestep", "reduced_motion", "container_size", "native_input_number", "native_input_string", "native_input_boolean", "native_dataset_text", "native_shareable_state"].includes(String(node.kind))) {
     exactKeys(node, ["type", "kind", "key"], type);
     if (typeof node.key !== "string" || node.key.length === 0 || utf8Length(node.key) > profile.maxStringBytes) fail("sub: invalid key");
     return;

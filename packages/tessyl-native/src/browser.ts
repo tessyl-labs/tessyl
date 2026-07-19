@@ -2,6 +2,7 @@ import { createFacade } from "./facade.js";
 import type { TessylNative, TessylNativeConfig } from "./types.js";
 
 export { TessylNativeError } from "./errors.js";
+export { renderStaticArtifact, renderStaticArtifactHtml, renderStaticFallback, renderStaticFallbackHtml, staticFallbackStyles } from "./fallback-renderer.js";
 export type { NativeErrorCode } from "./errors.js";
 export type * from "./types.js";
 

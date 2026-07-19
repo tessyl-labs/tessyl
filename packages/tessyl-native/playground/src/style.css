@@ -39,22 +39,15 @@ code { font-family: var(--ts-font-mono); }
 .section-kicker { margin: 0 0 .35rem; color: var(--ts-color-accent-strong); font-size: .68rem; font-weight: 850; letter-spacing: .16em; text-transform: uppercase; }
 .examples-heading h2 { margin: 0; color: var(--ts-color-text); font-size: 1.85rem; letter-spacing: -.035em; }
 .examples-heading > p { max-width: 29rem; margin: 0; color: var(--ts-color-text-muted); font-size: .85rem; line-height: 1.55; text-align: right; }
-.example-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; }
-.example-card { overflow: hidden; padding: 1.5rem; border: 1px solid rgb(203 213 225 / 74%); border-radius: var(--ts-radius-panel); background: rgb(255 255 255 / 90%); box-shadow: var(--ts-shadow-panel); backdrop-filter: blur(12px); }
+.example-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
+.example-card { min-width: 0; }
 .example-card-wide { grid-column: 1 / -1; }
-.card-header, .card-title { display: flex; align-items: flex-start; }
-.card-header { justify-content: space-between; gap: 1rem; }
-.card-title { gap: .85rem; }
-.example-index { display: grid; width: 2.75rem; height: 2.75rem; flex: none; place-items: center; border-radius: .9rem; background: linear-gradient(145deg, var(--ts-color-accent-soft), #ecfeff); box-shadow: inset 0 0 0 1px rgb(16 185 129 / 18%); color: var(--ts-color-accent-strong); font-size: .72rem; font-weight: 850; }
-.card-title h3 { margin: .15rem 0 0; color: var(--ts-color-text); font-size: 1.05rem; letter-spacing: -.02em; }
-.card-title p { margin: .3rem 0 0; color: var(--ts-color-text-muted); font-size: .72rem; }
+.tessera-stage { width: min(100%, 68rem); min-height: 16rem; margin-inline: auto; overflow: hidden; }
 .reset-button { padding: .55rem .8rem; border: 1px solid var(--ts-color-border); border-radius: var(--ts-radius-control); background: var(--ts-color-surface); box-shadow: var(--ts-shadow-control); color: var(--ts-color-text-muted); font-size: .72rem; font-weight: 750; cursor: pointer; transition: transform var(--ts-motion-fast) ease, border-color var(--ts-motion-fast) ease, color var(--ts-motion-fast) ease; }
 .reset-button:hover { transform: translateY(-1px); border-color: #6ee7b7; color: #047857; }
 .reset-button:focus-visible { outline: 3px solid #a7f3d0; outline-offset: 2px; }
-.presentation-label { display: flex; gap: .4rem; margin: 1rem 0 .65rem; }
-.presentation-label span { padding: .28rem .5rem; border-radius: .45rem; background: #f1f5f4; color: #64748b; font-size: .62rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
-.tessera-stage { min-height: 16rem; overflow: hidden; padding: .65rem; border: 1px solid rgb(226 232 240 / 90%); border-radius: 1rem; background: radial-gradient(circle at 100% 0%, rgb(209 250 229 / 50%), transparent 16rem), linear-gradient(155deg, #fbfdff, #f3f6f8); }
 .tessera-stage iframe { display: block; border-radius: .75rem; }
+[data-tessera-status] { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .status-line { display: flex; align-items: center; gap: .5rem; margin: .9rem 0 0; color: #64748b; font-size: .62rem; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
 .status-line::before { width: .42rem; height: .42rem; border-radius: 50%; background: #10b981; box-shadow: 0 0 0 4px rgb(16 185 129 / 12%); content: ""; }
 .fallback { margin: 0; padding: 1.25rem; border-radius: .8rem; background: var(--ts-color-surface); color: var(--ts-color-text-secondary); }
@@ -67,6 +60,7 @@ code { font-family: var(--ts-font-mono); }
 .fallback table { width: 100%; border-collapse: collapse; font-size: .7rem; }
 .fallback caption { padding: .5rem 0; font-weight: 750; text-align: left; }
 .fallback th, .fallback td { padding: .35rem; border: 1px solid var(--ts-color-border-subtle); text-align: left; }
+.fallback [aria-label="Particle data"], .fallback [aria-label="Scene data"] { max-height: 14rem; overflow: auto; }
 
 @media (max-width: 52rem) {
   .hero { grid-template-columns: 1fr; padding: 2.25rem; }
@@ -83,10 +77,6 @@ code { font-family: var(--ts-font-mono); }
   .hero-summary { font-size: .92rem; }
   .examples-heading { display: block; margin-top: 2.25rem; }
   .examples-heading > p { margin-top: .65rem; text-align: left; }
-  .example-card { padding: 1rem; }
-  .card-title { align-items: center; }
-  .card-title p { line-height: 1.4; }
-  .tessera-stage { padding: .45rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

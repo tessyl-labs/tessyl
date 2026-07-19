@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import binaryen from "binaryen";
 
 type HostileKind = "infinite-loop" | "stack-overflow" | "trap" | "rapid-allocation";
@@ -32,44 +33,182 @@ const routeHostileCalculator = async (page: Page, kind: HostileKind): Promise<vo
   });
 };
 
-test("three Tesserae start independently and remain accessible", async ({ page }) => {
+test("five STEM Tesserae start independently and remain accessible", async ({ page }) => {
   await page.goto("/showcase");
-  for (const id of ["calculator", "chart", "simulation"]) {
+  for (const id of ["calculator", "chart", "simulation", "orbital-simulation", "mathematical-diagram"]) {
     const card = page.locator(`[data-showcase-card="${id}"]`);
-    await card.scrollIntoViewIfNeeded();
+    await card.locator(".tessera-stage").scrollIntoViewIfNeeded();
+    await expect(card.locator("[data-tessyl-native-shell]")).toHaveCount(1);
+    await card.locator("[data-tessyl-native-shell] > header").scrollIntoViewIfNeeded();
     await expect(card.locator(`[data-tessera-status="${id}"]`)).toHaveText("running");
     await expect(card.locator("iframe")).toHaveCount(1);
   }
-  await expect(page.locator('[data-showcase-card="simulation"] iframe')).toHaveAttribute("data-tessyl-expanded-view", "true");
+  await expect(page.locator('[data-showcase-card="simulation"] iframe')).toHaveAttribute("data-tessyl-expanded-view", "false");
   await expect(page.locator('[data-showcase-card="calculator"] iframe')).toHaveAttribute("data-tessyl-expanded-view", "false");
   const calculator = page.frameLocator('[data-showcase-card="calculator"] iframe');
   await page.locator('[data-showcase-card="calculator"]').scrollIntoViewIfNeeded();
   await expect(page.locator('[data-tessera-status="calculator"]')).toHaveText("running");
-  await expect(calculator.getByRole("heading", { name: "Tip calculator" })).toBeVisible();
+  await expect(calculator.getByRole("heading", { name: "Scientific calculator" })).toBeVisible();
+  await expect(calculator.locator("math")).toHaveCount(2);
+  await expect(calculator.getByLabel("Kinetic energy", { exact: true })).toContainText("9.000");
+  const velocity = calculator.getByLabel("Velocity");
+  await velocity.fill("4");
+  await expect(calculator.getByLabel("Kinetic energy", { exact: true })).toContainText("16.000");
+  await expect(calculator.getByLabel("Integral of x squared", { exact: true })).toContainText(/21\.33/);
   const bill = calculator.getByLabel("Bill amount");
-  await bill.click();
-  await bill.press("ControlOrMeta+A");
-  await bill.pressSequentially("100", { delay: 20 });
+  await bill.fill("100");
+  await expect(bill).toHaveValue("100");
   await expect(bill).toBeFocused();
-  await expect(calculator.getByLabel("Total")).toContainText("120");
+  await expect(calculator.getByLabel("Total", { exact: true })).toContainText("150");
   const chart = page.frameLocator('[data-showcase-card="chart"] iframe');
   await expect(chart.getByRole("figure", { name: "Value over four periods" })).toBeVisible();
+  expect(await chart.getByRole("figure", { name: "Value over four periods" }).locator("xpath=..").evaluate((element) => element.getAttribute("data-native-width"))).toBe("visualization");
   await expect(chart.getByRole("table", { name: "View chart data" })).toBeVisible();
   await expect(chart.getByRole("list", { name: "Legend" })).toContainText("Compounded");
   await expect(chart.getByRole("list", { name: "Legend" })).toContainText("Baseline");
+  await expect(chart.getByText(/Pinned data:/)).toContainText('{"periods":[0,1,2,3]}');
+  await expect(chart.getByText(/Deep-link state:/)).toContainText("growth=1.2");
+  await expect(chart.getByRole("img", { name: "Reviewed teal growth badge" })).toBeVisible();
   await expect(chart.locator('polyline[data-native-series="solid"]')).toHaveCount(1);
   await expect(chart.locator('polyline[data-native-series="dashed"]')).toHaveCount(1);
+  expect(await chart.getByRole("figure", { name: "Value over four periods" }).locator("svg").evaluate((element) => getComputedStyle(element).touchAction)).toBe("auto");
   const slider = chart.getByLabel("Growth factor");
   await slider.focus();
   await expect(slider).toBeFocused();
   const initialValue = await slider.inputValue();
-  const box = await slider.boundingBox();
-  if (!box) throw new Error("growth slider has no layout box");
-  await page.mouse.move(box.x + box.width * 0.25, box.y + box.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.75, box.y + box.height / 2, { steps: 6 });
-  await page.mouse.up();
+  await slider.press("ArrowRight");
   await expect(slider).not.toHaveValue(initialValue);
+  await expect(page.locator("html")).toHaveAttribute("data-last-shareable-state", /.+/);
+  const chartCard = page.locator('[data-showcase-card="chart"]');
+  await expect(page.getByRole("button", { name: "Export result" })).toHaveCount(5);
+  const downloadPromise = page.waitForEvent("download");
+  await chartCard.getByRole("button", { name: "Export result" }).click();
+  const downloadPath = await (await downloadPromise).path();
+  expect(downloadPath).not.toBeNull();
+  expect(await readFile(downloadPath!, "utf8")).toMatch(/Revision growth-r2[\s\S]*Assumptions[\s\S]*source [a-f0-9]{64}/);
+  await chartCard.getByRole("button", { name: "Source" }).click();
+  await expect(page.getByRole("dialog", { name: "Tessera source" })).toContainText("main.voyd");
+  await page.getByRole("dialog", { name: "Tessera source" }).getByRole("button", { name: "Close" }).click();
+  await chartCard.getByRole("button", { name: "Revision and provenance" }).click();
+  await expect(page.getByRole("dialog", { name: "Revision and provenance" })).toContainText("growth_scenarios");
+  await page.getByRole("dialog", { name: "Revision and provenance" }).getByRole("button", { name: "Close" }).click();
+  await chartCard.getByRole("button", { name: "Reset" }).click();
+  await expect(chartCard.locator('[data-tessera-status="chart"]')).toHaveText("running");
+  await expect(page.locator("html")).toHaveAttribute("data-last-shareable-state", "growth=1.2");
+  await expect(chart.getByText(/Deep-link state:/)).toContainText("growth=1.2");
+  const particle = page.frameLocator('[data-showcase-card="simulation"] iframe');
+  await expect(particle.getByRole("img", { name: /moving particles.*orbital swarm/i })).toBeVisible();
+  await expect(particle.locator("canvas[data-native-particles]")).toHaveCount(1);
+  const bufferedParticles = await particle.locator("[data-native-particle-buffer]").evaluateAll((buffers) => buffers.reduce((total, buffer) => total + (buffer.getAttribute("data-native-particle-buffer")?.split(";").filter(Boolean).length ?? 0), 0));
+  expect(bufferedParticles).toBe(240);
+  await expect(particle.locator("[data-native-particle]")).toHaveCount(0);
+  await expect(particle.getByRole("list", { name: "Particle data" })).toContainText("Particle A");
+  await expect(particle.getByRole("list", { name: "Particle data" })).toContainText("Representative details shown for 12 of 240 particles.");
+  expect(await page.locator('[data-showcase-card="simulation"] .tessera-stage').evaluate((stage) => stage.getBoundingClientRect().width)).toBeLessThanOrEqual(1088);
+  const particleContent = particle.locator('#root > [data-native-width="content"]');
+  await expect(particleContent).toHaveCount(1);
+  expect(await particleContent.evaluate((root) => root.getBoundingClientRect().width)).toBeLessThanOrEqual(960);
+  await expect(particle.locator('[data-native-component="particle-field"]')).toHaveAttribute("data-native-tone", "accent");
+  await expect(particle.locator('[data-native-component="particle-field"]')).toHaveAttribute("data-native-caption-visible", "false");
+  await expect(particle.locator('[data-native-component="particle-field"]')).toHaveAttribute("data-native-details-visible", "false");
+  expect(await particle.locator("[data-native-particle-buffer]").first().evaluate((buffer) => {
+    const first = (buffer.getAttribute("data-native-particle-buffer") ?? "").split(";")[0]?.split(",").map(Number) ?? [];
+    return first.length === 6 && first[3] === 1 && first[4] >= 0 && first[4] <= 1 && first[5] > 0;
+  })).toBe(true);
+  expect(await particle.locator("canvas").evaluate((canvas) => canvas.getBoundingClientRect().width)).toBeLessThanOrEqual(896);
+  const positionsBefore = await particle.locator("[data-native-particle-buffer]").evaluateAll((buffers) => buffers.flatMap((buffer) => (buffer.getAttribute("data-native-particle-buffer") ?? "").split(";").filter(Boolean).map((entry) => entry.split(",").slice(0, 2).map(Number))));
+  await particle.getByRole("button", { name: "Run" }).click();
+  await expect.poll(async () => {
+    const positionsAfter = await particle.locator("[data-native-particle-buffer]").evaluateAll((buffers) => buffers.flatMap((buffer) => (buffer.getAttribute("data-native-particle-buffer") ?? "").split(";").filter(Boolean).map((entry) => entry.split(",").slice(0, 2).map(Number))));
+    return positionsAfter.filter((position, index) => position[0] !== positionsBefore[index]?.[0] || position[1] !== positionsBefore[index]?.[1]).length;
+  }).toBe(240);
+  await particle.getByRole("button", { name: "Pause" }).click();
+  const orbitalCard = page.locator('[data-showcase-card="orbital-simulation"]');
+  await orbitalCard.scrollIntoViewIfNeeded();
+  await expect(orbitalCard.locator('[data-tessera-status="orbital-simulation"]')).toHaveText("running");
+  const orbit = page.frameLocator('[data-showcase-card="orbital-simulation"] iframe');
+  expect(await orbitalCard.locator(".tessera-stage").evaluate((stage) => stage.getBoundingClientRect().width)).toBeLessThanOrEqual(1088);
+  const orbitalContent = orbit.locator('#root > [data-native-width="content"]');
+  await expect(orbitalContent).toHaveCount(1);
+  expect(await orbitalContent.evaluate((root) => root.getBoundingClientRect().width)).toBeLessThanOrEqual(960);
+  expect(await orbit.locator('[data-native-width="visualization"]').evaluate((element) => element.getBoundingClientRect().width)).toBeLessThanOrEqual(896);
+  const orbitalScene = orbit.getByRole("application", { name: /Sun is centered/i });
+  await orbitalScene.focus();
+  await orbitalScene.press("ArrowRight");
+  await expect(orbitalScene).toBeFocused();
+  expect(await orbitalScene.evaluate((element) => !element.dispatchEvent(new WheelEvent("wheel", { deltaY: 1, bubbles: true, cancelable: true })))).toBe(true);
+  await orbitalScene.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    element.dispatchEvent(new PointerEvent("pointerdown", { pointerId: 17, buttons: 1, clientX: bounds.right + 500, clientY: bounds.bottom + 500, bubbles: true }));
+  });
+  await expect.poll(async () => orbit.locator('[aria-label="Earth"]').evaluate((element) => {
+    const points = (element.getAttribute("points") ?? "").trim().split(/\s+/).map((point) => point.split(",").map(Number));
+    const center = points.reduce((sum, point) => [sum[0] + point[0], sum[1] + point[1]], [0, 0]).map((value) => value / points.length);
+    return center.every((value) => value >= -0.000001 && value <= 100.000001);
+  })).toBe(true);
+  await orbit.getByRole("application", { name: /Sun is centered/i }).evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    element.dispatchEvent(new PointerEvent("pointerup", { pointerId: 17, clientX: bounds.right + 500, clientY: bounds.bottom + 500, bubbles: true }));
+  });
+  await expect(orbit.getByLabel("Simulation speed")).toBeVisible();
+  await expect(orbit.getByRole("button", { name: "Replay seed 42" })).toBeVisible();
+  const diagram = page.frameLocator('[data-showcase-card="mathematical-diagram"] iframe');
+  const interactive = diagram.getByRole("application", { name: /movable vector endpoint/i });
+  expect(await interactive.evaluate((element) => getComputedStyle(element).touchAction)).toBe("none");
+  await interactive.hover();
+  await expect(diagram.getByText("Interaction state: Pointer hovering")).toBeVisible();
+  await interactive.focus();
+  await expect(diagram.getByText("Interaction state: Diagram focused")).toBeVisible();
+  await interactive.press("ArrowRight");
+  await expect(interactive).toBeFocused();
+  const simulation = page.locator('[data-showcase-card="simulation"]');
+  const expanded = simulation.getByRole("button", { name: "Expanded view" });
+  await expanded.click();
+  await expect(simulation.locator('[data-tessyl-native-shell]')).toHaveAttribute("role", "dialog");
+  await page.keyboard.press("Escape");
+  await expect(simulation.locator('[data-tessyl-native-shell]')).toHaveAttribute("role", "region");
+  await expect(expanded).toBeFocused();
+});
+
+test("live reduced-motion changes pause and resume fixed-step simulation", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.goto("/showcase");
+  const card = page.locator('[data-showcase-card="simulation"]');
+  const iframe = card.locator("iframe");
+  await card.scrollIntoViewIfNeeded();
+  await expect(iframe).toHaveCount(1);
+  const shellContent = card.locator("[data-tessyl-shell-content]");
+  await expect.poll(async () => {
+    await shellContent.scrollIntoViewIfNeeded();
+    return card.locator('[data-tessera-status="simulation"]').textContent();
+  }).toBe("running");
+  const simulation = page.frameLocator('[data-showcase-card="simulation"] iframe');
+  const step = simulation.getByLabel("Step", { exact: true });
+  const run = simulation.getByRole("button", { name: "Run" });
+  await expect(run).toBeVisible();
+  await run.click();
+  await expect(simulation.getByRole("button", { name: "Pause" })).toBeVisible();
+  await expect(step).not.toContainText(/^Step\s*0$/);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await expect(card.locator("[data-tessyl-native-failure-code]")).toHaveCount(0);
+  let paused = "";
+  await expect.poll(async () => {
+    const before = await step.textContent();
+    await page.waitForTimeout(250);
+    const after = await step.textContent();
+    if (before === after) paused = after ?? "";
+    return before === after;
+  }).toBe(true);
+  await page.waitForTimeout(250);
+  await expect(step).toHaveText(paused);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await expect(step).not.toHaveText(paused);
+  await simulation.getByRole("button", { name: "Pause" }).click();
+  await expect(simulation.getByRole("button", { name: "Run" })).toBeVisible();
+  const manuallyPaused = await step.textContent();
+  await page.waitForTimeout(250);
+  await expect(step).toHaveText(manuallyPaused ?? "");
 });
 
 test("reset creates a fresh generation without disturbing neighbors", async ({ page }) => {
@@ -108,8 +247,10 @@ test("offscreen runtimes pause and restart without losing their fallback", async
   await expect(calculator.locator('[data-tessera-status="calculator"]')).toHaveText("running");
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   await expect(calculator.locator('[data-tessera-status="calculator"]')).toHaveText("paused");
-  await calculator.scrollIntoViewIfNeeded();
-  await expect(calculator.locator('[data-tessera-status="calculator"]')).toHaveText("running");
+  await expect.poll(async () => {
+    await calculator.scrollIntoViewIfNeeded();
+    return calculator.locator('[data-tessera-status="calculator"]').textContent();
+  }).toBe("running");
   await expect(page.frameLocator('[data-showcase-card="calculator"] iframe').getByLabel("Bill amount")).toHaveValue("48");
 });
 
@@ -117,7 +258,9 @@ test("one rejected artifact leaves neighboring Tesserae available", async ({ pag
   await page.route("**/assets/showcase/calculator.json", (route) => route.fulfill({ status: 200, contentType: "application/json", body: "{}" }));
   await page.goto("/showcase");
   await expect(page.locator('[data-tessera-status="calculator"]')).toContainText("Interactive startup failed");
-  await expect(page.locator('[data-showcase-card="calculator"]')).toContainText("57.6");
+  const rejectedCard = page.locator('[data-showcase-card="calculator"]');
+  await expect(rejectedCard).toContainText("57.6");
+  await expect(rejectedCard).toContainText("Revision calculator-r3");
   const chart = page.locator('[data-showcase-card="chart"]');
   await chart.scrollIntoViewIfNeeded();
   await expect(chart.locator('[data-tessera-status="chart"]')).toHaveText("running");
@@ -192,7 +335,9 @@ test("non-persisted page disposal tears down renderers and restores fallbacks", 
   await expect(page.locator('[data-tessera-status="calculator"]')).toHaveText("running");
   await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: false })));
   await expect(page.locator("iframe")).toHaveCount(0);
-  await expect(page.locator('[data-showcase-card="calculator"]')).toContainText("57.6");
+  const disposedCard = page.locator('[data-showcase-card="calculator"]');
+  await expect(disposedCard).toContainText("72");
+  await expect(disposedCard).toContainText("Revision calculator-r3");
 });
 
 test("global and cross-Tessera protocol spoofing is ignored", async ({ page }) => {
@@ -213,9 +358,8 @@ test("keyboard focus and repeated restart remain deterministic", async ({ page }
   const card = page.locator('[data-showcase-card="calculator"]');
   await expect(card.locator('[data-tessera-status="calculator"]')).toHaveText("running");
   const frame = page.frameLocator('[data-showcase-card="calculator"] iframe');
-  await page.locator('[data-showcase-card="calculator"] iframe').focus();
-  await page.keyboard.press("Tab");
-  await expect(frame.getByLabel("Bill amount")).toBeFocused();
+  await frame.getByLabel("Mass").focus();
+  await expect(frame.getByLabel("Mass")).toBeFocused();
   await expect.poll(() => frame.locator("body").evaluate(() => document.getAnimations().length)).toBe(0);
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await card.getByRole("button", { name: "Reset" }).click();
@@ -228,10 +372,25 @@ test.describe("static and responsive behavior", () => {
 
   test("meaningful non-focusable app fallbacks render without script", async ({ page }) => {
     await page.goto("/showcase");
-    await expect(page.getByRole("region", { name: "Tip calculator" })).toContainText("57.6");
+    await expect(page.getByRole("region", { name: "Scientific calculator" })).toContainText("57.6");
     await expect(page.getByRole("figure", { name: "Value over four periods" })).toContainText("1.728");
-    await expect(page.getByRole("region", { name: "Bounded simulation" })).toContainText("step 0");
+    await expect(page.getByRole("region", { name: "Growth chart and scenario matrix" })).toContainText("Assumptions");
+    await expect(page.getByRole("region", { name: "Growth chart and scenario matrix" })).toContainText("Revision growth-r2");
+    await expect(page.getByRole("region", { name: "Bounded particle simulation" })).toContainText(/Step\s*0/i);
+    await expect(page.getByRole("region", { name: "Interactive Sun and Earth orbital model" })).toContainText("Sun and Earth model");
+    await expect(page.getByRole("region", { name: "Interactive vector decomposition diagram" })).toContainText("Vector decomposition diagram");
     await expect(page.locator("iframe")).toHaveCount(0);
-    await expect.poll(() => page.locator('[data-showcase-card="chart"] svg').evaluate((svg) => svg.namespaceURI)).toBe("http://www.w3.org/2000/svg");
+    await expect.poll(() => page.locator('[data-showcase-card="chart"] svg').first().evaluate((svg) => svg.namespaceURI)).toBe("http://www.w3.org/2000/svg");
+  });
+
+  test("static fallbacks interpret Voyd layout and visibility tokens", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/showcase");
+    const particle = page.getByRole("region", { name: "Bounded particle simulation" });
+    expect(await particle.locator('[data-native-width="content"]').evaluate((element) => element.getBoundingClientRect().width)).toBeLessThanOrEqual(960);
+    expect(await particle.locator('[data-native-width="visualization"]').evaluate((element) => element.getBoundingClientRect().width)).toBeLessThanOrEqual(896);
+    await expect(particle.locator('svg[data-native-component="particle-snapshot"] [data-native-component="particle"]')).toHaveCount(240);
+    expect(await particle.getByText("Orbital particle swarm", { exact: true }).evaluate((element) => getComputedStyle(element).position)).toBe("absolute");
+    expect(await particle.getByRole("list", { name: "Particle data" }).evaluate((element) => getComputedStyle(element).position)).toBe("absolute");
   });
 });

@@ -38,6 +38,58 @@ export const inspectWasm = (wasm: Uint8Array, profile: ResourceProfile): void =>
   inspectResourceSections(wasm, profile);
 };
 
+export const stripAuthorTestExports = (wasm: Uint8Array): Uint8Array => {
+  if (wasm.byteLength < 8) reject("Wasm module header is malformed");
+  const chunks: Uint8Array[] = [wasm.subarray(0, 8)];
+  let offset = 8;
+  while (offset < wasm.byteLength) {
+    const sectionStart = offset;
+    const id = wasm[offset++];
+    const size = readUleb(wasm, offset); offset = size.next;
+    const payloadStart = offset;
+    const end = payloadStart + size.value;
+    if (end > wasm.byteLength) reject("Wasm section exceeds module size");
+    if (id !== 7) {
+      chunks.push(wasm.subarray(sectionStart, end));
+      offset = end;
+      continue;
+    }
+    const count = readUleb(wasm, offset); offset = count.next;
+    const exports: Uint8Array[] = [];
+    for (let index = 0; index < count.value; index += 1) {
+      const entryStart = offset;
+      const name = readName(wasm, offset); offset = name.next;
+      if (offset >= end) reject("Wasm export section is malformed");
+      offset += 1;
+      offset = readUleb(wasm, offset).next;
+      if (!name.value.startsWith("__test__")) exports.push(wasm.subarray(entryStart, offset));
+    }
+    if (offset !== end) reject("Wasm export section is malformed");
+    const payload = concatenate([encodeUleb(exports.length), ...exports]);
+    chunks.push(Uint8Array.of(id), encodeUleb(payload.byteLength), payload);
+  }
+  return concatenate(chunks);
+};
+
+const concatenate = (chunks: readonly Uint8Array[]): Uint8Array => {
+  const output = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.byteLength, 0));
+  let offset = 0;
+  for (const chunk of chunks) { output.set(chunk, offset); offset += chunk.byteLength; }
+  return output;
+};
+
+const encodeUleb = (value: number): Uint8Array => {
+  if (!Number.isSafeInteger(value) || value < 0) reject("Wasm integer is invalid");
+  const bytes: number[] = [];
+  do {
+    let byte = value & 0x7f;
+    value = Math.floor(value / 128);
+    if (value) byte |= 0x80;
+    bytes.push(byte);
+  } while (value);
+  return Uint8Array.from(bytes);
+};
+
 const inspectExports = (wasm: Uint8Array): Array<{ name: string; kind: "function" | "table" | "memory" | "global" | "tag" }> => {
   const kinds = ["function", "table", "memory", "global", "tag"] as const;
   let offset = 8;

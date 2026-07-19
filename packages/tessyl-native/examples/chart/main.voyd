@@ -1,33 +1,50 @@
 use pkg::tessyl_native::all
 use std::optional::types::all
+use std::number::cast::to_string
 
-obj Model { growth: f64 }
+obj Model { growth: f64, dataset: String, shared: String }
 enum Msg
   Growth { value: f64 }
+  Dataset { value: String }
+  Shared { value: String }
 
 pub fn app() -> Tessera<Model, Msg>
-  tessera({ init, step, view })
+  tessera({ init, step, view, subscriptions })
 
 fn init() -> Model
-  Model { growth: 1.2 }
+  Model { growth: 1.2, dataset: "Loading pinned dataset", shared: "No deep-link state" }
 
 fn step(model: Model, msg: Msg) -> Update<Model, Msg>
   match(msg)
     Msg::Growth { value }:
-      next(Model { growth: value })
+      next(model: Model { growth: value, dataset: model.dataset, shared: model.shared }, cmd: Cmd<Msg>::share_state(to_string(value)))
+    Msg::Dataset { value }:
+      next(Model { growth: model.growth, dataset: value, shared: model.shared })
+    Msg::Shared { value }:
+      next(Model { growth: model.growth, dataset: model.dataset, shared: value })
+
+fn subscriptions(model: Model) -> Sub<Msg>
+  Sub<Msg>::batch([
+    sub_dataset_text<Msg>(id: "growth_scenarios", on_value: (value) => Msg::Dataset { value }),
+    sub_shareable_state<Msg>((value) => Msg::Shared { value })
+  ])
 
 fn view(model: Model) -> View<Msg>
-  <Column>
+  <Column width={content_width()}>
     <Heading level={2}>Compounding growth</Heading>
+    <Text>Pinned data: {model.dataset}</Text>
+    <Text>Deep-link state: {model.shared}</Text>
+    <ReviewedImage asset_id="growth_badge" accessible_name="Reviewed teal growth badge" caption="Hash-verified example asset" />
     <Slider label="Growth factor" value={model.growth} min={0.5} max={2.0} on_change={(value) => Msg::Growth { value: value }} />
-    <LineChart
+    <Column width={visualization_width()}>
+      <LineChart
       title="Value over four periods"
       description="The plotted value compounds by the selected factor in each period."
       series={[Series { name: "Compounded", points: [
         Point { x: 0.0, y: 1.0 },
-        Point { x: 1.0, y: model.growth },
-        Point { x: 2.0, y: model.growth * model.growth },
-        Point { x: 3.0, y: model.growth * model.growth * model.growth }
+        Point { x: 1.0, y: round_significant(model.growth, 4) },
+        Point { x: 2.0, y: round_significant(model.growth * model.growth, 4) },
+        Point { x: 3.0, y: round_significant(model.growth * model.growth * model.growth, 4) }
       ] }, Series { name: "Baseline", points: [
         Point { x: 0.0, y: 1.0 },
         Point { x: 1.0, y: 1.0 },
@@ -36,5 +53,14 @@ fn view(model: Model) -> View<Msg>
       ] }]}
       x_axis={Axis { label: "Period", unit: None {}, min: None {}, max: None {} }}
       y_axis={Axis { label: "Value", unit: None {}, min: None {}, max: None {} }}
-    />
+      />
+    </Column>
+    <Column width={visualization_width()}>
+      <Heatmap title="Scenario matrix" description="A two by two matrix comparing baseline and compounded scenarios." rows={2} columns={2} cells={[
+        HeatCell { row: 0, column: 0, value: 1.0, label: "Baseline period one" },
+        HeatCell { row: 0, column: 1, value: model.growth, label: "Compounded period one" },
+        HeatCell { row: 1, column: 0, value: 1.0, label: "Baseline period two" },
+        HeatCell { row: 1, column: 1, value: model.growth * model.growth, label: "Compounded period two" }
+      ]} />
+    </Column>
   </Column>
