@@ -12,7 +12,16 @@ export const projectStaticFallback = (input: unknown, profile: ResourceProfile):
   const project = (node: NativeNode): NativeNode | undefined => {
     if (node.kind === "text") return { ...node };
     if (node.kind === "fragment") return { ...node, children: node.children.map(project).filter((child): child is NativeNode => Boolean(child)) };
+    if (node.attrs?.["data-native-particle-buffer"] !== undefined) return undefined;
     if (node.tag === "button") return undefined;
+    if (node.tag === "canvas") {
+      const description = String(node.attrs?.["aria-label"] ?? "Simulation visualization");
+      return { kind: "element", tag: "div", attrs: { "data-native-component": "static-scene", "aria-label": description }, children: [
+        { kind: "element", tag: "strong", children: [{ kind: "text", value: description }] },
+        { kind: "element", tag: "p", children: [{ kind: "text", value: "Visual objects are described in the accompanying semantic data for this non-animated view." }] },
+      ] };
+    }
+    if (node.tag === "img") return { kind: "element", tag: "div", attrs: { "data-native-component": "static-image", "aria-label": String(node.attrs?.["aria-label"] ?? "Reviewed image") }, children: [{ kind: "text", value: String(node.attrs?.["aria-label"] ?? "Reviewed image") }] };
     if (node.tag === "input" || node.tag === "select") {
       const label = String(node.attrs?.["aria-label"] ?? "Value");
       const rawValue = String(node.props?.value ?? node.attrs?.value ?? node.props?.checked ?? "");

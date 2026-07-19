@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { TessylNativeError } from "../errors.js";
 import { STANDARD_V1 } from "../profiles.js";
-import { validateBoundaryValue, validateFrame, validateRuntimeStep, validateStaticFrame } from "./validate.js";
+import { isCanonicalArticleSlug, validateBoundaryValue, validateFrame, validateRuntimeStep, validateStaticFrame } from "./validate.js";
 import { validateRuntimeRequest, validateRuntimeResponse } from "./messages.js";
 import { normalizeNativeFrame } from "./normalize-frame.js";
 
@@ -22,6 +22,14 @@ test("accepts the closed native frame surface", () => {
           events: [{ kind: "event", event: "input", handlerId: 1 }],
           children: [],
         },
+        {
+          kind: "element",
+          tag: "canvas",
+          attrs: { width: 800, height: 450, "aria-label": "Particle field", "data-native-particles": true },
+          events: [{ kind: "event", event: "pointermove", handlerId: 2 }],
+          children: [],
+        },
+        { kind: "element", tag: "span", attrs: { "data-native-particle-buffer": "10,20,3;30,40,2", "aria-hidden": true }, children: [] },
       ],
     },
   }, STANDARD_V1);
@@ -44,6 +52,18 @@ test("rejects unsafe render surface and cyclic frames", () => {
     version: 1,
     root: { kind: "element", tag: "div", events: Array.from({ length: 3 }, (_, handlerId) => ({ kind: "event", event: "click", handlerId, message: "x".repeat(100_000) })), children: [] },
   }, STANDARD_V1), /frame byte budget/);
+  assert.throws(() => validateFrame({ version: 1, root: { kind: "element", tag: "canvas", attrs: { width: 4_000, height: 4_000 }, children: [] } }, STANDARD_V1), /canvas pixel/);
+  assert.throws(() => validateFrame({ version: 1, root: { kind: "element", tag: "span", attrs: { "data-native-particle-buffer": "javascript:bad" }, children: [] } }, STANDARD_V1), /particle data/);
+});
+
+test("canonical article slugs have aligned separator and length boundaries", () => {
+  const atLimit = `article_slug-${"a".repeat(67)}`;
+  assert.equal(atLimit.length, 80);
+  assert.equal(isCanonicalArticleSlug(atLimit), true);
+  assert.equal(isCanonicalArticleSlug(`${atLimit}a`), false);
+  for (const invalid of ["", "Uppercase", "leading/path", "-leading", "trailing_", "double--separator", "mixed_-separator"]) {
+    assert.equal(isCanonicalArticleSlug(invalid), false, invalid);
+  }
 });
 
 test("static frames cannot contain focusable nodes", () => {
@@ -58,8 +78,14 @@ test("runtime command and subscription capabilities fail closed", () => {
     commands: { type: "cmd", kind: "delay", ms: 10, value: { tick: true } },
     subscriptions: { type: "sub", kind: "animation_frame", key: "animation" },
   }, STANDARD_V1));
+  assert.doesNotThrow(() => validateRuntimeStep({ subscriptions: { type: "sub", kind: "fixed_timestep", key: "60" } }, STANDARD_V1));
+  assert.doesNotThrow(() => validateRuntimeStep({ subscriptions: { type: "sub", kind: "native_input_number", key: "mass" } }, STANDARD_V1));
+  assert.doesNotThrow(() => validateRuntimeStep({ subscriptions: { type: "sub", kind: "native_dataset_text", key: "growth_data" } }, STANDARD_V1));
+  assert.doesNotThrow(() => validateRuntimeStep({ subscriptions: { type: "sub", kind: "native_shareable_state", key: "initial" } }, STANDARD_V1));
   assert.throws(() => validateRuntimeStep({ commands: { type: "cmd", kind: "fetch", value: "https://example.com" } }, STANDARD_V1), /unsupported capability/);
   assert.doesNotThrow(() => validateRuntimeStep({ commands: { type: "cmd", kind: "delay", ms: 10n, value: { tick: true } } }, STANDARD_V1));
+  assert.doesNotThrow(() => validateRuntimeStep({ commands: { type: "cmd", kind: "native_share_state", value: "angle=1.25" } }, STANDARD_V1));
+  assert.throws(() => validateRuntimeStep({ commands: { type: "cmd", kind: "native_share_state", value: "x".repeat(8_193) } }, STANDARD_V1), /shareable state/);
   assert.throws(() => validateRuntimeStep({ commands: { type: "cmd", kind: "delay", ms: 10, value: null, extra: true } }, STANDARD_V1), /unknown field/);
   assert.throws(() => validateRuntimeStep({ subscriptions: { type: "sub", kind: "animation_frame", key: "" } }, STANDARD_V1), /invalid key/);
   assert.throws(() => validateRuntimeStep({ commands: { type: "cmd", kind: "batch", children: [
@@ -86,7 +112,7 @@ test("hostile values are bounded before traversal or cloning", () => {
   assert.throws(() => validateBoundaryValue(accessorBoundary, 100, "accessor", STANDARD_V1), /accessor properties/);
   assert.throws(() => validateBoundaryValue(Array.from({ length: 20 }, () => 1), 100), /payload limit/);
   assert.throws(() => validateBoundaryValue(Array.from({ length: 101 }, () => []), 100), /payload limit/);
-  const tooManyContainers = Array.from({ length: 65 }, () => Array.from({ length: 64 }, () => []));
+  const tooManyContainers = Array.from({ length: 129 }, () => Array.from({ length: 64 }, () => []));
   assert.throws(
     () => validateBoundaryValue(tooManyContainers, STANDARD_V1.maxBoundaryBytes, "containers", STANDARD_V1),
     /container limit/,

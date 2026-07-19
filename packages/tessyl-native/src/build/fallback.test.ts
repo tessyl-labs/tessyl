@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { STANDARD_V1 } from "../profiles.js";
 import { projectStaticFallback } from "./fallback.js";
+import { renderStaticFallbackHtml } from "../fallback-renderer.js";
 
 test("projects controls into labelled static values and preserves chart data", () => {
   const fallback = projectStaticFallback({
@@ -25,4 +26,14 @@ test("projects controls into labelled static values and preserves chart data", (
   assert.doesNotMatch(serialized, /Run|button|events/);
   assert.match(serialized, /Voyd article/);
   assert.doesNotMatch(serialized, /data-article-slug|tabindex|"tag":"a"/);
+});
+
+test("trusted fallback serialization validates its closed static frame", () => {
+  assert.throws(() => renderStaticFallbackHtml({ version: 1, root: { kind: "element", tag: "script", attrs: { onclick: "alert(1)" }, children: [{ kind: "text", value: "bad" }] } } as never), /unsupported (?:element|tag|attr)/);
+});
+
+test("static equation serialization preserves accessible MathML", () => {
+  const html = renderStaticFallbackHtml({ version: 1, root: { kind: "element", tag: "span", attrs: { "data-native-component": "equation", "data-native-math-source": "E = mc^2", "data-native-display": false }, children: [{ kind: "text", value: "E = mc^2" }] } });
+  assert.match(html, /<math[^>]+aria-label="E = mc\^2"/);
+  assert.match(html, /<mi>E<\/mi>.*<mo>=<\/mo>/);
 });

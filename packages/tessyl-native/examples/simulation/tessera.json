@@ -1,1 +1,1 @@
-{"title":"Bounded simulation","entry":"main.voyd","sdkVersion":1}
+{"title":"Bounded simulation","entry":"main.voyd","sdkVersion":2,"metadata":{"accessibleName":"Bounded particle simulation","purpose":"Demonstrate bounded Canvas particles and fixed-timestep control","revision":"particles-r2","instructions":["Run, pause, or advance one step."],"assumptions":["Particle paths are deterministic teaching paths."],"limitations":["Collisions are not modeled."]},"fallback":{"version":1,"essentialContent":["Particle field","Step"]}}

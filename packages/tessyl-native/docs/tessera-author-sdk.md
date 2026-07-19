@@ -1,7 +1,7 @@
 # Tessera Author SDK
 
 This is the primary guide for developers who author Tesserae. It defines the
-implemented v1 Voyd API exposed as `pkg::tessyl_native`.
+implemented v2 Voyd API exposed as `pkg::tessyl_native`.
 Authors do not install `@tessyl/native` or call its TypeScript integration API.
 
 ## Mental model
@@ -33,7 +33,10 @@ enum Msg
   MassChanged { value: f64 }
 
 pub fn app() -> Tessera<Model, Msg>
-  tessera({ init, step, view })
+  tessera({ init, step, view, subscriptions })
+
+fn subscriptions(_model: Model) -> Sub<Msg>
+  Sub<Msg>::none()
 
 fn init() -> Model
   Model { mass: 1.0 }
@@ -64,9 +67,10 @@ fn view(model: Model) -> View<Msg>
   </Column>
 ```
 
-The required export is `app()`. The initial SDK does not pass article data into
-that function. A Tessera revision is self-contained; typed external inputs can
-be added later as a versioned SDK and runtime feature.
+The required export is `app()`. Host values do not enter that function as
+ambient arguments. A Tessera revision declares typed inputs, pinned datasets,
+and reviewed assets in `tessera.json`, then receives them only through the
+bounded subscriptions described below.
 
 ## Core API
 
@@ -78,7 +82,7 @@ Child<Msg> = View<Msg> | String
 Cmd<Msg>
 Sub<Msg>
 
-tessera({ init, step, view, subscriptions? }) -> Tessera<Model, Msg>
+tessera({ init, step, view, subscriptions }) -> Tessera<Model, Msg>
 next(model) -> Update<Model, Msg>
 next(model:, cmd:) -> Update<Model, Msg>
 ```
@@ -117,14 +121,16 @@ Subscriptions describe ongoing inputs and are synchronized after each step:
 ```voyd
 fn subscriptions(model: Model) -> Sub<Msg>
   if model.running:
-    Sub::animation_frame((frame) => Msg::Frame { elapsed: frame.elapsed_ms })
+    sub_animation_frame<Msg>((frame) => Msg::Frame { elapsed: frame.elapsed_ms })
   else:
     Sub::none()
 ```
 
-Initial subscriptions are animation frames and container-size changes. The
-runtime rate-limits, coalesces, pauses, and disposes them as required. Animation
-logic must use elapsed time rather than assuming a fixed frame rate.
+Subscriptions include animation frames, fixed timesteps, reduced-motion and
+container-size changes, typed declared inputs, pinned dataset text, and initial
+shareable state. The runtime rate-limits, pauses, and disposes them as required.
+Animation logic must use elapsed time rather than assuming a fixed frame rate;
+simulation logic must advance only by `SimulationFrame.steps * step_ms`.
 
 ## API reference
 
@@ -180,7 +186,8 @@ obj LegendItem {
 
 obj AnimationFrame {
   elapsed_ms: f64,
-  delta_ms: f64
+  delta_ms: f64,
+  reduced_motion: bool
 }
 
 obj ContainerSize {
@@ -205,6 +212,38 @@ obj TableRow {
 
 Fixed dimensions are clamped by the renderer profile and never control the
 outer article frame.
+
+## STEM additions
+
+The complete TES-7 API is specified in the
+[STEM platform contract](./stem-platform.md). In summary:
+
+- `Scene`, `InteractiveScene`, `ParticleField`, `VectorField`, and `Heatmap`
+  provide bounded semantic SVG or Canvas 2D visualization without raw VX.
+- `ScenePrimitive` covers coordinates, points, lines, arrows, circles,
+  rectangles, paths, and labels. `SceneObject` supplies a layer and matrix
+  transform; every meaningful mark requires a semantic label.
+- `PointerGesture`, `FocusGesture`, and `KeyboardGesture` normalize pointer,
+  drag, hover, wheel, focus, and keyboard interaction without exposing browser
+  event objects.
+- `sub_fixed_timestep`, `sub_reduced_motion`, and `SimulationFrame` provide
+  deterministic bounded simulation with a non-animated path.
+- `Vec2`, `Matrix2`, `Complex`, `Quantity`, numerical integration, bisection,
+  RK4, deterministic random state, mechanics, and orbital helpers are pure.
+- `sub_input_number`, `sub_input_string`, and `sub_input_boolean` expose only
+  host values declared by the artifact input schema.
+- `sub_dataset_text` exposes verified UTF-8 pinned dataset content;
+  `sub_shareable_state` receives bounded deep-link state and
+  `Cmd::share_state` publishes a replacement to the trusted host adapter.
+- `ReviewedImage` references only a declared, hash-verified asset ID and always
+  requires an accessible name. Authors never receive asset bytes or URLs.
+- `DynamicResult` creates a local polite announcement. `Equation` is rendered
+  as a safe MathML token tree with an accessible math name.
+
+All titles, descriptions, labels, units, and error states must be meaningful
+and non-empty. A visual interaction must also expose a description/data view
+and a keyboard path. Reduced-motion mode must remain understandable without
+continuous animation.
 
 ### Layout and content
 
@@ -241,7 +280,9 @@ Defaults are `Space::Medium` for gaps/padding, `Align::Stretch`, `Width::Fill`,
 `display: false`. Grid columns are 1–12 and default to 1. `Metric` requires a
 finite value; precision is bounded and otherwise uses native number formatting.
 Table rows must have exactly one value per column. `ArticleLink` accepts only a
-canonical Tessyl article slug; trusted rendering handles its direct activation.
+canonical Tessyl article slug: 1–80 lowercase ASCII letters or digits, with
+single `-` or `_` separators between non-empty segments. Trusted rendering
+handles its direct activation.
 
 ### Inputs
 
@@ -340,17 +381,25 @@ screen-reader users and does not rely on SVG traversal.
 Cmd::none() -> Cmd<Msg>
 Cmd::batch(commands: Array<Cmd<Msg>>) -> Cmd<Msg>
 Cmd::delay(milliseconds: f64, message: Msg) -> Cmd<Msg>
+Cmd::share_state(state: String) -> Cmd<Msg>
 
 Sub::none() -> Sub<Msg>
 Sub::batch(subscriptions: Array<Sub<Msg>>) -> Sub<Msg>
-Sub::animation_frame(handler: AnimationFrame -> Msg) -> Sub<Msg>
-Sub::container_size(handler: ContainerSize -> Msg) -> Sub<Msg>
+sub_animation_frame<Msg>(handler: AnimationFrame -> Msg) -> Sub<Msg>
+sub_fixed_timestep<Msg>(hz: i32, handler: SimulationFrame -> Msg) -> Sub<Msg>
+sub_reduced_motion<Msg>(handler: bool -> Msg) -> Sub<Msg>
+sub_container_size<Msg>(handler: ContainerSize -> Msg) -> Sub<Msg>
+sub_input_number<Msg>(name: String, on_value: fn(f64) -> Msg) -> Sub<Msg>
+sub_input_string<Msg>(name: String, on_value: fn(String) -> Msg) -> Sub<Msg>
+sub_input_boolean<Msg>(name: String, on_value: fn(bool) -> Msg) -> Sub<Msg>
+sub_dataset_text<Msg>(id: String, on_value: fn(String) -> Msg) -> Sub<Msg>
+sub_shareable_state<Msg>(handler: fn(String) -> Msg) -> Sub<Msg>
 ```
 
 `delay` requires a finite non-negative duration and is capped by the resource
 profile. Missing, malformed, or disallowed capabilities fail the interaction
-through the standard runtime error path. Response-producing capabilities
-require a future typed task API rather than overloading commands.
+through the standard runtime error path. Dataset and input subscriptions can
+only resolve declarations content-locked into the artifact.
 
 ## Styling and layout
 
@@ -448,7 +497,7 @@ mass-energy/
 {
   "title": "Mass–energy equivalence",
   "entry": "src/main.voyd",
-  "sdkVersion": 1
+  "sdkVersion": 2
 }
 ```
 
@@ -466,7 +515,7 @@ markup:
 ```voyd
 use src::model::{ Model, Msg, update }
 use src::view::view
-use pkg::tessyl_native::testing::semantic_view
+use pkg::tessyl_native::semantic_view
 use std::test::assertions::all
 
 test "mass changes update the result":
@@ -506,7 +555,7 @@ tessyl native build [project]
 Preview must use the same restricted host as production. Development mode may
 show richer diagnostics but must not silently enable capabilities.
 
-The Tessyl article editor is the v1 submission and publication path. It can edit a
+The Tessyl article editor is the v2 submission and publication path. It can edit a
 Tessera directly or import the local bundle produced by `build`. The CLI never
 publishes or assigns a revision; submitting in the editor uploads source and
 author metadata to Tessyl's build and review pipeline. Tessyl approval creates

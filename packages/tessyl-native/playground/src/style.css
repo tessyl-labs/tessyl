@@ -67,6 +67,7 @@ code { font-family: var(--ts-font-mono); }
 .fallback table { width: 100%; border-collapse: collapse; font-size: .7rem; }
 .fallback caption { padding: .5rem 0; font-weight: 750; text-align: left; }
 .fallback th, .fallback td { padding: .35rem; border: 1px solid var(--ts-color-border-subtle); text-align: left; }
+.fallback [aria-label="Particle data"], .fallback [aria-label="Scene data"] { max-height: 14rem; overflow: auto; }
 
 @media (max-width: 52rem) {
   .hero { grid-template-columns: 1fr; padding: 2.25rem; }

@@ -2,7 +2,7 @@
 
 This document defines the private TypeScript API through which Tessyl compiles
 and runs Tesserae. It is the supported integration boundary between the Tessyl
-product and the implemented Tessyl Native v1 compiler and browser runtime.
+product and the implemented Tessyl Native v2 compiler and browser runtime.
 
 ## Audience and package boundary
 
@@ -47,6 +47,10 @@ It exposes three lifecycle operations:
 ```ts
 interface TessylNative {
   compile(input: CompileTesseraInput): Promise<CompileTesseraResult>;
+  check(input: CompileTesseraInput): Promise<readonly NativeDiagnostic[]>;
+  test(input: CompileTesseraInput): Promise<readonly NativeDiagnostic[]>;
+  build(input: CompileTesseraInput): Promise<CompileTesseraResult>;
+  preview(input: CompileTesseraInput): Promise<CompileTesseraResult & { fallbackHtml?: string }>;
   initialize(input: InitializeTesseraInput): Promise<TesseraInstance>;
   run(input: RunTesseraInput): Promise<TesseraInstance>;
 }
@@ -73,13 +77,18 @@ contributor-controlled values:
 type TessylNativeConfig = {
   runtime?: {
     onArticleLink: (slug: string) => void;
+    onInspectSource?: (files: Readonly<Record<string, string>>, metadata: TesseraMetadataV1) => void;
+    onInspectProvenance?: (artifact: TesseraArtifactV2) => void;
+    onExpandedViewChange?: (expanded: boolean) => void;
+    onShareableStateChange?: (state: string) => void;
   };
   telemetry?: NativeTelemetry;
 };
 ```
 
-A browser supplies the trusted product callback for reader-initiated article
-links. Native owns compiler setup, Worker and renderer assets, and the immutable
+A browser supplies trusted observational callbacks for reader-initiated article
+links, inspection, expanded-view coordination, and share-state publication.
+Native owns compiler setup, Worker and renderer assets, and the immutable
 capability and resource profile registries. Environment-specific package builds
 select the server compiler or browser runtime implementation. Tessyl cannot
 supply ad hoc capabilities, replace Native runtime assets, or raise resource
@@ -97,7 +106,7 @@ type CompileTesseraInput = {
 type CompileTesseraResult =
   | {
       ok: true;
-      artifact: TesseraArtifactV1;
+      artifact: TesseraArtifactV2;
       diagnostics: readonly NativeDiagnostic[];
     }
   | {
@@ -106,10 +115,11 @@ type CompileTesseraResult =
     };
 ```
 
-`compile` resolves the pinned author SDK and allowed dependencies, invokes Voyd
-under build limits, inspects the Wasm boundary, generates the default fallback,
-and validates the complete artifact. The result contains no Tessyl content ID,
-revision, approval state, permissions, caption, or article relationship.
+`compile` resolves the pinned author SDK and allowed dependencies, runs Voyd
+author tests, invokes Voyd under build limits, inspects the Wasm boundary,
+executes the reviewed fallback scenario, and validates the complete artifact.
+The result preserves portable revision, caption, provenance, input, dataset,
+and asset metadata but contains no Tessyl authorization or publication state.
 
 ```ts
 const result = await native.compile({ source, authorManifest, profile });
@@ -130,6 +140,10 @@ type InitializeTesseraInput = {
   artifact: TesseraArtifact;
   container: HTMLElement;
   presentation?: TesseraPresentation;
+  inputs?: Readonly<Record<string, string | number | boolean>>;
+  datasets?: Readonly<Record<string, Uint8Array>>;
+  assets?: Readonly<Record<string, Uint8Array>>;
+  shareableState?: string;
   signal?: AbortSignal;
   onStatusChange?: (status: TesseraStatus) => void;
 };
@@ -151,8 +165,8 @@ change application capabilities, resources, or artifact identity.
 
 1. Validate the complete artifact and supported version tuple.
 2. Render or retain the static fallback.
-3. Create the sandboxed renderer iframe, Worker, message channels, broker, and
-   watchdog.
+3. Create the sandboxed renderer iframe and its message channel. Worker
+   admission, the runtime broker, and watchdog are deferred until `run`.
 4. Return an initialized instance without invoking the untrusted `app()`.
 
 The caller can defer execution until the Tessera is near the viewport:
@@ -179,8 +193,12 @@ const instance = await native.run({
 fails, the fallback remains visible and the promise rejects with a bounded
 Native error.
 
-Typed per-embed application inputs are not part of v1. When added, they must be
-a versioned artifact/runtime feature, distinct from trusted presentation data.
+Per-embed values and binary resources are accepted only when declared by the
+artifact resource contract. Native snapshots them and validates input bounds,
+resource lengths, hashes, media types, UTF-8, and JSON syntax before worker
+startup. Authors receive values through typed input, dataset, and initial
+share-state subscriptions. Shareable state is bounded and remains distinct
+from trusted presentation data.
 
 ## Instance lifecycle
 
@@ -189,16 +207,22 @@ interface TesseraInstance {
   readonly status: TesseraStatus;
   run(): Promise<void>;
   reset(): Promise<void>;
+  restart(): Promise<void>;
   setActive(active: boolean): void;
+  setExpandedView(expanded: boolean): void;
+  getShareableState(): string;
+  exportResult(): Promise<Blob>;
   dispose(): void;
 }
 
 type TesseraStatus =
+  | "loading"
   | "initialized"
   | "starting"
   | "running"
   | "paused"
   | "failed"
+  | "unsupported"
   | "disposed";
 ```
 

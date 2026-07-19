@@ -26,6 +26,14 @@ export type ResourceProfile = {
   readonly maxMemoryPages: number;
   readonly maxTables: number;
   readonly maxTableElements: number;
+  readonly maxPlottedPoints: number;
+  readonly maxTableCells: number;
+  readonly maxSceneObjects: number;
+  readonly maxAnimationUpdatesPerSecond: number;
+  readonly maxAssetBytes: number;
+  readonly maxDatasetBytes: number;
+  readonly maxSimulationStepsPerFrame: number;
+  readonly maxCanvasPixels: number;
   readonly startupTimeoutMs: number;
   readonly rpcTimeoutMs: number;
   readonly maxTransitionsPerSecond: number;
@@ -51,11 +59,11 @@ export const STANDARD_V1: ResourceProfile = Object.freeze({
   maxSourceBytes: 512 * 1024,
   maxBoundaryBytes: 256 * 1024,
   maxBoundaryDepth: 32,
-  maxBoundaryContainers: 4_096,
-  maxBoundaryEntries: 8_192,
+  maxBoundaryContainers: 8_192,
+  maxBoundaryEntries: 16_384,
   maxBoundaryEntriesPerContainer: 2_048,
   maxFrameBytes: 192 * 1024,
-  maxNodes: 2_000,
+  maxNodes: 5_000,
   maxDepth: 32,
   maxChildren: 200,
   maxAttributes: 24,
@@ -68,9 +76,20 @@ export const STANDARD_V1: ResourceProfile = Object.freeze({
   maxMemoryPages: 256,
   maxTables: 4,
   maxTableElements: 10_000,
+  maxPlottedPoints: 4_096,
+  maxTableCells: 1_500,
+  maxSceneObjects: 512,
+  maxAnimationUpdatesPerSecond: 120,
+  maxAssetBytes: 8 * 1024 * 1024,
+  // Dataset text is delivered in one closed runtime message. Leave room for
+  // the subscription envelope inside maxBoundaryBytes.
+  maxDatasetBytes: 240 * 1024,
+  maxSimulationStepsPerFrame: 8,
+  maxCanvasPixels: 2_000_000,
   startupTimeoutMs: 5_000,
   rpcTimeoutMs: 1_000,
-  maxTransitionsPerSecond: 120,
+  // Every admitted subscription may produce a bounded display-rate message.
+  maxTransitionsPerSecond: 9 * 120,
   maxDelayMs: 60_000,
   maxConcurrentWorkers: 4,
   maxRuntimeQueue: 8,

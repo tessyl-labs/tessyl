@@ -41,6 +41,20 @@ pub obj Cmd<Msg> { payload: MsgPack }
 @boundary(type: "payload", field: "payload")
 pub obj Sub<Msg> { payload: MsgPack }
 
+impl<Msg> Sub<Msg>
+  api fn none() -> Sub<Msg>
+    let subscription = VxSub<Msg>::none()
+    Sub<Msg> { payload: subscription.payload }
+
+  api fn batch(subscriptions: Array<Sub<Msg>>) -> Sub<Msg>
+    let ~values = Array<VxSub<Msg>>::with_capacity(subscriptions.len())
+    var index = 0
+    while index < subscriptions.len():
+      values.push(VxSub<Msg> { payload: subscriptions.at(index).payload })
+      index = index + 1
+    let subscription = VxSub<Msg>::batch(values)
+    Sub<Msg> { payload: subscription.payload }
+
 impl<Msg> Cmd<Msg>
   api fn none() -> Cmd<Msg>
     let command = VxCmd<Msg>::none()
@@ -66,33 +80,53 @@ impl<Msg> Cmd<Msg>
     let command = VxCmd<Msg>::delay(millis: millis, value: message)
     Cmd<Msg> { payload: command.payload }
 
-impl<Msg> Sub<Msg>
-  api fn none() -> Sub<Msg>
-    let value = VxSub<Msg>::none()
-    Sub<Msg> { payload: value.payload }
+  api fn share_state(state: String) -> Cmd<Msg>
+    if state.byte_len() > 8192: panic("Shareable state must fit within 8192 bytes")
+    let command = VxCmd<Msg>::runtime(kind: "native_share_state", value: msgpack::make_string(state))
+    Cmd<Msg> { payload: command.payload }
 
-  api fn batch(subscriptions: Array<Sub<Msg>>) -> Sub<Msg>
-    let ~values = Array<VxSub<Msg>>::with_capacity(subscriptions.len())
-    var index = 0
-    while index < subscriptions.len():
-      values.push(VxSub<Msg> { payload: subscriptions.at(index).payload })
-      index = index + 1
-    let value = VxSub<Msg>::batch(values)
-    Sub<Msg> { payload: value.payload }
+pub fn sub_animation_frame<Msg>(handler: fn(AnimationFrame) -> Msg) -> Sub<Msg>
+  let subscription = VxSub<AnimationFrame>::runtime(kind: "animation_frame", key: "native-animation-frame").map<Msg>(handler)
+  Sub<Msg> { payload: subscription.payload }
 
-  api fn animation_frame(handler: fn(AnimationFrame) -> Msg) -> Sub<Msg>
-    let value = VxSub<AnimationFrame>::runtime(kind: "animation_frame", key: "native-animation-frame").map<MsgPack>((frame: AnimationFrame) -> MsgPack => msgpack::pack_boundary_value<Msg>(handler(frame)))
-    Sub<Msg> { payload: value.payload }
+pub fn sub_fixed_timestep<Msg>({ hz: i32, on_step: fn(SimulationFrame) -> Msg }) -> Sub<Msg>
+  if hz < 1 or hz > 120: panic("Fixed timestep frequency must be from 1 through 120 Hz")
+  let subscription = VxSub<SimulationFrame>::runtime(kind: "fixed_timestep", key: to_string(hz)).map<Msg>(on_step)
+  Sub<Msg> { payload: subscription.payload }
 
-  api fn container_size(handler: fn(ContainerSize) -> Msg) -> Sub<Msg>
-    let value = VxSub<ContainerSize>::runtime(kind: "container_size", key: "native-container-size").map<MsgPack>((size: ContainerSize) -> MsgPack => msgpack::pack_boundary_value<Msg>(handler(size)))
-    Sub<Msg> { payload: value.payload }
+pub fn sub_reduced_motion<Msg>(handler: fn(bool) -> Msg) -> Sub<Msg>
+  let subscription = VxSub<bool>::runtime(kind: "reduced_motion", key: "native-reduced-motion").map<Msg>(handler)
+  Sub<Msg> { payload: subscription.payload }
 
-pub fn tessera<Model, Msg>({ init: fn() : (open) -> Model, step: fn(Model, Msg) : (open) -> Program<Model, Msg>, view: fn(Model) : (open) -> Html<Msg> }) -> Tessera<Model, Msg>
-  vx::program({ init, step, view })
+pub fn sub_container_size<Msg>(handler: fn(ContainerSize) -> Msg) -> Sub<Msg>
+  let subscription = VxSub<ContainerSize>::runtime(kind: "container_size", key: "native-container-size").map<Msg>(handler)
+  Sub<Msg> { payload: subscription.payload }
+
+pub fn sub_input_number<Msg>({ name: String, on_value: fn(f64) -> Msg }) -> Sub<Msg>
+  let subscription = VxSub<f64>::runtime(kind: "native_input_number", key: name).map<Msg>(on_value)
+  Sub<Msg> { payload: subscription.payload }
+
+pub fn sub_input_string<Msg>({ name: String, on_value: fn(String) -> Msg }) -> Sub<Msg>
+  let subscription = VxSub<String>::runtime(kind: "native_input_string", key: name).map<Msg>(on_value)
+  Sub<Msg> { payload: subscription.payload }
+
+pub fn sub_input_boolean<Msg>({ name: String, on_value: fn(bool) -> Msg }) -> Sub<Msg>
+  let subscription = VxSub<bool>::runtime(kind: "native_input_boolean", key: name).map<Msg>(on_value)
+  Sub<Msg> { payload: subscription.payload }
+
+pub fn sub_dataset_text<Msg>({ id: String, on_value: fn(String) -> Msg }) -> Sub<Msg>
+  let subscription = VxSub<String>::runtime(kind: "native_dataset_text", key: id).map<Msg>(on_value)
+  Sub<Msg> { payload: subscription.payload }
+
+pub fn sub_shareable_state<Msg>(handler: fn(String) -> Msg) -> Sub<Msg>
+  let subscription = VxSub<String>::runtime(kind: "native_shareable_state", key: "initial").map<Msg>(handler)
+  Sub<Msg> { payload: subscription.payload }
+
+fn unwrap_sub<Msg>(subscription: Sub<Msg>) -> VxSub<Msg>
+  VxSub<Msg> { payload: subscription.payload }
 
 pub fn tessera<Model, Msg>({ init: fn() : (open) -> Model, step: fn(Model, Msg) : (open) -> Program<Model, Msg>, view: fn(Model) : (open) -> Html<Msg>, subscriptions: fn(Model) : (open) -> Sub<Msg> }) -> Tessera<Model, Msg>
-  vx::program({ init, step, view, subscriptions: (model: Model) : (open) -> VxSub<Msg> => VxSub<Msg> { payload: subscriptions(model).payload } })
+  vx::program({ init, step, view, subscriptions: (model: Model) -> VxSub<Msg> => unwrap_sub(subscriptions(model)) })
 
 pub fn next<Model, Msg>(model: Model) -> Update<Model, Msg>
   vx::next<Model, Msg>(model)
@@ -138,7 +172,8 @@ pub enum TextWeight
   Strong
 
 pub obj LegendItem { api label: String, api tone: Tone }
-pub obj AnimationFrame { api elapsed_ms: f64, api delta_ms: f64 }
+pub obj AnimationFrame { api elapsed_ms: f64, api delta_ms: f64, api reduced_motion: bool }
+pub obj SimulationFrame { api elapsed_ms: f64, api step_ms: f64, api steps: i32, api alpha: f64, api reduced_motion: bool }
 pub obj ContainerSize { api width: f64, api height: f64 }
 pub obj SelectOption { api value: String, api label: String }
 pub obj TableColumn { api key: String, api label: String }
@@ -297,12 +332,20 @@ pub fn Code({ value: String, language?: String }) -> MsgPack
   vx::html_element(tag: "pre", attrs: [component_attr("code"), vx::attr(name: "data-native-language", value: actual_language)], children: [vx::html_element(tag: "code", children: [vx::text(value)])])
 
 pub fn Equation({ source: String, display?: bool }) -> MsgPack
+  if blank(source) or source.byte_len() > 1024:
+    panic("Equation requires bounded non-empty math source")
   let is_display = display ?? false
-  vx::html_element(tag: if is_display then: "div" else: "span", attrs: [component_attr("equation"), vx::attr(name: "role", value: "math"), vx::attr(name: "aria-label", value: source), vx::attr(name: "data-native-display", value: is_display)], children: [vx::text(source)])
+  vx::html_element(tag: if is_display then: "div" else: "span", attrs: [component_attr("equation"), vx::attr(name: "role", value: "math"), vx::attr(name: "aria-label", value: source), vx::attr(name: "data-native-math-source", value: source), vx::attr(name: "data-native-display", value: is_display)], children: [vx::text(source)])
+
+pub fn DynamicResult({ label: String, value: String }) -> MsgPack
+  if blank(label) or blank(value): panic("DynamicResult requires a non-empty label and value")
+  vx::html_element(tag: "output", attrs: [component_attr("dynamic-result"), vx::attr(name: "aria-label", value: label), vx::attr(name: "aria-live", value: "polite"), vx::attr(name: "data-native-announcement", value: true)], children: [vx::text(value)])
 
 pub fn Metric({ label: String, value: f64, unit?: String, description?: String, precision?: i32 }) -> MsgPack
-  if not is_finite(value):
-    panic("Metric value must be finite")
+  validate_label_unit(label, unit)
+  if not is_finite(value): panic("Metric value must be finite")
+  if description is Some:
+    if blank(description.value): panic("Metric descriptions cannot be empty when supplied")
   if precision is Some:
     if precision.value < 0 or precision.value > 6:
       panic("Metric precision must be from 0 through 6")
@@ -367,11 +410,13 @@ pub fn Legend({ items: Array<LegendItem> }) -> MsgPack
   let ~children = Array<MsgPack>::with_capacity(items.len())
   var index = 0
   while index < items.len():
+    if blank(items.at(index).label): panic("Legend items require non-empty labels")
     children.push(vx::html_element(tag: "li", attrs: [vx::attr(name: "data-native-tone", value: tone_name(items.at(index).tone))], children: [vx::text(items.at(index).label)]))
     index = index + 1
   vx::html_element(tag: "ul", attrs: [component_attr("legend"), vx::attr(name: "aria-label", value: "Legend")], children: children)
 
 pub fn Button<Msg>({ on_press: Msg, children: Array<Child<Msg>>, disabled: bool = false, tone?: Tone }) -> View<Msg>
+  if not children_have_accessible_name(children): panic("Button requires accessible content")
   let ~attrs = [
     component_attr("button"),
     vx::attr(name: "type", value: "button"),
@@ -405,6 +450,7 @@ fn parse_optional_bounded_number(value: String, fallback: f64, min: Option<f64>,
   parsed
 
 pub fn Slider<Msg>({ label: String, value: f64, min: f64, max: f64, on_change: fn(f64) -> Msg, step?: f64, disabled: bool = false, unit?: String }) -> View<Msg>
+  validate_label_unit(label, unit)
   if not is_finite(min) or not is_finite(max) or not is_finite(value) or max <= min or value < min or value > max:
     panic("Slider requires finite increasing bounds and an in-range value")
   let actual_step = step ?? ((max - min) / 100.0)
@@ -422,6 +468,7 @@ pub fn Slider<Msg>({ label: String, value: f64, min: f64, max: f64, on_change: f
   vx::map_html<f64, MsgPack>(html: child, handler: (next_value: f64) -> MsgPack => msgpack::pack_boundary_value<Msg>(on_change(next_value)))
 
 pub fn NumberField<Msg>({ label: String, value: f64, on_change: fn(f64) -> Msg, min?: f64, max?: f64, step?: f64, disabled: bool = false, unit?: String }) -> View<Msg>
+  validate_label_unit(label, unit)
   if not is_finite(value):
     panic("NumberField value must be finite")
   if min is Some:
@@ -441,12 +488,12 @@ pub fn NumberField<Msg>({ label: String, value: f64, on_change: fn(f64) -> Msg, 
   let actual_value = value
   let ~attrs = [
     vx::attr(name: "type", value: "number"), vx::attr(name: "aria-label", value: label),
+    vx::attr(name: "step", value: if step is Some then: to_string(step ?? 1.0) else: "any"),
     vx::prop(name: "value", value: to_string(actual_value)), vx::disabled(disabled),
     vx::html_event_payload_handler<InputEvent, f64>(name: "input", handler: (event: InputEvent) -> f64 => parse_optional_bounded_number(event.value, actual_value, min, max))
   ]
   if min is Some: attrs.push(vx::attr(name: "min", value: to_string(min ?? value)))
   if max is Some: attrs.push(vx::attr(name: "max", value: to_string(max ?? value)))
-  if step is Some: attrs.push(vx::attr(name: "step", value: to_string(step ?? 1.0)))
   let child = vx::html_element(tag: "label", attrs: [component_attr("field")], children: [
     vx::html_element(tag: "span", children: [vx::text(labelled_unit(label, unit))]),
     vx::html_element(tag: "input", attrs: attrs, children: Array<MsgPack>::init())
@@ -454,6 +501,7 @@ pub fn NumberField<Msg>({ label: String, value: f64, on_change: fn(f64) -> Msg, 
   vx::map_html<f64, MsgPack>(html: child, handler: (next_value: f64) -> MsgPack => msgpack::pack_boundary_value<Msg>(on_change(next_value)))
 
 pub fn TextField<Msg>({ label: String, value: String, on_change: fn(String) -> Msg, disabled: bool = false, placeholder?: String, max_length?: i32 }) -> View<Msg>
+  if blank(label) or label.byte_len() > 1024: panic("TextField requires a bounded non-empty label")
   let actual_max_length = max_length ?? 8192
   if actual_max_length < 1 or actual_max_length > 8192 or value.byte_len() > actual_max_length:
     panic("TextField value and maximum length must fit the Native profile")
@@ -468,11 +516,12 @@ pub fn TextField<Msg>({ label: String, value: String, on_change: fn(String) -> M
   vx::map_html<String, MsgPack>(html: child, handler: (next_value: String) -> MsgPack => msgpack::pack_boundary_value<Msg>(on_change(next_value)))
 
 pub fn Select<Msg>({ label: String, value: String, options: Array<SelectOption>, on_change: fn(String) -> Msg, disabled: bool = false }) -> View<Msg>
-  if options.is_empty(): panic("Select requires at least one option")
+  if blank(label) or label.byte_len() > 1024 or options.is_empty(): panic("Select requires a bounded non-empty label and at least one option")
   var contains_value = false
   var validation_index = 0
   while validation_index < options.len():
     let candidate = options.at(validation_index)
+    if blank(candidate.label) or candidate.label.byte_len() > 1024: panic("Select options require bounded non-empty labels")
     if candidate.value == value:
       contains_value = true
     var duplicate_index = validation_index + 1
@@ -494,6 +543,7 @@ pub fn Select<Msg>({ label: String, value: String, options: Array<SelectOption>,
   vx::map_html<String, MsgPack>(html: child, handler: (next_value: String) -> MsgPack => msgpack::pack_boundary_value<Msg>(on_change(next_value)))
 
 pub fn Toggle<Msg>({ label: String, checked: bool, on_change: fn(bool) -> Msg, disabled: bool = false }) -> View<Msg>
+  if blank(label) or label.byte_len() > 1024: panic("Toggle requires a bounded non-empty label")
   let child = vx::html_element(tag: "label", attrs: [component_attr("field")], children: [
     vx::html_element(tag: "input", attrs: [
       vx::attr(name: "type", value: "checkbox"), vx::attr(name: "aria-label", value: label), vx::checked(checked), vx::disabled(disabled),
@@ -503,36 +553,139 @@ pub fn Toggle<Msg>({ label: String, checked: bool, on_change: fn(bool) -> Msg, d
   ])
   vx::map_html<bool, MsgPack>(html: child, handler: (next_value: bool) -> MsgPack => msgpack::pack_boundary_value<Msg>(on_change(next_value)))
 
+fn validate_label_unit(label: String, unit: Option<String>) -> void
+  if blank(label) or label.byte_len() > 1024: panic("Component labels must be bounded and non-empty")
+  if unit is Some:
+    if blank(unit.value) or unit.value.byte_len() > 128: panic("Units must be bounded and non-empty when supplied")
+
+fn blank(value: String) -> bool
+  value.trimmed().is_empty()
+
+fn children_have_accessible_name(children: Array<MsgPack>) -> bool
+  let normalized = normalize_children(children)
+  var index = 0
+  while index < normalized.len():
+    if node_has_accessible_name(normalized.at(index), 0):
+      return true
+    index = index + 1
+  false
+
+fn node_has_accessible_name(node: MsgPack, depth: i32) -> bool
+  if depth > 16:
+    return false
+  match(msgpack::unpack_map(node))
+    Ok<Dict<String, MsgPack>> { value: map }:
+      if map.contains("value"):
+        match(msgpack::unpack_string(map.get("value") ?? node))
+          Ok<String> { value }:
+            if not blank(value):
+              return true
+          Err:
+            void
+      if map.contains("attrs"):
+        match(msgpack::unpack_map(map.get("attrs") ?? node))
+          Ok<Dict<String, MsgPack>> { value: attrs }:
+            if attrs.contains("aria-label"):
+              match(msgpack::unpack_string(attrs.get("aria-label") ?? node))
+                Ok<String> { value }:
+                  if not blank(value):
+                    return true
+                Err:
+                  void
+          Err:
+            void
+      if map.contains("children"):
+        match(msgpack::unpack_array(map.get("children") ?? node))
+          Ok { value: nested }:
+            var index = 0
+            while index < nested.len():
+              if node_has_accessible_name(nested.at(index), depth + 1):
+                return true
+              index = index + 1
+          Err:
+            void
+      false
+    Err:
+      false
+
 pub fn ArticleLink({ slug: String, children: Array<MsgPack> }) -> MsgPack
+  if not canonical_article_slug(slug): panic("ArticleLink requires a canonical Tessyl article slug")
+  if not children_have_accessible_name(children): panic("ArticleLink requires accessible content")
   vx::html_element(tag: "a", attrs: [component_attr("article-link"), vx::attr(name: "data-article-slug", value: slug), vx::attr(name: "role", value: "link"), vx::attr(name: "tabindex", value: 0)], children: normalize_children(children))
 
+fn canonical_article_slug(slug: String) -> bool
+  let bytes = slug.as_slice()
+  let length = bytes.byte_len()
+  if length < 1 or length > 80:
+    return false
+  var index = 0
+  var previous_separator = false
+  while index < length:
+    let byte = bytes.get_byte(index) ?? -1
+    let letter = byte >= 97 and byte <= 122
+    let digit = byte >= 48 and byte <= 57
+    let separator = byte == 45 or byte == 95
+    if not letter and not digit and not separator:
+      return false
+    if separator and (index == 0 or index == length - 1 or previous_separator):
+      return false
+    previous_separator = separator
+    index = index + 1
+  true
+
+pub fn ReviewedImage({ asset_id: String, accessible_name: String, caption?: String }) -> MsgPack
+  if blank(asset_id) or blank(accessible_name): panic("ReviewedImage requires an asset ID and accessible name")
+  if caption is Some:
+    if blank(caption.value): panic("ReviewedImage captions cannot be empty when supplied")
+  let ~children = [vx::html_element(tag: "img", attrs: [vx::attr(name: "data-native-asset-id", value: asset_id), vx::attr(name: "aria-label", value: accessible_name)], children: Array<MsgPack>::init())]
+  if caption is Some: children.push(vx::html_element(tag: "figcaption", children: [vx::text(caption.value)]))
+  vx::html_element(tag: "figure", attrs: [component_attr("reviewed-image"), vx::attr(name: "aria-label", value: accessible_name)], children: children)
+
 pub fn Table({ columns: Array<TableColumn>, rows: Array<TableRow>, caption: String }) -> MsgPack
-  if columns.is_empty(): panic("Table requires at least one column")
+  if columns.is_empty() or blank(caption): panic("Table requires columns and a caption")
+  if columns.len() > 200 or rows.len() + 1 > 1500 / columns.len(): panic("Table exceeds the 1,500-cell Native limit including headers")
   var validation_row = 0
+  var validation_column = 0
+  while validation_column < columns.len():
+    if blank(columns.at(validation_column).key) or blank(columns.at(validation_column).label): panic("Table columns require keys and labels")
+    validation_column = validation_column + 1
   while validation_row < rows.len():
     if rows.at(validation_row).values.len() != columns.len(): panic("Table rows must match the column count")
+    var value_index = 0
+    while value_index < rows.at(validation_row).values.len():
+      if blank(rows.at(validation_row).values.at(value_index)): panic("Table cells require non-empty accessible content")
+      value_index = value_index + 1
     validation_row = validation_row + 1
   let ~headers = Array<MsgPack>::with_capacity(columns.len())
   var column_index = 0
   while column_index < columns.len():
     headers.push(vx::html_element(tag: "th", attrs: [vx::attr(name: "scope", value: "col")], children: [vx::text(columns.at(column_index).label)]))
     column_index = column_index + 1
-  let ~body = Array<MsgPack>::with_capacity(rows.len())
+  let ~bodies = Array<MsgPack>::with_capacity((rows.len() + 199) / 200)
   var row_index = 0
   while row_index < rows.len():
-    let row = rows.at(row_index)
-    let ~cells = Array<MsgPack>::with_capacity(row.values.len())
-    var value_index = 0
-    while value_index < row.values.len():
-      cells.push(vx::html_element(tag: "td", children: [vx::text(row.values.at(value_index))]))
-      value_index = value_index + 1
-    body.push(vx::html_element(tag: "tr", children: cells))
-    row_index = row_index + 1
-  vx::html_element(tag: "table", attrs: [component_attr("table")], children: [
+    let ~body = Array<MsgPack>::with_capacity(200)
+    var chunk_index = 0
+    while chunk_index < 200 and row_index < rows.len():
+      let row = rows.at(row_index)
+      let ~cells = Array<MsgPack>::with_capacity(row.values.len())
+      var value_index = 0
+      while value_index < row.values.len():
+        cells.push(vx::html_element(tag: "td", children: [vx::text(row.values.at(value_index))]))
+        value_index = value_index + 1
+      body.push(vx::html_element(tag: "tr", children: cells))
+      row_index = row_index + 1
+      chunk_index = chunk_index + 1
+    bodies.push(vx::html_element(tag: "tbody", children: body))
+  let ~children = [
     vx::html_element(tag: "caption", children: [vx::text(caption)]),
-    vx::html_element(tag: "thead", children: [vx::html_element(tag: "tr", children: headers)]),
-    vx::html_element(tag: "tbody", children: body)
-  ])
+    vx::html_element(tag: "thead", children: [vx::html_element(tag: "tr", children: headers)])
+  ]
+  var body_index = 0
+  while body_index < bodies.len():
+    children.push(bodies.at(body_index))
+    body_index = body_index + 1
+  vx::html_element(tag: "table", attrs: [component_attr("table")], children: children)
 
 fn chart_series_table({ title: String, series: Array<Series>, x_axis: Axis, y_axis: Axis }) -> MsgPack
   let ~rows = Array<TableRow>::init()
@@ -542,12 +695,13 @@ fn chart_series_table({ title: String, series: Array<Series>, x_axis: Axis, y_ax
     var point_index = 0
     while point_index < item.points.len():
       let point = item.points.at(point_index)
-      rows.push(TableRow { values: [item.name, to_string(point.x), to_string(point.y)] })
+      rows.push(TableRow { values: [item.name.concat(if blank(item.name) then: "" else: ": ").concat(labelled_unit(x_axis.label, x_axis.unit)).concat(" ").concat(to_string(point.x)), labelled_unit(y_axis.label, y_axis.unit).concat(" ").concat(to_string(point.y))] })
       point_index = point_index + 1
     series_index = series_index + 1
-  Table(columns: [TableColumn { key: "series", label: "Series" }, TableColumn { key: "x", label: labelled_unit(x_axis.label, x_axis.unit) }, TableColumn { key: "y", label: labelled_unit(y_axis.label, y_axis.unit) }], rows: rows, caption: title)
+  Table(columns: [TableColumn { key: "point", label: "Series and x value" }, TableColumn { key: "value", label: "Y value" }], rows: rows, caption: title)
 
 fn chart_figure({ component: String, title: String, description: String, data: MsgPack }) -> MsgPack
+  if blank(title) or blank(description): panic("Charts require a title and description")
   vx::html_element(tag: "figure", attrs: [component_attr(component), vx::attr(name: "aria-label", value: title)], children: [
     vx::html_element(tag: "figcaption", children: [vx::text(title)]),
     vx::html_element(tag: "p", children: [vx::text(description)]),
@@ -570,7 +724,7 @@ fn chart_series_legend(series: Array<Series>) -> MsgPack
   let ~items = Array<MsgPack>::init()
   var index = 0
   while index < series.len():
-    if not series.at(index).name.is_empty():
+    if not blank(series.at(index).name):
       items.push(vx::html_element(tag: "li", attrs: [vx::attr(name: "data-native-series", value: series_pattern(index))], children: [vx::text(series.at(index).name)]))
     index = index + 1
   vx::html_element(tag: "ul", attrs: [component_attr("legend"), vx::attr(name: "aria-label", value: "Legend")], children: items)
@@ -579,7 +733,7 @@ fn category_series_legend(series: Array<CategorySeries>) -> MsgPack
   let ~items = Array<MsgPack>::init()
   var index = 0
   while index < series.len():
-    if not series.at(index).name.is_empty():
+    if not blank(series.at(index).name):
       items.push(vx::html_element(tag: "li", attrs: [vx::attr(name: "data-native-series", value: series_pattern(index))], children: [vx::text(series.at(index).name)]))
     index = index + 1
   vx::html_element(tag: "ul", attrs: [component_attr("legend"), vx::attr(name: "aria-label", value: "Legend")], children: items)
@@ -599,10 +753,16 @@ fn axis_bounds(axis: Axis, observed_min: f64, observed_max: f64) -> (f64, f64)
   if has_min:
     let min_value = axis.min ?? observed_min
     let max_value = axis.max ?? observed_max
-    if not is_finite(min_value) or not is_finite(max_value) or max_value <= min_value:
+    if not is_finite(min_value) or not is_finite(max_value) or max_value <= min_value or not is_finite(max_value - min_value):
       panic("Chart axis bounds must be finite and increasing")
+    if observed_min < min_value or observed_max > max_value:
+      panic("Chart data must be inside explicit axis bounds")
     return (min_value, max_value)
-  if observed_max > observed_min then: (observed_min, observed_max) else: (observed_min - 0.5, observed_max + 0.5)
+  if observed_max > observed_min:
+    if not is_finite(observed_max - observed_min): panic("Chart data range is too large")
+    return (observed_min, observed_max)
+  if not is_finite(observed_min - 0.5) or not is_finite(observed_max + 0.5): panic("Chart data range is too large")
+  (observed_min - 0.5, observed_max + 0.5)
 
 fn chart_x(value: f64, min: f64, max: f64) -> f64
   8.0 + ((value - min) / (max - min)) * 88.0
@@ -612,11 +772,11 @@ fn chart_y(value: f64, min: f64, max: f64) -> f64
 
 fn validate_series(series: Array<Series>) -> (f64, f64, f64, f64)
   if series.is_empty(): panic("Charts require at least one series")
-  if series.len() > 1:
-    var name_index = 0
-    while name_index < series.len():
-      if series.at(name_index).name.is_empty(): panic("Multiple chart series require names")
-      name_index = name_index + 1
+  if series.len() > 64: panic("Charts support at most 64 series")
+  var name_index = 0
+  while name_index < series.len():
+    if series.len() > 1 and blank(series.at(name_index).name): panic("Multiple chart series require names")
+    name_index = name_index + 1
   if series.at(0).points.is_empty(): panic("Chart series require at least one point")
   let first = series.at(0).points.at(0)
   if not is_finite(first.x) or not is_finite(first.y): panic("Chart points must be finite")
@@ -625,6 +785,7 @@ fn validate_series(series: Array<Series>) -> (f64, f64, f64, f64)
   var min_y = first.y
   var max_y = first.y
   var series_index = 0
+  var total_points = 0
   while series_index < series.len():
     let item = series.at(series_index)
     if item.points.is_empty(): panic("Chart series require at least one point")
@@ -641,28 +802,44 @@ fn validate_series(series: Array<Series>) -> (f64, f64, f64, f64)
       if point.y > max_y:
         max_y = point.y
       point_index = point_index + 1
+      total_points = total_points + 1
+      if total_points > 500: panic("Accessible charts support at most 500 total points")
     series_index = series_index + 1
   (min_x, max_x, min_y, max_y)
 
 fn append_annotations(~marks: Array<MsgPack>, annotations: Option<Array<Annotation>>, min_x: f64, max_x: f64, min_y: f64, max_y: f64) -> void
   let values = annotations ?? Array<Annotation>::init()
+  if values.len() > 64: panic("Charts support at most 64 annotations")
   var index = 0
   while index < values.len():
     match(values.at(index))
       Annotation::Vertical { x, label }:
-        if not is_finite(x): panic("Chart annotations must be finite")
+        if not is_finite(x) or x < min_x or x > max_x or blank(label): panic("Chart annotations must be finite, labeled, and inside the axes")
         let position = chart_x(x, min_x, max_x)
         marks.push(vx::html_element(tag: "line", attrs: [vx::attr(name: "x1", value: to_string(position)), vx::attr(name: "x2", value: to_string(position)), vx::attr(name: "y1", value: "8"), vx::attr(name: "y2", value: "92")], children: Array<MsgPack>::init()))
         marks.push(vx::html_element(tag: "text", attrs: [vx::attr(name: "x", value: to_string(position)), vx::attr(name: "y", value: "7"), vx::attr(name: "text-anchor", value: "middle")], children: [vx::text(label)]))
       Annotation::Horizontal { y, label }:
-        if not is_finite(y): panic("Chart annotations must be finite")
+        if not is_finite(y) or y < min_y or y > max_y or blank(label): panic("Chart annotations must be finite, labeled, and inside the axes")
         let position = chart_y(y, min_y, max_y)
         marks.push(vx::html_element(tag: "line", attrs: [vx::attr(name: "x1", value: "8"), vx::attr(name: "x2", value: "96"), vx::attr(name: "y1", value: to_string(position)), vx::attr(name: "y2", value: to_string(position))], children: Array<MsgPack>::init()))
         marks.push(vx::html_element(tag: "text", attrs: [vx::attr(name: "x", value: "95"), vx::attr(name: "y", value: to_string(position)), vx::attr(name: "text-anchor", value: "end")], children: [vx::text(label)]))
       Annotation::PointLabel { point, label }:
-        if not is_finite(point.x) or not is_finite(point.y): panic("Chart annotations must be finite")
+        if not is_finite(point.x) or not is_finite(point.y) or point.x < min_x or point.x > max_x or point.y < min_y or point.y > max_y or blank(label): panic("Chart annotations must be finite, labeled, and inside the axes")
         marks.push(vx::html_element(tag: "text", attrs: [vx::attr(name: "x", value: to_string(chart_x(point.x, min_x, max_x))), vx::attr(name: "y", value: to_string(chart_y(point.y, min_y, max_y))), vx::attr(name: "text-anchor", value: "middle")], children: [vx::text(label)]))
     index = index + 1
+
+fn svg_groups(nodes: Array<MsgPack>) -> Array<MsgPack>
+  let ~groups = Array<MsgPack>::with_capacity((nodes.len() + 199) / 200)
+  var start = 0
+  while start < nodes.len():
+    let ~chunk = Array<MsgPack>::with_capacity(200)
+    var offset = 0
+    while offset < 200 and start + offset < nodes.len():
+      chunk.push(nodes.at(start + offset))
+      offset = offset + 1
+    groups.push(vx::html_element(tag: "g", children: chunk))
+    start = start + offset
+  groups
 
 fn line_visual(series: Array<Series>, title: String, x_axis: Axis, y_axis: Axis, annotations: Option<Array<Annotation>>) -> MsgPack
   let observed = validate_series(series)
@@ -672,17 +849,20 @@ fn line_visual(series: Array<Series>, title: String, x_axis: Axis, y_axis: Axis,
   var series_index = 0
   while series_index < series.len():
     let item = series.at(series_index)
-    var point_index = 0
-    var points = ""
-    while point_index < item.points.len():
-      let point = item.points.at(point_index)
-      let pair = to_string(chart_x(point.x, x_bounds.0, x_bounds.1)).concat(",").concat(to_string(chart_y(point.y, y_bounds.0, y_bounds.1)))
-      points = if points.is_empty() then: pair else: points.concat(" ").concat(pair)
-      point_index = point_index + 1
-    marks.push(vx::html_element(tag: "polyline", attrs: [vx::attr(name: "points", value: points), vx::attr(name: "data-native-series", value: series_pattern(series_index))], children: Array<MsgPack>::init()))
+    var start = 0
+    while start < item.points.len():
+      var point_index = start
+      var points = ""
+      while point_index < item.points.len() and point_index < start + 100:
+        let point = item.points.at(point_index)
+        let pair = to_string(chart_x(point.x, x_bounds.0, x_bounds.1)).concat(",").concat(to_string(chart_y(point.y, y_bounds.0, y_bounds.1)))
+        points = if points.is_empty() then: pair else: points.concat(" ").concat(pair)
+        point_index = point_index + 1
+      marks.push(vx::html_element(tag: "polyline", attrs: [vx::attr(name: "points", value: points), vx::attr(name: "data-native-series", value: series_pattern(series_index))], children: Array<MsgPack>::init()))
+      start = if point_index < item.points.len() then: point_index - 1 else: point_index
     series_index = series_index + 1
   append_annotations(marks, annotations, x_bounds.0, x_bounds.1, y_bounds.0, y_bounds.1)
-  vx::html_element(tag: "svg", attrs: [vx::attr(name: "viewbox", value: "0 0 100 100"), vx::attr(name: "role", value: "img"), vx::attr(name: "aria-label", value: title)], children: marks)
+  vx::html_element(tag: "svg", attrs: [vx::attr(name: "viewbox", value: "0 0 100 100"), vx::attr(name: "role", value: "img"), vx::attr(name: "aria-label", value: title)], children: svg_groups(marks))
 
 fn scatter_visual(series: Array<Series>, title: String, x_axis: Axis, y_axis: Axis, annotations: Option<Array<Annotation>>) -> MsgPack
   let observed = validate_series(series)
@@ -699,17 +879,18 @@ fn scatter_visual(series: Array<Series>, title: String, x_axis: Axis, y_axis: Ax
       point_index = point_index + 1
     series_index = series_index + 1
   append_annotations(marks, annotations, x_bounds.0, x_bounds.1, y_bounds.0, y_bounds.1)
-  vx::html_element(tag: "svg", attrs: [vx::attr(name: "viewbox", value: "0 0 100 100"), vx::attr(name: "role", value: "img"), vx::attr(name: "aria-label", value: title)], children: marks)
+  vx::html_element(tag: "svg", attrs: [vx::attr(name: "viewbox", value: "0 0 100 100"), vx::attr(name: "role", value: "img"), vx::attr(name: "aria-label", value: title)], children: svg_groups(marks))
 
 fn bar_visual(series: Array<CategorySeries>, categories: Array<String>, y_axis: Axis, title: String) -> MsgPack
   if categories.is_empty() or series.is_empty(): panic("Bar charts require categories and series")
-  var observed_min = 0.0
-  var observed_max = 0.0
+  if categories.len() > 500 or series.len() > 16 or categories.len() * series.len() > 500: panic("Bar charts accept at most 500 total values across 16 series")
+  var observed_min = series.at(0).values.at(0)
+  var observed_max = observed_min
   var validation_series = 0
   while validation_series < series.len():
     let item = series.at(validation_series)
     if item.values.len() != categories.len(): panic("Bar series values must match categories")
-    if series.len() > 1 and item.name.is_empty(): panic("Multiple bar series require names")
+    if series.len() > 1 and blank(item.name): panic("Multiple bar series require names")
     var validation_value = 0
     while validation_value < item.values.len():
       let value = item.values.at(validation_value)
@@ -720,6 +901,11 @@ fn bar_visual(series: Array<CategorySeries>, categories: Array<String>, y_axis: 
         observed_max = value
       validation_value = validation_value + 1
     validation_series = validation_series + 1
+  if not (y_axis.min is Some):
+    if observed_min > 0.0:
+      observed_min = 0.0
+    if observed_max < 0.0:
+      observed_max = 0.0
   let bounds = axis_bounds(y_axis, observed_min, observed_max)
   var baseline = chart_y(0.0, bounds.0, bounds.1)
   if bounds.0 > 0.0:
@@ -740,10 +926,10 @@ fn bar_visual(series: Array<CategorySeries>, categories: Array<String>, y_axis: 
       marks.push(vx::html_element(tag: "rect", attrs: [vx::attr(name: "x", value: to_string(8.0 + to_f64(value_index) * category_width + to_f64(series_index) * bar_width)), vx::attr(name: "y", value: to_string(top)), vx::attr(name: "width", value: to_string(bar_width * 0.85)), vx::attr(name: "height", value: to_string(height)), vx::attr(name: "data-native-series", value: series_pattern(series_index))], children: Array<MsgPack>::init()))
       value_index = value_index + 1
     series_index = series_index + 1
-  vx::html_element(tag: "svg", attrs: [vx::attr(name: "viewbox", value: "0 0 100 100"), vx::attr(name: "role", value: "img"), vx::attr(name: "aria-label", value: title)], children: marks)
+  vx::html_element(tag: "svg", attrs: [vx::attr(name: "viewbox", value: "0 0 100 100"), vx::attr(name: "role", value: "img"), vx::attr(name: "aria-label", value: title)], children: svg_groups(marks))
 
 fn compute_histogram_bins(values: Array<f64>, x_axis: Axis, requested_bins: Option<i32>) -> Array<HistogramBin>
-  if values.is_empty(): panic("Histograms require at least one value")
+  if values.is_empty() or values.len() > 500: panic("Histograms require one through 500 values")
   var observed_min = values.at(0)
   var observed_max = values.at(0)
   var value_index = 0
@@ -798,16 +984,34 @@ fn histogram_visual(bins: Array<HistogramBin>, title: String, x_axis: Axis) -> M
   vx::html_element(tag: "svg", attrs: [vx::attr(name: "viewbox", value: "0 0 100 100"), vx::attr(name: "role", value: "img"), vx::attr(name: "aria-label", value: title)], children: marks)
 
 pub fn LineChart({ title: String, description: String, series: Array<Series>, x_axis: Axis, y_axis: Axis, annotations?: Array<Annotation> }) -> MsgPack
+  if blank(title) or blank(description) or blank(x_axis.label) or blank(y_axis.label): panic("Line charts require title, description, and axis labels")
+  validate_label_unit(x_axis.label, x_axis.unit)
+  validate_label_unit(y_axis.label, y_axis.unit)
   chart_figure(component: "line-chart", title: title, description: description, data: vx::fragment([line_visual(series, title, x_axis, y_axis, annotations), chart_series_legend(series), chart_series_table(title: "View chart data", series: series, x_axis: x_axis, y_axis: y_axis)]))
 
 pub fn ScatterPlot({ title: String, description: String, series: Array<Series>, x_axis: Axis, y_axis: Axis, annotations?: Array<Annotation> }) -> MsgPack
+  if blank(title) or blank(description) or blank(x_axis.label) or blank(y_axis.label): panic("Scatter plots require title, description, and axis labels")
+  validate_label_unit(x_axis.label, x_axis.unit)
+  validate_label_unit(y_axis.label, y_axis.unit)
   chart_figure(component: "scatter-plot", title: title, description: description, data: vx::fragment([scatter_visual(series, title, x_axis, y_axis, annotations), chart_series_legend(series), chart_series_table(title: "View chart data", series: series, x_axis: x_axis, y_axis: y_axis)]))
 
 pub fn BarChart({ title: String, description: String, categories: Array<String>, series: Array<CategorySeries>, y_axis: Axis }) -> MsgPack
+  if blank(title) or blank(description) or blank(y_axis.label) or categories.is_empty() or series.is_empty(): panic("Bar charts require title, description, axis labels, categories, and series")
+  validate_label_unit(y_axis.label, y_axis.unit)
+  if categories.len() > 500 or series.len() > 16 or categories.len() * series.len() > 500: panic("Bar charts accept at most 500 total values across 16 series")
+  var validation_category = 0
+  while validation_category < categories.len():
+    if blank(categories.at(validation_category)): panic("Bar chart categories require labels")
+    validation_category = validation_category + 1
+  var validation_series = 0
+  while validation_series < series.len():
+    if (series.len() > 1 and blank(series.at(validation_series).name)) or series.at(validation_series).values.len() != categories.len(): panic("Bar chart series require names when multiple series are shown and one value per category")
+    validation_series = validation_series + 1
   let ~columns = [TableColumn { key: "category", label: "Category" }]
   var series_index = 0
   while series_index < series.len():
-    columns.push(TableColumn { key: series.at(series_index).name, label: labelled_unit(series.at(series_index).name, y_axis.unit) })
+    let name = if blank(series.at(series_index).name) then: y_axis.label else: series.at(series_index).name
+    columns.push(TableColumn { key: if blank(series.at(series_index).name) then: "value" else: series.at(series_index).name, label: labelled_unit(name, y_axis.unit) })
     series_index = series_index + 1
   let ~rows = Array<TableRow>::init()
   var category_index = 0
@@ -822,6 +1026,8 @@ pub fn BarChart({ title: String, description: String, categories: Array<String>,
   chart_figure(component: "bar-chart", title: title, description: description, data: vx::fragment([bar_visual(series, categories, y_axis, title), category_series_legend(series), Table(columns: columns, rows: rows, caption: "View chart data")]))
 
 pub fn Histogram({ title: String, description: String, values: Array<f64>, x_axis: Axis, bins?: i32 }) -> MsgPack
+  if blank(title) or blank(description) or blank(x_axis.label): panic("Histograms require title, description, and an axis label")
+  validate_label_unit(x_axis.label, x_axis.unit)
   let computed = compute_histogram_bins(values, x_axis, bins)
   let ~rows = Array<TableRow>::with_capacity(computed.len())
   var index = 0

@@ -8,7 +8,7 @@ Only Tessyl installs `@tessyl/native`. Tessera authors use the Voyd package
 `pkg::tessyl_native`, which the restricted Native compiler supplies and pins;
 they do not install or call the TypeScript package.
 
-This package contains the implemented v1 author SDK, compiler facade, isolated
+This package contains the implemented v2 author SDK, compiler facade, isolated
 browser runtime, renderer, examples, and test suites. Its documents
 define the product and technical contracts those components satisfy:
 
@@ -20,12 +20,15 @@ define the product and technical contracts those components satisfy:
 - [Tessyl Integration SDK](./docs/tessyl-integration-sdk.md) defines the single
   TypeScript facade Tessyl uses to compile, initialize, run, and dispose
   Tesserae.
+- [STEM platform contract](./docs/stem-platform.md) defines the standard shell,
+  reviewed fallback workflow, visualization backends, scientific libraries,
+  typed resources, accessibility behavior, and resource limits.
 - [Architecture and security](./docs/architecture.md) is the implementation
   guide for Tessyl Native maintainers. It defines trust boundaries, artifact
   production, runtime isolation, protocol validation, resource controls, and
   the security test plan.
 
-The documented v1 surface is implemented and tested in this package. Sections
+The documented v2 surface is implemented and tested in this package. Sections
 explicitly labeled as future work remain design guidance; any intentional
 implementation deviation should update these documents in the same change.
 

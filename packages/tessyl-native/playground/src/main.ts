@@ -1,25 +1,34 @@
 import {
   createTessylNative,
   TessylNativeError,
-  type TesseraArtifactV1,
+  type TesseraArtifactV2,
   type TesseraInstance,
   type TesseraPresentation,
 } from "@tessyl/native";
 
-type SerializedArtifact = Omit<TesseraArtifactV1, "wasm" | "sourceBundle"> & { wasm: string; sourceBundle: string };
+type SerializedArtifact = Omit<TesseraArtifactV2, "wasm" | "sourceBundle"> & { wasm: string; sourceBundle: string };
 
 const native = createTessylNative({
-  runtime: { onArticleLink: (slug) => { console.info(`Tessera requested article navigation: ${slug}`); } },
+  runtime: {
+    onArticleLink: (slug) => { console.info(`Tessera requested article navigation: ${slug}`); },
+    onShareableStateChange: (state) => { document.documentElement.dataset.lastShareableState = state; },
+  },
 });
 const instances = new Map<string, TesseraInstance>();
 const starting = new Set<string>();
+const encoder = new TextEncoder();
+const chartResources = {
+  datasets: { growth_scenarios: encoder.encode('{"periods":[0,1,2,3]}') },
+  assets: { growth_badge: encoder.encode('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="12" fill="#0f766e"/></svg>') },
+  shareableState: "growth=1.2",
+} as const;
 
 const decode = (value: string): Uint8Array => {
   const binary = atob(value);
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 };
 
-const loadArtifact = async (url: string): Promise<TesseraArtifactV1> => {
+const loadArtifact = async (url: string): Promise<TesseraArtifactV2> => {
   const response = await fetch(url, { credentials: "same-origin" });
   if (!response.ok) throw new Error("artifact unavailable");
   const artifact = await response.json() as SerializedArtifact;
@@ -43,6 +52,8 @@ const prepare = async (container: HTMLElement): Promise<TesseraInstance> => {
   const instance = await native.initialize({
     artifact: await loadArtifact(container.dataset.artifact!),
     container,
+    ...(id === "calculator" ? { inputs: { currency_scale: 1.25 } } : {}),
+    ...(id === "chart" ? chartResources : {}),
     ...(presentation ? { presentation } : {}),
     onStatusChange: (status) => setStatus(id, status === "failed" ? "Failed safely — use Reset to restart" : status),
   });
@@ -84,6 +95,15 @@ document.querySelectorAll<HTMLButtonElement>("[data-tessera-reset]").forEach((bu
     const container = document.querySelector<HTMLElement>(`[data-tessera-id="${CSS.escape(id)}"]`);
     if (container) void start(container);
   }
+}));
+document.querySelectorAll<HTMLButtonElement>("[data-tessera-export]").forEach((button) => button.addEventListener("click", () => {
+  const id = button.dataset.tesseraExport!;
+  const output = document.querySelector<HTMLElement>(`[data-tessera-export-status="${CSS.escape(id)}"]`);
+  void instances.get(id)?.exportResult().then(async (blob) => {
+    if (!output) return;
+    output.textContent = `Export ready: ${blob.type}, ${blob.size} bytes`;
+    output.dataset.tesseraExportText = await blob.text();
+  });
 }));
 
 window.addEventListener("pagehide", (event) => {
