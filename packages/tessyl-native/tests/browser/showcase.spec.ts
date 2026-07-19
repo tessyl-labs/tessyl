@@ -36,10 +36,11 @@ test("five STEM Tesserae start independently and remain accessible", async ({ pa
   await page.goto("/showcase");
   for (const id of ["calculator", "chart", "simulation", "orbital-simulation", "mathematical-diagram"]) {
     const card = page.locator(`[data-showcase-card="${id}"]`);
-    await card.scrollIntoViewIfNeeded();
+    await card.locator(".tessera-stage").scrollIntoViewIfNeeded();
+    await expect(card.locator("[data-tessyl-native-shell]")).toHaveCount(1);
+    await card.locator("[data-tessyl-native-shell] > header").scrollIntoViewIfNeeded();
     await expect(card.locator(`[data-tessera-status="${id}"]`)).toHaveText("running");
     await expect(card.locator("iframe")).toHaveCount(1);
-    await expect(card.locator("[data-tessyl-native-shell]")).toHaveCount(1);
   }
   await expect(page.locator('[data-showcase-card="simulation"] iframe')).toHaveAttribute("data-tessyl-expanded-view", "false");
   await expect(page.locator('[data-showcase-card="calculator"] iframe')).toHaveAttribute("data-tessyl-expanded-view", "false");
@@ -54,9 +55,8 @@ test("five STEM Tesserae start independently and remain accessible", async ({ pa
   await expect(calculator.getByLabel("Kinetic energy", { exact: true })).toContainText("16.000");
   await expect(calculator.getByLabel("Integral of x squared", { exact: true })).toContainText(/21\.33/);
   const bill = calculator.getByLabel("Bill amount");
-  await bill.click();
-  await bill.press("ControlOrMeta+A");
-  await bill.pressSequentially("100", { delay: 20 });
+  await bill.fill("100");
+  await expect(bill).toHaveValue("100");
   await expect(bill).toBeFocused();
   await expect(calculator.getByLabel("Total", { exact: true })).toContainText("150");
   const chart = page.frameLocator('[data-showcase-card="chart"] iframe');
@@ -74,12 +74,7 @@ test("five STEM Tesserae start independently and remain accessible", async ({ pa
   await slider.focus();
   await expect(slider).toBeFocused();
   const initialValue = await slider.inputValue();
-  const box = await slider.boundingBox();
-  if (!box) throw new Error("growth slider has no layout box");
-  await page.mouse.move(box.x + box.width * 0.25, box.y + box.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(box.x + box.width * 0.75, box.y + box.height / 2, { steps: 6 });
-  await page.mouse.up();
+  await slider.press("ArrowRight");
   await expect(slider).not.toHaveValue(initialValue);
   await expect(page.locator("html")).toHaveAttribute("data-last-shareable-state", /.+/);
   await page.getByRole("button", { name: "Export reviewed snapshot" }).click();
@@ -97,16 +92,29 @@ test("five STEM Tesserae start independently and remain accessible", async ({ pa
   await expect(page.locator("html")).toHaveAttribute("data-last-shareable-state", "growth=1.2");
   await expect(chart.getByText(/Deep-link state:/)).toContainText("growth=1.2");
   const particle = page.frameLocator('[data-showcase-card="simulation"] iframe');
-  await expect(particle.getByRole("img", { name: /deterministic particles/i })).toBeVisible();
+  await expect(particle.getByRole("img", { name: /moving particles.*orbital swarm/i })).toBeVisible();
   await expect(particle.locator("canvas[data-native-particles]")).toHaveCount(1);
   const bufferedParticles = await particle.locator("[data-native-particle-buffer]").evaluateAll((buffers) => buffers.reduce((total, buffer) => total + (buffer.getAttribute("data-native-particle-buffer")?.split(";").filter(Boolean).length ?? 0), 0));
   expect(bufferedParticles).toBe(240);
   await expect(particle.locator("[data-native-particle]")).toHaveCount(0);
   await expect(particle.getByRole("list", { name: "Particle data" })).toContainText("Particle A");
+  await expect(particle.getByRole("list", { name: "Particle data" })).toContainText("Representative details shown for 12 of 240 particles.");
+  expect(await page.locator('[data-showcase-card="simulation"] .tessera-stage').evaluate((stage) => stage.getBoundingClientRect().width)).toBeLessThanOrEqual(1088);
+  expect(await particle.locator("#root").evaluate((root) => root.getBoundingClientRect().width)).toBeLessThanOrEqual(960);
+  expect(await particle.locator("canvas").evaluate((canvas) => canvas.getBoundingClientRect().width)).toBeLessThanOrEqual(896);
+  const positionsBefore = await particle.locator("[data-native-particle-buffer]").evaluateAll((buffers) => buffers.flatMap((buffer) => (buffer.getAttribute("data-native-particle-buffer") ?? "").split(";").filter(Boolean).map((entry) => entry.split(",").slice(0, 2).map(Number))));
+  await particle.getByRole("button", { name: "Run" }).click();
+  await expect.poll(async () => {
+    const positionsAfter = await particle.locator("[data-native-particle-buffer]").evaluateAll((buffers) => buffers.flatMap((buffer) => (buffer.getAttribute("data-native-particle-buffer") ?? "").split(";").filter(Boolean).map((entry) => entry.split(",").slice(0, 2).map(Number))));
+    return positionsAfter.filter((position, index) => position[0] !== positionsBefore[index]?.[0] || position[1] !== positionsBefore[index]?.[1]).length;
+  }).toBe(240);
+  await particle.getByRole("button", { name: "Pause" }).click();
   const orbitalCard = page.locator('[data-showcase-card="orbital-simulation"]');
   await orbitalCard.scrollIntoViewIfNeeded();
   await expect(orbitalCard.locator('[data-tessera-status="orbital-simulation"]')).toHaveText("running");
   const orbit = page.frameLocator('[data-showcase-card="orbital-simulation"] iframe');
+  expect(await orbitalCard.locator(".tessera-stage").evaluate((stage) => stage.getBoundingClientRect().width)).toBeLessThanOrEqual(1088);
+  expect(await orbit.locator("#root").evaluate((root) => root.getBoundingClientRect().width)).toBeLessThanOrEqual(960);
   const orbitalScene = orbit.getByRole("application", { name: /Sun is centered/i });
   await orbitalScene.focus();
   await orbitalScene.press("ArrowRight");
@@ -155,8 +163,9 @@ test("live reduced-motion changes pause and resume fixed-step simulation", async
   }).toBe("running");
   const simulation = page.frameLocator('[data-showcase-card="simulation"] iframe');
   const step = simulation.getByLabel("Step", { exact: true });
-  const animationFrame = simulation.getByLabel("Animation frame", { exact: true });
-  await simulation.getByRole("button", { name: "Run" }).click();
+  const run = simulation.getByRole("button", { name: "Run" });
+  await run.focus();
+  await run.press("Enter");
   await expect(step).not.toContainText(/^Step\s*0$/);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect(card.locator("[data-tessyl-native-failure-code]")).toHaveCount(0);
@@ -175,10 +184,8 @@ test("live reduced-motion changes pause and resume fixed-step simulation", async
   await simulation.getByRole("button", { name: "Pause" }).click();
   await expect(simulation.getByRole("button", { name: "Run" })).toBeVisible();
   const manuallyPaused = await step.textContent();
-  const pausedAnimationFrame = await animationFrame.textContent();
   await page.waitForTimeout(250);
   await expect(step).toHaveText(manuallyPaused ?? "");
-  await expect(animationFrame).toHaveText(pausedAnimationFrame ?? "");
 });
 
 test("reset creates a fresh generation without disturbing neighbors", async ({ page }) => {

@@ -16,6 +16,7 @@ const native = createTessylNative({
 });
 const instances = new Map<string, TesseraInstance>();
 const starting = new Set<string>();
+let pageDisposed = false;
 const encoder = new TextEncoder();
 const chartResources = {
   datasets: { growth_scenarios: encoder.encode('{"periods":[0,1,2,3]}') },
@@ -63,12 +64,20 @@ const prepare = async (container: HTMLElement): Promise<TesseraInstance> => {
 
 const start = async (container: HTMLElement): Promise<void> => {
   const id = container.dataset.tesseraId!;
-  if (starting.has(id)) return;
+  if (pageDisposed || starting.has(id)) return;
   starting.add(id);
   try {
     const existing = instances.get(id);
     if (existing) await existing.reset();
-    else await (await prepare(container)).run();
+    else {
+      const instance = await prepare(container);
+      if (pageDisposed) {
+        instance.dispose();
+        instances.delete(id);
+        return;
+      }
+      await instance.run();
+    }
   } catch (error) {
     const code = error instanceof TessylNativeError ? error.code : "unknown";
     setStatus(id, `Interactive startup failed (${code}); static content remains available`);
@@ -108,6 +117,7 @@ document.querySelectorAll<HTMLButtonElement>("[data-tessera-export]").forEach((b
 
 window.addEventListener("pagehide", (event) => {
   if (event.persisted) return;
+  pageDisposed = true;
   observer.disconnect();
   instances.forEach((instance) => instance.dispose());
   instances.clear();

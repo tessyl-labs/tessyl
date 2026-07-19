@@ -339,7 +339,7 @@ fn particle_semantics(particles: Array<Particle>) -> MsgPack
   let ~items = Array<MsgPack>::with_capacity(particles.len())
   var summary = String::init()
   var index = 0
-  while index < particles.len():
+  while index < particles.len() and index < 12:
     let particle = particles.at(index)
     let description = particle.label.concat(": x ").concat(to_string(particle.position.x)).concat(", y ").concat(to_string(particle.position.y)).concat(", radius ").concat(to_string(particle.radius))
     if not summary.is_empty() and summary.byte_len() + description.byte_len() + 2 > 7000:
@@ -350,6 +350,8 @@ fn particle_semantics(particles: Array<Particle>) -> MsgPack
     index = index + 1
   if not summary.is_empty():
     items.push(vx::html_element(tag: "li", children: [vx::text(summary)]))
+  if particles.len() > 12:
+    items.push(vx::html_element(tag: "li", children: [vx::text("Representative details shown for 12 of ".concat(to_string(particles.len())).concat(" particles."))]))
   vx::html_element(tag: "ul", attrs: [vx::attr(name: "aria-label", value: "Particle data")], children: items)
 
 fn particle_buffers(particles: Array<Particle>) -> MsgPack

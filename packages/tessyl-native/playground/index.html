@@ -34,15 +34,11 @@
 
       <section class="examples-heading" aria-labelledby="examples-title">
         <div><p class="section-kicker">Example gallery</p><h2 id="examples-title">Native building blocks</h2></div>
-        <p>Each card owns an independent runtime, renderer, lifecycle, and static fallback.</p>
+        <p>Each app owns an independent runtime, renderer, lifecycle, and static fallback.</p>
       </section>
 
       <section class="example-grid">
-        <article class="example-card" data-showcase-card="calculator">
-          <header class="card-header">
-            <div class="card-title"><span class="example-index">01</span><div><h3>Advanced scientific calculator</h3><p>Dimensions, numerical methods, and reactive metrics</p></div></div>
-          </header>
-          <div class="presentation-label"><span>Standard</span><span>Fluid width</span></div>
+        <div class="example-card" data-showcase-card="calculator">
           <div class="tessera-stage" data-tessera-id="calculator" data-artifact="/assets/showcase/calculator.json">
             <section class="fallback" role="region" aria-label="Scientific calculator">
               <h4>Scientific calculator</h4>
@@ -50,13 +46,9 @@
             </section>
           </div>
           <p class="status-line" aria-live="polite" data-tessera-status="calculator">Waiting near viewport</p>
-        </article>
+        </div>
 
-        <article class="example-card" data-showcase-card="chart">
-          <header class="card-header">
-            <div class="card-title"><span class="example-index">02</span><div><h3>Interactive chart</h3><p>Accessible data visualization</p></div></div>
-          </header>
-          <div class="presentation-label"><span>Tall</span><span>Fluid width</span></div>
+        <div class="example-card" data-showcase-card="chart">
           <div class="tessera-stage" data-tessera-id="chart" data-artifact="/assets/showcase/chart.json" data-presentation-height="tall">
             <figure class="fallback" aria-label="Value over four periods">
               <figcaption>Value over four periods</figcaption>
@@ -70,42 +62,30 @@
           <p class="status-line" aria-live="polite" data-tessera-status="chart">Waiting near viewport</p>
           <button type="button" data-tessera-export="chart">Export reviewed snapshot</button>
           <p class="status-line" aria-live="polite" data-tessera-export-status="chart"></p>
-        </article>
+        </div>
 
-        <article class="example-card example-card-wide" data-showcase-card="simulation">
-          <header class="card-header">
-            <div class="card-title"><span class="example-index">03</span><div><h3>Bounded simulation</h3><p>Commands and lifecycle control</p></div></div>
-          </header>
-          <div class="presentation-label"><span>Expanded view</span><span>Fluid width</span></div>
-          <div class="tessera-stage" data-tessera-id="simulation" data-artifact="/assets/showcase/simulation.json">
+        <div class="example-card example-card-wide" data-showcase-card="simulation">
+          <div class="tessera-stage" data-tessera-id="simulation" data-artifact="/assets/showcase/simulation.json" data-presentation-height="tall">
             <section class="fallback" role="region" aria-label="Bounded simulation">
-              <h4>Bounded simulation</h4><p>Runs for at most forty steps and is currently at step 0.</p>
+              <h4>Orbital particle swarm</h4><p>Two hundred forty particles form a deterministic layered swarm and are currently at step 0.</p>
             </section>
           </div>
           <p class="status-line" aria-live="polite" data-tessera-status="simulation">Waiting near viewport</p>
-        </article>
+        </div>
 
-        <article class="example-card example-card-wide" data-showcase-card="orbital-simulation">
-          <header class="card-header">
-            <div class="card-title"><span class="example-index">04</span><div><h3>Orbital simulation</h3><p>Fixed timestep and reduced-motion alternative</p></div></div>
-          </header>
-          <div class="presentation-label"><span>Tall</span><span>Canvas-backed</span></div>
+        <div class="example-card example-card-wide" data-showcase-card="orbital-simulation">
           <div class="tessera-stage" data-tessera-id="orbital-simulation" data-artifact="/assets/showcase/orbital-simulation.json" data-presentation-height="tall">
             <p>Compiled orbital fallback loads during the build.</p>
           </div>
           <p class="status-line" aria-live="polite" data-tessera-status="orbital-simulation">Waiting near viewport</p>
-        </article>
+        </div>
 
-        <article class="example-card example-card-wide" data-showcase-card="mathematical-diagram">
-          <header class="card-header">
-            <div class="card-title"><span class="example-index">05</span><div><h3>Mathematical diagram</h3><p>Pointer, wheel, and keyboard manipulation</p></div></div>
-          </header>
-          <div class="presentation-label"><span>Standard</span><span>Accessible scene</span></div>
+        <div class="example-card example-card-wide" data-showcase-card="mathematical-diagram">
           <div class="tessera-stage" data-tessera-id="mathematical-diagram" data-artifact="/assets/showcase/mathematical-diagram.json">
             <p>Compiled diagram fallback loads during the build.</p>
           </div>
           <p class="status-line" aria-live="polite" data-tessera-status="mathematical-diagram">Waiting near viewport</p>
-        </article>
+        </div>
       </section>
     </main>
     <script type="module" src="/src/main.ts"></script>
