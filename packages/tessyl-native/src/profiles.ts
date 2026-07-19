@@ -96,7 +96,10 @@ export const STANDARD_V1: ResourceProfile = Object.freeze({
   runtimeQueueTimeoutMs: 5_000,
   maxConcurrentCompilers: 1,
   maxCompilerQueue: 4,
-  compileTimeoutMs: 30_000,
+  // Cold Voyd compilation can exceed 30 seconds on shared CI runners while
+  // other affected workspaces are testing. Keep the subprocess bounded while
+  // allowing a complete standard-profile compile under constrained CPU.
+  compileTimeoutMs: 90_000,
   compilerMemoryMb: 1_024,
   maxCompilerOutputBytes: 4 * 1024 * 1024,
 });

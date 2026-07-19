@@ -159,13 +159,19 @@ test("live reduced-motion changes pause and resume fixed-step simulation", async
   await simulation.getByRole("button", { name: "Run" }).click();
   await expect(step).not.toContainText(/^Step\s*0$/);
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.waitForTimeout(400);
   await expect(card.locator("[data-tessyl-native-failure-code]")).toHaveCount(0);
-  const paused = await step.textContent();
+  let paused = "";
+  await expect.poll(async () => {
+    const before = await step.textContent();
+    await page.waitForTimeout(250);
+    const after = await step.textContent();
+    if (before === after) paused = after ?? "";
+    return before === after;
+  }).toBe(true);
   await page.waitForTimeout(250);
-  await expect(step).toHaveText(paused ?? "");
+  await expect(step).toHaveText(paused);
   await page.emulateMedia({ reducedMotion: "no-preference" });
-  await expect(step).not.toHaveText(paused ?? "");
+  await expect(step).not.toHaveText(paused);
   await simulation.getByRole("button", { name: "Pause" }).click();
   await expect(simulation.getByRole("button", { name: "Run" })).toBeVisible();
   const manuallyPaused = await step.textContent();
