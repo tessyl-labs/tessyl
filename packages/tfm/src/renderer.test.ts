@@ -29,6 +29,7 @@ const answer = 42 < 100
     assert.equal(result.success, true, JSON.stringify(result.diagnostics));
     assert.ok(result.contentSecurityPolicy.includes("default-src 'none'"));
     assert.ok(result.contentSecurityPolicy.includes("frame-ancestors 'self'"));
+    assert.equal(result.html.includes("frame-ancestors"), false);
     for (const fragment of [
       "<!doctype html>", "Content-Security-Policy", "--ts-color-canvas", "class=\"tfm\"",
       "<h1>", "<em>", "<strong>", "<del>", "<blockquote>", "<ul>", "type=\"checkbox\"",
@@ -93,7 +94,7 @@ const answer = 42 < 100
 Body & text.
 :::
 
-::tessyl-data-table[Unsafe & caption]{dataset="dsr_01NABC"}`;
+::tessyl-data-table[Unsafe & name]{dataset="dsr_01NABC"}`;
     const result = renderHtml(source, {
       format: "fragment",
       resolveResource: ({ kind }) => kind === "dataset"
@@ -105,23 +106,23 @@ Body & text.
     assert.equal(result.html.includes("<script>alert"), false);
     assert.ok(result.html.includes("&lt;img src=x onerror=alert(1)&gt;"));
     assert.ok(result.html.includes("&lt;script&gt;alert(1)&lt;/script&gt;"));
-    assert.ok(result.html.includes("Unsafe &amp; caption"));
+    assert.ok(result.html.includes('aria-label="Unsafe &amp; name"'));
   });
 
-  it("renders all leaf directives with authorized resources and fixed safety attributes", () => {
+  it("renders leaf labels as accessible names with authorized resources and fixed safety attributes", () => {
     const requests: TfmResourceRequest[] = [];
-    const result = renderHtml(`::tessyl-video[Video **caption**]{asset="asr_video_01JABC" controls=true}
+    const result = renderHtml(`::tessyl-video[Video **demonstration**]{asset="asr_video_01JABC" controls=true}
 
-::tessyl-audio[Audio caption]{asset="asr_audio_01KABC" transcript="asr_text_01LABC" controls=false}
+::tessyl-audio[Audio lesson]{asset="asr_audio_01KABC" transcript="asr_text_01LABC" controls=false}
 
-::tessyl-app[App caption]{revision="tsr_01MABC" height="compact"}
+::tessyl-app[Gravity sandbox]{revision="tsr_01MABC" height="compact"}
 
-::tessyl-data-table[Dataset caption]{dataset="dsr_01NABC" sortable=true}`, {
+::tessyl-data-table[Planet dataset]{dataset="dsr_01NABC" sortable=true}`, {
       format: "fragment",
       resolveResource: (request) => {
         requests.push(request);
         switch (request.kind) {
-          case "video": return { url: "/media/video.mp4", label: "Video" };
+          case "video": return { url: "blob:https://host.example/authorized-video", label: "Video" };
           case "audio": return { url: "https://media.example/audio.mp3", label: "Audio" };
           case "transcript": return { url: "/transcripts/01", label: "Transcript" };
           case "app": return { url: "/apps/01", label: "Safe app" };
@@ -139,7 +140,14 @@ Body & text.
     assert.equal(result.html.includes("allow-same-origin"), false);
     assert.ok(result.html.includes('data-tfm-height="compact"'));
     assert.ok(result.html.includes('data-tfm-sortable="true"'));
-    assert.ok(result.html.includes("<strong>caption</strong>"));
+    assert.ok(result.html.includes('aria-label="Video demonstration"'));
+    assert.ok(result.html.includes('aria-label="Audio lesson"'));
+    assert.ok(result.html.includes('title="Gravity sandbox"'));
+    assert.ok(result.html.includes('aria-label="Planet dataset"'));
+    assert.ok(result.html.includes('src="blob:https://host.example/authorized-video"'));
+    assert.equal(result.html.includes("<figcaption"), false);
+    assert.equal(result.html.includes('class="tfm-directive'), false);
+    assert.ok(result.contentSecurityPolicy.includes("media-src 'self' https: blob:"));
   });
 
   it("renders all container directives and their normalized layout", () => {
@@ -175,6 +183,11 @@ Second.
       "tfm-columns", "tfm-column", "tfm-card-grid", "data-tfm-columns=\"2\"", "tfm-card",
       "Remember", "Fact", "Mercury", "Venus",
     ]) assert.ok(result.html.includes(fragment), `missing ${fragment}`);
+    assert.ok(result.html.includes('aria-label="Remember"'));
+    assert.ok(result.html.includes('aria-label="Fact"'));
+    assert.equal(result.html.includes('class="tfm-directive'), false);
+    assert.equal(result.html.includes(">aside<"), false);
+    assert.ok(TFM_RENDERER_CSS.includes(".tfm .tfm-card {"));
   });
 
   it("renders working sortable controls, table alignment, and linked footnotes", () => {
@@ -229,6 +242,20 @@ Footnote[^note].
     assert.ok(result.html.includes("tfm-resource-placeholder"));
     assert.ok(result.diagnostics.some(({ code }) => code === "TFM_UNSAFE_RESOURCE_URL"));
     assert.ok(result.diagnostics.some(({ code }) => code === "TFM_RESOURCE_RESOLUTION"));
+  });
+
+  it("retains authored accessible names on unresolved resource placeholders", () => {
+    const result = renderHtml(`::tessyl-video[Unavailable **video**]{asset="asr_video_01JABC"}
+
+::tessyl-audio[Unavailable audio]{asset="asr_audio_01KABC"}
+
+::tessyl-app[Unavailable app]{revision="tsr_01MABC"}
+
+::tessyl-data-table[Unavailable dataset]{dataset="dsr_01NABC"}`, { format: "fragment" });
+    assert.equal(result.success, true, JSON.stringify(result.diagnostics));
+    for (const label of ["Unavailable video", "Unavailable audio", "Unavailable app", "Unavailable dataset"]) {
+      assert.ok(result.html.includes(`role="group" aria-label="${label}"`), `missing ${label}`);
+    }
   });
 
   it("bounds renderer diagnostics and resolved dataset output", () => {

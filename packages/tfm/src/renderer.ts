@@ -73,6 +73,7 @@ const EMPTY_SPAN: TfmSpan = {
 const URL_BASE = new URL("https://tfm.invalid/");
 const LINK_PROTOCOLS = new Set(["http:", "https:", "mailto:", "tel:"]);
 const RESOURCE_PROTOCOLS = new Set(["https:"]);
+const MEDIA_RESOURCE_PROTOCOLS = new Set(["https:", "blob:"]);
 const MAX_RESOURCE_RESOLUTIONS = 256;
 const RESOURCE_RESOLUTION_CONCURRENCY = 8;
 const MAX_RESOURCE_BUNDLE_ENTRIES = 1_000;
@@ -87,7 +88,7 @@ const contentSecurityPolicy = (imagePolicy: TfmRenderOptions["imagePolicy"] = "d
   "default-src 'none'",
   "style-src 'unsafe-inline'",
   imagePolicy === "https" ? "img-src 'self' https:" : imagePolicy === "same-origin" ? "img-src 'self'" : "img-src 'none'",
-  "media-src 'self' https:",
+  "media-src 'self' https: blob:",
   "frame-src 'self' https:",
   `script-src '${SORT_SCRIPT_HASH}'`,
   "connect-src 'none'",
@@ -237,13 +238,20 @@ const renderDocument = (article: string, title = "TFM document", policy: string)
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="${escapeAttribute(policy)}">
+<meta http-equiv="Content-Security-Policy" content="${escapeAttribute(metaContentSecurityPolicy(policy))}">
 <meta name="referrer" content="no-referrer">
 <title>${escapeHtml(title)}</title>
 <style>${renderThemeCss(":root")}html{background:var(--ts-color-canvas);color:var(--ts-color-text-body);font-family:var(--ts-font-sans)}body{margin:0;padding:clamp(1rem,4vw,3rem)}${TFM_RENDERER_CSS}</style>
 </head>
 <body>${article}<script>${TFM_SORT_SCRIPT}</script></body>
 </html>`;
+
+// Browsers ignore frame-ancestors in a meta-delivered policy and Firefox warns
+// about it. Keep it in the returned header policy while omitting it from HTML.
+const metaContentSecurityPolicy = (policy: string): string => policy
+  .split("; ")
+  .filter((directive) => !directive.startsWith("frame-ancestors "))
+  .join("; ");
 
 class Renderer {
   readonly #definitions = new Map<string, TfmNode>();
@@ -315,16 +323,16 @@ class Renderer {
       case "definition": html = ""; break;
       case "footnote-definition": html = `<section class="tfm-footnote" id="${footnoteId(node.identifier)}">${children()}</section>`; break;
       case "footnote-reference": html = `<sup><a href="#${footnoteId(node.identifier)}" aria-label="Footnote ${escapeAttribute(node.identifier)}">${escapeHtml(node.identifier)}</a></sup>`; break;
-      case "tessyl-video": html = this.video(node, children()); break;
-      case "tessyl-audio": html = this.audio(node, children()); break;
-      case "tessyl-app": html = this.app(node, children()); break;
-      case "tessyl-data-table": html = this.dataTable(node, children()); break;
+      case "tessyl-video": html = this.video(node); break;
+      case "tessyl-audio": html = this.audio(node); break;
+      case "tessyl-app": html = this.app(node); break;
+      case "tessyl-data-table": html = this.dataTable(node); break;
       case "tessyl-aside": html = this.callout(node, children(), "aside"); break;
       case "tessyl-infobox": html = this.callout(node, children(), "infobox"); break;
       case "tessyl-columns": html = `<section class="tfm-columns">${children()}</section>`; break;
       case "tessyl-column": html = `<div class="tfm-column">${children()}</div>`; break;
       case "tessyl-card-grid": html = `<section class="tfm-card-grid" data-tfm-columns="${escapeAttribute(this.attribute(node, "columns") || "3")}">${children()}</section>`; break;
-      case "tessyl-card": html = `<article class="tfm-directive tfm-card"><h3>${escapeHtml(this.attribute(node, "title"))}</h3>${children()}</article>`; break;
+      case "tessyl-card": html = `<article class="tfm-card"><h3>${escapeHtml(this.attribute(node, "title"))}</h3>${children()}</article>`; break;
       case "invalid-directive":
       case "unsupported":
         this.error("TFM_UNRENDERABLE_NODE", `Node kind ${node.kind} cannot be rendered safely.`, node.span);
@@ -414,28 +422,30 @@ class Renderer {
     return `<tr>${cells}</tr>`;
   }
 
-  private video(node: TfmNode, caption: string): string {
+  private video(node: TfmNode): string {
     const id = this.attribute(node, "asset");
     const resource = this.resolve("video", id, node.span);
-    const url = this.resourceUrl(resource?.url, node.span);
+    const url = this.resourceUrl(resource?.url, node.span, MEDIA_RESOURCE_PROTOCOLS);
     const controls = this.attribute(node, "controls") !== "false";
+    const authoredLabel = this.accessibleName(node);
     const media = url
-      ? `<video src="${escapeAttribute(url)}"${controls ? " controls" : ""} preload="metadata"></video>`
-      : this.placeholder(resource?.label || "Video asset", id);
-    return `<figure class="tfm-directive tfm-video">${media}${caption ? `<figcaption class="tfm-caption">${caption}</figcaption>` : ""}</figure>`;
+      ? `<video src="${escapeAttribute(url)}" aria-label="${escapeAttribute(authoredLabel || this.boundedResourceText(resource?.label || "Video"))}"${controls ? " controls" : ""} preload="metadata"></video>`
+      : this.placeholder(resource?.label || "Video asset", id, authoredLabel);
+    return `<figure class="tfm-video">${media}</figure>`;
   }
 
-  private audio(node: TfmNode, caption: string): string {
+  private audio(node: TfmNode): string {
     const id = this.attribute(node, "asset");
     const resource = this.resolve("audio", id, node.span);
-    const url = this.resourceUrl(resource?.url, node.span);
+    const url = this.resourceUrl(resource?.url, node.span, MEDIA_RESOURCE_PROTOCOLS);
     const controls = this.attribute(node, "controls") !== "false";
+    const authoredLabel = this.accessibleName(node);
     const media = url
-      ? `<audio src="${escapeAttribute(url)}"${controls ? " controls" : ""} preload="metadata"></audio>`
-      : this.placeholder(resource?.label || "Audio asset", id);
+      ? `<audio src="${escapeAttribute(url)}" aria-label="${escapeAttribute(authoredLabel || this.boundedResourceText(resource?.label || "Audio"))}"${controls ? " controls" : ""} preload="metadata"></audio>`
+      : this.placeholder(resource?.label || "Audio asset", id, authoredLabel);
     const transcriptId = this.attribute(node, "transcript");
     const transcript = transcriptId ? this.transcript(transcriptId, node.span) : "";
-    return `<figure class="tfm-directive tfm-audio"><div class="tfm-directive__body">${media}${transcript}</div>${caption ? `<figcaption class="tfm-caption tfm-directive__body">${caption}</figcaption>` : ""}</figure>`;
+    return `<figure class="tfm-audio">${media}${transcript}</figure>`;
   }
 
   private transcript(id: string, span: TfmSpan): string {
@@ -447,22 +457,23 @@ class Renderer {
       : `<p class="tfm-caption">${label} <span class="tfm-resource-id">${escapeHtml(id)}</span></p>`;
   }
 
-  private app(node: TfmNode, caption: string): string {
+  private app(node: TfmNode): string {
     const id = this.attribute(node, "revision");
     const height = this.attribute(node, "height") || "standard";
     const resource = this.resolve("app", id, node.span);
     const url = this.resourceUrl(resource?.url, node.span);
-    const label = this.boundedResourceText(resource?.label || "Interactive application");
+    const authoredLabel = this.accessibleName(node);
     const app = url
-      ? `<iframe class="tfm-app-frame" data-tfm-height="${escapeAttribute(height)}" src="${escapeAttribute(url)}" title="${escapeAttribute(label)}" sandbox="allow-scripts" loading="lazy" referrerpolicy="no-referrer"></iframe>`
-      : this.placeholder(label, id);
-    return `<figure class="tfm-directive tfm-app">${app}${caption ? `<figcaption class="tfm-caption tfm-directive__body">${caption}</figcaption>` : ""}</figure>`;
+      ? `<iframe class="tfm-app-frame" data-tfm-height="${escapeAttribute(height)}" src="${escapeAttribute(url)}" title="${escapeAttribute(authoredLabel || this.boundedResourceText(resource?.label || "Interactive application"))}" sandbox="allow-scripts" loading="lazy" referrerpolicy="no-referrer"></iframe>`
+      : this.placeholder(resource?.label || "Interactive application", id, authoredLabel);
+    return `<div class="tfm-app">${app}</div>`;
   }
 
-  private dataTable(node: TfmNode, caption: string): string {
+  private dataTable(node: TfmNode): string {
     const id = this.attribute(node, "dataset");
     const sortable = this.attribute(node, "sortable") !== "false";
     const resource = this.resolve("dataset", id, node.span);
+    const authoredLabel = this.accessibleName(node);
     let content: string;
     if (isDatasetResource(resource)) {
       const columns = resource.columns.slice(0, Math.min(MAX_DATASET_COLUMNS, this.#remainingDatasetCells));
@@ -472,8 +483,9 @@ class Renderer {
         !Array.isArray(row) || row.slice(0, columns.length).some((value) => typeof value !== "string"));
       if (invalid) {
         this.warning("TFM_INVALID_RESOURCE", "The dataset resolver returned an invalid bounded table value.", node.span);
-        return `<figure class="tfm-directive tfm-data-table"><div class="tfm-directive__body">${this.placeholder(resource.label || "Dataset", id)}</div></figure>`;
+        return `<div class="tfm-data-table">${this.placeholder(resource.label || "Dataset", id, authoredLabel)}</div>`;
       }
+      const label = authoredLabel || this.boundedResourceText(resource.label || "Dataset");
       let truncated = resource.columns.length > columns.length || resource.rows.length > rows.length || rows.some((row) => row.length > MAX_DATASET_COLUMNS);
       const bounded = (value: string): string => {
         const maximum = Math.min(4_096, this.#remainingResourceCharacters);
@@ -486,22 +498,23 @@ class Renderer {
       const head = columns.map((value, index) => `<th scope="col">${sortable ? `<button type="button" class="tfm-sort-button" data-tfm-column="${index}">${escapeHtml(bounded(value))}</button>` : escapeHtml(bounded(value))}</th>`).join("");
       const body = rows.map((row) => `<tr>${columns.map((_, index) => `<td>${escapeHtml(bounded(row[index] ?? ""))}</td>`).join("")}</tr>`).join("");
       if (truncated) this.warning("TFM_DATASET_LIMIT", "The rendered dataset was truncated to safe table limits.", node.span);
-      content = `<div class="tfm-dataset"><table data-tfm-sortable="${sortable}">${caption ? `<caption>${caption}</caption>` : ""}<thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+      content = `<div class="tfm-dataset"><table aria-label="${escapeAttribute(label)}" data-tfm-sortable="${sortable}"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
     } else {
-      content = this.placeholder(resource?.label || "Dataset", id);
+      content = this.placeholder(resource?.label || "Dataset", id, authoredLabel);
     }
-    return `<figure class="tfm-directive tfm-data-table"><div class="tfm-directive__body">${content}</div></figure>`;
+    return `<div class="tfm-data-table">${content}</div>`;
   }
 
   private callout(node: TfmNode, content: string, kind: "aside" | "infobox"): string {
     const title = this.attribute(node, "title");
     const tone = this.attribute(node, "tone");
-    const heading = title ? `<header class="tfm-directive__header"><strong>${escapeHtml(title)}</strong><span class="tfm-directive__kind">${kind}</span></header>` : "";
-    return `<aside class="tfm-directive tfm-${kind}" data-tfm-tone="${escapeAttribute(tone)}">${heading}<div class="tfm-directive__body">${content}</div></aside>`;
+    const heading = title ? `<header class="tfm-callout__header"><strong>${escapeHtml(title)}</strong></header>` : "";
+    return `<aside class="tfm-${kind}" data-tfm-tone="${escapeAttribute(tone)}"${title ? ` aria-label="${escapeAttribute(title)}"` : ""}>${heading}<div class="tfm-callout__body">${content}</div></aside>`;
   }
 
-  private placeholder(label: string, id: string): string {
-    return `<div class="tfm-resource-placeholder"><span>${escapeHtml(this.boundedResourceText(label))}<span class="tfm-resource-id">${escapeHtml(id)}</span></span></div>`;
+  private placeholder(label: string, id: string, accessibleName = ""): string {
+    const visibleLabel = this.boundedResourceText(label);
+    return `<div class="tfm-resource-placeholder" role="group" aria-label="${escapeAttribute(accessibleName || visibleLabel)}"><span>${escapeHtml(visibleLabel)}<span class="tfm-resource-id">${escapeHtml(id)}</span></span></div>`;
   }
 
   private resolve(kind: TfmResourceKind, id: string, span: TfmSpan): TfmResolvedResource | undefined {
@@ -533,13 +546,17 @@ class Renderer {
     }
   }
 
-  private resourceUrl(value: string | undefined, span: TfmSpan): string | undefined {
+  private resourceUrl(
+    value: string | undefined,
+    span: TfmSpan,
+    protocols: ReadonlySet<string> = RESOURCE_PROTOCOLS,
+  ): string | undefined {
     if (!value) return undefined;
     if (value.length > 8_192 || value.length > this.#remainingResourceCharacters) {
       this.warning("TFM_RESOURCE_LIMIT", "A resource URL exceeded the renderer limit.", span);
       return undefined;
     }
-    const url = safeUrl(value, RESOURCE_PROTOCOLS, true);
+    const url = safeUrl(value, protocols, true);
     if (!url) this.warning("TFM_UNSAFE_RESOURCE_URL", "A resource URL was blocked by the renderer policy.", span);
     else this.#remainingResourceCharacters -= value.length;
     return url;
@@ -547,6 +564,29 @@ class Renderer {
 
   private attribute(node: TfmNode, name: string): string {
     return node.attributes.find((attribute) => attribute.name === name)?.value ?? "";
+  }
+
+  private accessibleName(node: TfmNode): string {
+    const parts: string[] = [];
+    const visited = new Set<number>();
+    let remaining = 512;
+    const append = (value: string): void => {
+      if (remaining <= 0) return;
+      const bounded = value.slice(0, remaining);
+      parts.push(bounded);
+      remaining -= bounded.length;
+    };
+    const visit = (index: number): void => {
+      if (remaining <= 0 || visited.has(index) || !Number.isSafeInteger(index) || index < 0 || index >= this.parsed.nodes.length) return;
+      visited.add(index);
+      const child = this.parsed.nodes[index]!;
+      if (child.kind === "text" || child.kind === "inline-code") append(child.text);
+      else if (child.kind === "image") append(child.text);
+      else if (child.kind === "break") append(" ");
+      else for (const nested of child.children) visit(nested);
+    };
+    for (const child of node.children) visit(child);
+    return parts.join("").replace(/\s+/g, " ").trim();
   }
 
   private boundedResourceText(value: string): string {

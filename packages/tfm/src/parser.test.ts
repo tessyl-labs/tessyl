@@ -97,7 +97,7 @@ Footnote[^note].
 
 describe("TFM directives", () => {
   it("parses every leaf directive and normalizes defaults", () => {
-    const result = parse(`::tessyl-video[**Video caption**]{asset="asr_video_01JABC" controls=false}
+    const result = parse(`::tessyl-video[**Video accessible name**]{asset="asr_video_01JABC" controls=false}
 
 ::tessyl-audio[Audio]{asset="asr_audio_01KABC" transcript="asr_text_01LABC"}
 

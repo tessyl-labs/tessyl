@@ -1,5 +1,6 @@
 import { renderHtml, type TfmResolvedResource, type TfmResourceRequest } from "@tessyl/tfm";
 import example from "../../examples/showcase.tfm?raw";
+import videoFixture from "../fixtures/demo-video.webm.base64?raw";
 
 const source = document.querySelector<HTMLTextAreaElement>("#source")!;
 const preview = document.querySelector<HTMLIFrameElement>("#preview")!;
@@ -7,13 +8,17 @@ const diagnostics = document.querySelector<HTMLElement>("#diagnostics")!;
 const renderStatus = document.querySelector<HTMLElement>("#render-status")!;
 let previewReady = false;
 
+const videoBytes = Uint8Array.from(atob(videoFixture.trim()), (character) => character.charCodeAt(0));
+const videoUrl = URL.createObjectURL(new Blob([videoBytes], { type: "video/webm" }));
+window.addEventListener("pagehide", () => URL.revokeObjectURL(videoUrl), { once: true });
+
 const resources: Readonly<Record<string, TfmResolvedResource>> = {
   dsr_01NABC: {
     label: "Planet comparison",
     columns: ["Planet", "Orbital period", "Relative mass"],
     rows: [["Mercury", "88 days", "0.055"], ["Earth", "365 days", "1.000"], ["Mars", "687 days", "0.107"]],
   },
-  asr_video_01JABC: { url: "/fixtures/demo-video.webm", label: "Authorized video preview" },
+  asr_video_01JABC: { url: videoUrl, label: "Authorized video preview" },
   asr_audio_01KABC: { url: "/fixtures/demo.wav", label: "Authorized audio preview" },
   asr_text_01LABC: { url: "/fixtures/transcript.txt", label: "Open local transcript fixture" },
   tsr_01MABC: { url: "/fixtures/app.html", label: "Sandboxed Tessera fixture" },

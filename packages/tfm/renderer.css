@@ -16,6 +16,7 @@
 .tfm a:hover { color: var(--ts-color-accent-deep); }
 .tfm a:focus-visible { outline: 3px solid var(--ts-color-focus); outline-offset: 3px; border-radius: .2rem; }
 .tfm img, .tfm video { display: block; max-width: 100%; height: auto; border-radius: var(--ts-radius-card); }
+.tfm video { width: 100%; }
 .tfm audio { display: block; width: min(100%, 36rem); }
 .tfm blockquote { padding: .2rem 0 .2rem 1.1rem; border-left: .25rem solid var(--ts-color-border-strong); color: var(--ts-color-text-secondary); }
 .tfm code { padding: .12em .35em; border-radius: .35rem; background: var(--ts-color-canvas-subtle); font-family: var(--ts-font-mono); font-size: .9em; }
@@ -35,20 +36,21 @@
 .tfm hr { margin: 2rem 0; border: 0; border-top: 1px solid var(--ts-color-border); }
 .tfm .tfm-task { list-style: none; }
 .tfm .tfm-task > input { margin-left: -1.4rem; margin-right: .45rem; accent-color: var(--ts-color-accent); }
-.tfm .tfm-directive { margin: 1.25rem 0; border: 1px solid var(--ts-color-border); border-radius: var(--ts-radius-card); background: var(--ts-color-surface); box-shadow: var(--ts-shadow-card); }
-.tfm .tfm-directive__header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .8rem 1rem; border-bottom: 1px solid var(--ts-color-border-subtle); }
-.tfm .tfm-directive__header strong { color: var(--ts-color-text); }
-.tfm .tfm-directive__kind { color: var(--ts-color-text-muted); font-size: .72rem; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
-.tfm .tfm-directive__body { padding: 1rem; }
-.tfm .tfm-directive__body > :first-child { margin-top: 0; }
-.tfm .tfm-directive__body > :last-child { margin-bottom: 0; }
+.tfm .tfm-video, .tfm .tfm-audio, .tfm .tfm-app, .tfm .tfm-data-table { margin: 1.25rem 0; }
+.tfm .tfm-audio { display: grid; gap: .5rem; }
+.tfm .tfm-audio p { margin: 0; }
 .tfm .tfm-resource-placeholder { display: grid; min-height: 8rem; place-items: center; padding: 1rem; border: 1px dashed var(--ts-color-border-strong); border-radius: var(--ts-radius-control); background: var(--ts-color-surface-muted); color: var(--ts-color-text-muted); text-align: center; }
 .tfm .tfm-resource-id { display: block; margin-top: .35rem; font: .76rem var(--ts-font-mono); }
 .tfm .tfm-caption { color: var(--ts-color-text-secondary); font-size: .9rem; }
+.tfm .tfm-aside, .tfm .tfm-infobox { margin: 1.25rem 0; padding: 1rem 1.1rem; background: var(--ts-color-surface-muted); }
+.tfm .tfm-callout__header { margin-bottom: .55rem; color: var(--ts-color-text); }
+.tfm .tfm-callout__body > :first-child { margin-top: 0; }
+.tfm .tfm-callout__body > :last-child { margin-bottom: 0; }
 .tfm .tfm-aside { border-left: .3rem solid var(--ts-color-accent); }
 .tfm .tfm-aside[data-tfm-tone="warning"], .tfm .tfm-aside[data-tfm-tone="caution"] { border-left-color: var(--ts-color-caution); }
-.tfm .tfm-infobox[data-tfm-tone="positive"] { border-color: var(--ts-color-positive); }
-.tfm .tfm-infobox[data-tfm-tone="warning"] { border-color: var(--ts-color-caution); }
+.tfm .tfm-infobox { border-left: .3rem solid var(--ts-color-border-strong); }
+.tfm .tfm-infobox[data-tfm-tone="positive"] { border-left-color: var(--ts-color-positive); }
+.tfm .tfm-infobox[data-tfm-tone="warning"] { border-left-color: var(--ts-color-caution); }
 .tfm .tfm-columns, .tfm .tfm-card-grid { display: grid; gap: 1rem; margin: 1.25rem 0; }
 .tfm .tfm-columns { grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); }
 .tfm .tfm-card-grid[data-tfm-columns="1"] { grid-template-columns: 1fr; }
@@ -56,7 +58,7 @@
 .tfm .tfm-card-grid[data-tfm-columns="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .tfm .tfm-card-grid[data-tfm-columns="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .tfm .tfm-column { min-width: 0; }
-.tfm .tfm-card { margin: 0; padding: 1.1rem; }
+.tfm .tfm-card { margin: 0; padding: 1.1rem; border: 1px solid var(--ts-color-border); border-radius: var(--ts-radius-card); background: var(--ts-color-surface); box-shadow: var(--ts-shadow-card); }
 .tfm .tfm-card h3 { margin: 0 0 .65rem; }
 .tfm .tfm-app-frame { display: block; width: 100%; border: 0; background: var(--ts-color-canvas-subtle); }
 .tfm .tfm-app-frame[data-tfm-height="compact"] { height: 18rem; }
