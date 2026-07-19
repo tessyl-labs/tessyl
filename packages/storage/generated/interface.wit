@@ -1,0 +1,88 @@
+package tessyl:storage@1.0.0;
+
+interface document {
+  record type-a2649608c603be2c {
+    code: string,
+    detailsjson: string,
+    message: string,
+    operation: string,
+    retryable: bool,
+  }
+  record type-b0834ca05fe499e4 {
+    error: type-a2649608c603be2c,
+    ok: bool,
+    valuejson: string,
+  }
+
+  claim-outbox: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
+  complete-outbox: func(arg0: string, arg1: string, arg2: string, arg3: string) -> type-b0834ca05fe499e4;
+  get: func(arg0: string, arg1: string, arg2: string) -> type-b0834ca05fe499e4;
+  inspect-table: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
+  migrate-table: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
+  query-documents: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
+  retry-outbox: func(arg0: string, arg1: string, arg2: string, arg3: string, arg4: string, arg5: string) -> type-b0834ca05fe499e4;
+  transact: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
+}
+
+interface object {
+  record type-a2649608c603be2c {
+    code: string,
+    detailsjson: string,
+    message: string,
+    operation: string,
+    retryable: bool,
+  }
+  record type-b0834ca05fe499e4 {
+    error: type-a2649608c603be2c,
+    ok: bool,
+    valuejson: string,
+  }
+
+  cleanup-abandoned: func(arg0: string, arg1: string, arg2: s32) -> type-b0834ca05fe499e4;
+  complete-upload: func(arg0: string, arg1: string, arg2: string) -> type-b0834ca05fe499e4;
+  delete-object: func(arg0: string, arg1: string, arg2: string) -> type-b0834ca05fe499e4;
+  initiate-upload: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
+  resolve-download: func(arg0: string, arg1: string, arg2: s32) -> type-b0834ca05fe499e4;
+  stat: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
+}
+
+interface search-index {
+  record type-a2649608c603be2c {
+    code: string,
+    detailsjson: string,
+    message: string,
+    operation: string,
+    retryable: bool,
+  }
+  record type-b0834ca05fe499e4 {
+    error: type-a2649608c603be2c,
+    ok: bool,
+    valuejson: string,
+  }
+
+  begin-rebuild: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
+  create: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
+  cutover: func(arg0: string, arg1: string, arg2: string) -> type-b0834ca05fe499e4;
+  delete-document: func(arg0: string, arg1: string, arg2: string, arg3: string) -> type-b0834ca05fe499e4;
+  delete-generation: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
+  inspect: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
+  list-generations: func(arg0: string, arg1: string, arg2: s32, arg3: string) -> type-b0834ca05fe499e4;
+  upsert: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
+}
+
+interface search {
+  record type-a2649608c603be2c {
+    code: string,
+    detailsjson: string,
+    message: string,
+    operation: string,
+    retryable: bool,
+  }
+  record type-b0834ca05fe499e4 {
+    error: type-a2649608c603be2c,
+    ok: bool,
+    valuejson: string,
+  }
+
+  search: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
+}

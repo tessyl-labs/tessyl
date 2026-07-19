@@ -1,0 +1,1638 @@
+import type { VoydPackageAdapterContract } from "@voyd-lang/package-adapter";
+
+export const contract = {
+  "abiVersion": 1,
+  "packageName": "@tessyl/storage",
+  "interfaces": [
+    {
+      "interfaceId": "tessyl:storage/document@1",
+      "fingerprint": "ef8a4f93cac8f107"
+    },
+    {
+      "interfaceId": "tessyl:storage/object@1",
+      "fingerprint": "da071d68eea90e14"
+    },
+    {
+      "interfaceId": "tessyl:storage/search-index@1",
+      "fingerprint": "12b016525cfd5f36"
+    },
+    {
+      "interfaceId": "tessyl:storage/search@1",
+      "fingerprint": "80339ae41879e730"
+    }
+  ],
+  "functions": [
+    {
+      "kind": "async",
+      "interfaceId": "tessyl:storage/document@1",
+      "functionName": "claim_outbox",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "error",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "code",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "detailsJson",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "message",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "operation",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "retryable",
+                  "schema": {
+                    "kind": "bool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ok",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "valueJson",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "async",
+      "interfaceId": "tessyl:storage/document@1",
+      "functionName": "complete_outbox",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "error",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "code",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "detailsJson",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "message",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "operation",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "retryable",
+                  "schema": {
+                    "kind": "bool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ok",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "valueJson",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "async",
+      "interfaceId": "tessyl:storage/document@1",
+      "functionName": "get",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "error",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "code",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "detailsJson",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "message",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "operation",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "retryable",
+                  "schema": {
+                    "kind": "bool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ok",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "valueJson",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "async",
+      "interfaceId": "tessyl:storage/document@1",
+      "functionName": "inspect_table",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "error",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "code",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "detailsJson",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "message",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "operation",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "retryable",
+                  "schema": {
+                    "kind": "bool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ok",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "valueJson",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "async",
+      "interfaceId": "tessyl:storage/document@1",
+      "functionName": "migrate_table",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "error",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "code",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "detailsJson",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "message",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "operation",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "retryable",
+                  "schema": {
+                    "kind": "bool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ok",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "valueJson",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "async",
+      "interfaceId": "tessyl:storage/document@1",
+      "functionName": "query_documents",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "error",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "code",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "detailsJson",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "message",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "operation",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "retryable",
+                  "schema": {
+                    "kind": "bool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ok",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "valueJson",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "async",
+      "interfaceId": "tessyl:storage/document@1",
+      "functionName": "retry_outbox",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "error",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "code",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "detailsJson",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "message",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "operation",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "retryable",
+                  "schema": {
+                    "kind": "bool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ok",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "valueJson",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "async",
+      "interfaceId": "tessyl:storage/document@1",
+      "functionName": "transact",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "error",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "code",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "detailsJson",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "message",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "operation",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "retryable",
+                  "schema": {
+                    "kind": "bool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ok",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "valueJson",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "async",
+      "interfaceId": "tessyl:storage/object@1",
+      "functionName": "cleanup_abandoned",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "i32"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "error",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "code",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "detailsJson",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "message",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "operation",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "retryable",
+                  "schema": {
+                    "kind": "bool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ok",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "valueJson",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "async",
+      "interfaceId": "tessyl:storage/object@1",
+      "functionName": "complete_upload",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "error",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "code",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "detailsJson",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "message",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "operation",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "retryable",
+                  "schema": {
+                    "kind": "bool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ok",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "valueJson",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "async",
+      "interfaceId": "tessyl:storage/object@1",
+      "functionName": "delete_object",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "error",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "code",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "detailsJson",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "message",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "operation",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "retryable",
+                  "schema": {
+                    "kind": "bool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ok",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "valueJson",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "async",
+      "interfaceId": "tessyl:storage/object@1",
+      "functionName": "initiate_upload",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "error",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "code",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "detailsJson",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "message",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "operation",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "retryable",
+                  "schema": {
+                    "kind": "bool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ok",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "valueJson",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "async",
+      "interfaceId": "tessyl:storage/object@1",
+      "functionName": "resolve_download",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "i32"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "error",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "code",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "detailsJson",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "message",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "operation",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "retryable",
+                  "schema": {
+                    "kind": "bool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ok",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "valueJson",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "async",
+      "interfaceId": "tessyl:storage/object@1",
+      "functionName": "stat",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "error",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "code",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "detailsJson",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "message",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "operation",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "retryable",
+                  "schema": {
+                    "kind": "bool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ok",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "valueJson",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "async",
+      "interfaceId": "tessyl:storage/search-index@1",
+      "functionName": "begin_rebuild",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "error",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "code",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "detailsJson",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "message",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "operation",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "retryable",
+                  "schema": {
+                    "kind": "bool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ok",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "valueJson",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "async",
+      "interfaceId": "tessyl:storage/search-index@1",
+      "functionName": "create",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "error",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "code",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "detailsJson",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "message",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "operation",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "retryable",
+                  "schema": {
+                    "kind": "bool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ok",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "valueJson",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "async",
+      "interfaceId": "tessyl:storage/search-index@1",
+      "functionName": "cutover",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "error",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "code",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "detailsJson",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "message",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "operation",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "retryable",
+                  "schema": {
+                    "kind": "bool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ok",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "valueJson",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "async",
+      "interfaceId": "tessyl:storage/search-index@1",
+      "functionName": "delete_document",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "error",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "code",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "detailsJson",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "message",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "operation",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "retryable",
+                  "schema": {
+                    "kind": "bool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ok",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "valueJson",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "async",
+      "interfaceId": "tessyl:storage/search-index@1",
+      "functionName": "delete_generation",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "error",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "code",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "detailsJson",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "message",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "operation",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "retryable",
+                  "schema": {
+                    "kind": "bool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ok",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "valueJson",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "async",
+      "interfaceId": "tessyl:storage/search-index@1",
+      "functionName": "inspect",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "error",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "code",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "detailsJson",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "message",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "operation",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "retryable",
+                  "schema": {
+                    "kind": "bool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ok",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "valueJson",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "async",
+      "interfaceId": "tessyl:storage/search-index@1",
+      "functionName": "list_generations",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "i32"
+        },
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "error",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "code",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "detailsJson",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "message",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "operation",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "retryable",
+                  "schema": {
+                    "kind": "bool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ok",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "valueJson",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "async",
+      "interfaceId": "tessyl:storage/search-index@1",
+      "functionName": "upsert",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "error",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "code",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "detailsJson",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "message",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "operation",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "retryable",
+                  "schema": {
+                    "kind": "bool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ok",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "valueJson",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "async",
+      "interfaceId": "tessyl:storage/search@1",
+      "functionName": "search",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "error",
+            "schema": {
+              "kind": "record",
+              "fields": [
+                {
+                  "name": "code",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "detailsJson",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "message",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "operation",
+                  "schema": {
+                    "kind": "string"
+                  }
+                },
+                {
+                  "name": "retryable",
+                  "schema": {
+                    "kind": "bool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "name": "ok",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "valueJson",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    }
+  ]
+} as const satisfies VoydPackageAdapterContract;
