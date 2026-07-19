@@ -1,0 +1,3 @@
+TFM workbench transcript fixture.
+
+This file verifies that an authorized transcript URL renders as a safe link.

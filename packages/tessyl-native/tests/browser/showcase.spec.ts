@@ -192,18 +192,15 @@ test("live reduced-motion changes pause and resume fixed-step simulation", async
   await expect(step).not.toContainText(/^Step\s*0$/);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect(card.locator("[data-tessyl-native-failure-code]")).toHaveCount(0);
-  let paused = "";
   await expect.poll(async () => {
     const before = await step.textContent();
-    await page.waitForTimeout(250);
+    await page.waitForTimeout(750);
     const after = await step.textContent();
-    if (before === after) paused = after ?? "";
     return before === after;
   }).toBe(true);
-  await page.waitForTimeout(250);
-  await expect(step).toHaveText(paused);
+  const paused = await step.textContent();
   await page.emulateMedia({ reducedMotion: "no-preference" });
-  await expect(step).not.toHaveText(paused);
+  await expect(step).not.toHaveText(paused ?? "");
   await simulation.getByRole("button", { name: "Pause" }).click();
   await expect(simulation.getByRole("button", { name: "Run" })).toBeVisible();
   const manuallyPaused = await step.textContent();
@@ -247,10 +244,8 @@ test("offscreen runtimes pause and restart without losing their fallback", async
   await expect(calculator.locator('[data-tessera-status="calculator"]')).toHaveText("running");
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   await expect(calculator.locator('[data-tessera-status="calculator"]')).toHaveText("paused");
-  await expect.poll(async () => {
-    await calculator.scrollIntoViewIfNeeded();
-    return calculator.locator('[data-tessera-status="calculator"]').textContent();
-  }).toBe("running");
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(calculator.locator('[data-tessera-status="calculator"]')).toHaveText("running");
   await expect(page.frameLocator('[data-showcase-card="calculator"] iframe').getByLabel("Bill amount")).toHaveValue("48");
 });
 

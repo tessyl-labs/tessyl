@@ -72,6 +72,20 @@ const answer = 42
     assert.equal(result.nodes.some((item) => item.kind === "unsupported"), false);
   });
 
+  it("preserves GFM table alignment and footnote identifiers", () => {
+    const result = parse(`| Left | Center | Right |
+| :--- | :----: | ----: |
+| a | b | c |
+
+Footnote[^note].
+
+[^note]: Footnote body.`);
+    assert.equal(result.success, true);
+    assert.deepEqual(result.nodes.find(({ kind }) => kind === "table")?.alignments, ["left", "center", "right"]);
+    assert.equal(result.nodes.find(({ kind }) => kind === "footnote-reference")?.identifier, "note");
+    assert.equal(result.nodes.find(({ kind }) => kind === "footnote-definition")?.identifier, "note");
+  });
+
   it("rejects raw HTML while preserving it as inert text", () => {
     const result = parse('<script type="module">alert(1)</script>');
     assert.equal(result.success, false);
@@ -83,7 +97,7 @@ const answer = 42
 
 describe("TFM directives", () => {
   it("parses every leaf directive and normalizes defaults", () => {
-    const result = parse(`::tessyl-video[**Video caption**]{asset="asr_video_01JABC" controls=false}
+    const result = parse(`::tessyl-video[**Video accessible name**]{asset="asr_video_01JABC" controls=false}
 
 ::tessyl-audio[Audio]{asset="asr_audio_01KABC" transcript="asr_text_01LABC"}
 

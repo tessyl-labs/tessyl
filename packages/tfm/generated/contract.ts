@@ -6,7 +6,11 @@ export const contract = {
   "interfaces": [
     {
       "interfaceId": "tessyl:tfm/parser@1",
-      "fingerprint": "07fcc46a80631a36"
+      "fingerprint": "8ea44ccccb35b180"
+    },
+    {
+      "interfaceId": "tessyl:tfm/renderer@1",
+      "fingerprint": "86f42fbb68d55f0f"
     }
   ],
   "functions": [
@@ -146,6 +150,15 @@ export const contract = {
               "element": {
                 "kind": "record",
                 "fields": [
+                  {
+                    "name": "alignments",
+                    "schema": {
+                      "kind": "array",
+                      "element": {
+                        "kind": "string"
+                      }
+                    }
+                  },
                   {
                     "name": "attributes",
                     "schema": {
@@ -314,6 +327,292 @@ export const contract = {
             "name": "root",
             "schema": {
               "kind": "i32"
+            }
+          },
+          {
+            "name": "schemaVersion",
+            "schema": {
+              "kind": "string"
+            }
+          },
+          {
+            "name": "success",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "vocabularyVersion",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "sync",
+      "interfaceId": "tessyl:tfm/renderer@1",
+      "functionName": "render_html",
+      "params": [
+        {
+          "kind": "string"
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "contentSecurityPolicy",
+            "schema": {
+              "kind": "string"
+            }
+          },
+          {
+            "name": "diagnostics",
+            "schema": {
+              "kind": "array",
+              "element": {
+                "kind": "record",
+                "fields": [
+                  {
+                    "name": "code",
+                    "schema": {
+                      "kind": "string"
+                    }
+                  },
+                  {
+                    "name": "message",
+                    "schema": {
+                      "kind": "string"
+                    }
+                  },
+                  {
+                    "name": "severity",
+                    "schema": {
+                      "kind": "string"
+                    }
+                  },
+                  {
+                    "name": "span",
+                    "schema": {
+                      "kind": "record",
+                      "fields": [
+                        {
+                          "name": "end",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        },
+                        {
+                          "name": "endColumn",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        },
+                        {
+                          "name": "endLine",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        },
+                        {
+                          "name": "start",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        },
+                        {
+                          "name": "startColumn",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        },
+                        {
+                          "name": "startLine",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": "html",
+            "schema": {
+              "kind": "string"
+            }
+          },
+          {
+            "name": "schemaVersion",
+            "schema": {
+              "kind": "string"
+            }
+          },
+          {
+            "name": "success",
+            "schema": {
+              "kind": "bool"
+            }
+          },
+          {
+            "name": "vocabularyVersion",
+            "schema": {
+              "kind": "string"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "sync",
+      "interfaceId": "tessyl:tfm/renderer@1",
+      "functionName": "render_html_with_resources",
+      "params": [
+        {
+          "kind": "string"
+        },
+        {
+          "kind": "array",
+          "element": {
+            "kind": "record",
+            "fields": [
+              {
+                "name": "cells",
+                "schema": {
+                  "kind": "array",
+                  "element": {
+                    "kind": "string"
+                  }
+                }
+              },
+              {
+                "name": "columns",
+                "schema": {
+                  "kind": "array",
+                  "element": {
+                    "kind": "string"
+                  }
+                }
+              },
+              {
+                "name": "id",
+                "schema": {
+                  "kind": "string"
+                }
+              },
+              {
+                "name": "kind",
+                "schema": {
+                  "kind": "string"
+                }
+              },
+              {
+                "name": "label",
+                "schema": {
+                  "kind": "string"
+                }
+              },
+              {
+                "name": "url",
+                "schema": {
+                  "kind": "string"
+                }
+              }
+            ]
+          }
+        }
+      ],
+      "result": {
+        "kind": "record",
+        "fields": [
+          {
+            "name": "contentSecurityPolicy",
+            "schema": {
+              "kind": "string"
+            }
+          },
+          {
+            "name": "diagnostics",
+            "schema": {
+              "kind": "array",
+              "element": {
+                "kind": "record",
+                "fields": [
+                  {
+                    "name": "code",
+                    "schema": {
+                      "kind": "string"
+                    }
+                  },
+                  {
+                    "name": "message",
+                    "schema": {
+                      "kind": "string"
+                    }
+                  },
+                  {
+                    "name": "severity",
+                    "schema": {
+                      "kind": "string"
+                    }
+                  },
+                  {
+                    "name": "span",
+                    "schema": {
+                      "kind": "record",
+                      "fields": [
+                        {
+                          "name": "end",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        },
+                        {
+                          "name": "endColumn",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        },
+                        {
+                          "name": "endLine",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        },
+                        {
+                          "name": "start",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        },
+                        {
+                          "name": "startColumn",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        },
+                        {
+                          "name": "startLine",
+                          "schema": {
+                            "kind": "i32"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "name": "html",
+            "schema": {
+              "kind": "string"
             }
           },
           {

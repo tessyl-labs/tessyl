@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Local workbench for the safe TFM HTML renderer." />
+    <title>TFM renderer workbench</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <header class="workbench-header">
+        <div><p class="eyebrow">Package playground</p><h1>TFM → safe HTML</h1></div>
+        <p>Edit the complete directive example. Rendering uses the public package API and an example authorization resolver.</p>
+      </header>
+      <section class="workbench" aria-label="TFM renderer workbench">
+        <article class="pane source-pane">
+          <header><h2>TFM source</h2><span id="source-status">Ready</span></header>
+          <textarea id="source" spellcheck="false" aria-label="TFM source"></textarea>
+        </article>
+        <article class="pane output-pane">
+          <header><h2>Rendered output</h2><span id="render-status" aria-live="polite">Ready</span></header>
+          <!-- A real same-origin document lets Firefox enforce the rendered CSP's 'self' sources. -->
+          <iframe id="preview" title="Rendered TFM output" src="/fixtures/preview.html"></iframe>
+          <pre id="diagnostics" aria-label="Renderer diagnostics" hidden></pre>
+        </article>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

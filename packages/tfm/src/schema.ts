@@ -1,4 +1,4 @@
-import type { TfmAttribute, TfmDiagnostic, TfmSpan } from "./types.js";
+import type { TfmAttribute, TfmDiagnostic, TfmDirectiveName, TfmSpan } from "./types.js";
 
 type AttributeSpec =
   | { type: "boolean"; required?: boolean; default?: boolean }
@@ -12,7 +12,7 @@ type DirectiveSpec = {
   attributes: Readonly<Record<string, AttributeSpec>>;
 };
 
-export const DIRECTIVE_SPECS: Readonly<Record<string, DirectiveSpec>> = {
+export const DIRECTIVE_SPECS: Readonly<Record<TfmDirectiveName, DirectiveSpec>> = {
   "tessyl-video": {
     form: "leaf",
     attributes: {
@@ -76,6 +76,9 @@ export const DIRECTIVE_SPECS: Readonly<Record<string, DirectiveSpec>> = {
   },
 };
 
+export const isDirectiveName = (value: string): value is TfmDirectiveName =>
+  Object.hasOwn(DIRECTIVE_SPECS, value);
+
 const OPAQUE_SUFFIX = /^[A-Za-z0-9][A-Za-z0-9._-]{2,127}$/;
 
 export const validateAttributes = (
@@ -86,9 +89,7 @@ export const validateAttributes = (
   maxLength: number,
   report: (diagnostic: TfmDiagnostic) => void,
 ): TfmAttribute[] => {
-  const spec = Object.hasOwn(DIRECTIVE_SPECS, directiveName)
-    ? DIRECTIVE_SPECS[directiveName]
-    : undefined;
+  const spec = isDirectiveName(directiveName) ? DIRECTIVE_SPECS[directiveName] : undefined;
   if (!spec) return [];
 
   const entries = Object.entries(raw);

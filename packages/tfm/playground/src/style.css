@@ -1,0 +1,21 @@
+@import "@tessyl/design-tokens/theme.css";
+
+:root { color: var(--ts-color-text-body); background: var(--ts-color-canvas); font-family: var(--ts-font-sans); }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; background: radial-gradient(circle at 10% 0%, var(--ts-color-accent-soft), transparent 30rem), var(--ts-color-canvas); }
+main { width: min(100% - 2rem, 96rem); margin: 0 auto; padding: 2rem 0; }
+.workbench-header { display: flex; align-items: end; justify-content: space-between; gap: 2rem; margin-bottom: 1.25rem; }
+.workbench-header h1 { margin: .15rem 0 0; color: var(--ts-color-text); font-size: clamp(2rem, 5vw, 3.5rem); letter-spacing: -.05em; }
+.workbench-header > p { max-width: 38rem; margin: 0; color: var(--ts-color-text-secondary); line-height: 1.55; text-align: right; }
+.eyebrow { margin: 0; color: var(--ts-color-accent-strong); font-size: .72rem; font-weight: 800; letter-spacing: .14em; text-transform: uppercase; }
+.workbench { display: grid; grid-template-columns: minmax(20rem, .85fr) minmax(24rem, 1.15fr); gap: 1rem; min-height: calc(100vh - 10rem); }
+.pane { display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; border: 1px solid var(--ts-color-border); border-radius: var(--ts-radius-panel); background: var(--ts-color-surface); box-shadow: var(--ts-shadow-panel); }
+.pane > header { display: flex; align-items: center; justify-content: space-between; padding: .8rem 1rem; border-bottom: 1px solid var(--ts-color-border); background: var(--ts-color-surface-muted); }
+.pane h2 { margin: 0; color: var(--ts-color-text); font-size: .9rem; }
+.pane header span { color: var(--ts-color-text-muted); font-size: .7rem; font-weight: 700; }
+textarea { width: 100%; min-height: 42rem; resize: none; padding: 1rem; border: 0; outline: 0; background: var(--ts-color-surface-inverse); color: var(--ts-color-text-inverse-muted); font: .82rem/1.55 var(--ts-font-mono); tab-size: 2; }
+textarea:focus-visible { box-shadow: inset 0 0 0 3px var(--ts-color-focus); }
+.output-pane { grid-template-rows: auto minmax(0, 1fr) auto; }
+iframe { width: 100%; height: 100%; min-height: 42rem; border: 0; background: var(--ts-color-canvas); }
+#diagnostics { max-height: 12rem; overflow: auto; margin: 0; padding: .8rem 1rem; border-top: 1px solid var(--ts-color-border); background: #fff7ed; color: var(--ts-color-caution); font: .72rem/1.45 var(--ts-font-mono); white-space: pre-wrap; }
+@media (max-width: 64rem) { .workbench { grid-template-columns: 1fr; } .workbench-header { display: block; } .workbench-header > p { margin-top: .7rem; text-align: left; } }
