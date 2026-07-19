@@ -20,7 +20,8 @@
         </article>
         <article class="pane output-pane">
           <header><h2>Rendered output</h2><span id="render-status" aria-live="polite">Ready</span></header>
-          <iframe id="preview" title="Rendered TFM output" sandbox="allow-scripts"></iframe>
+          <!-- A real same-origin document lets Firefox enforce the rendered CSP's 'self' sources. -->
+          <iframe id="preview" title="Rendered TFM output" src="/fixtures/preview.html"></iframe>
           <pre id="diagnostics" aria-label="Renderer diagnostics" hidden></pre>
         </article>
       </section>

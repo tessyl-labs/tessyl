@@ -5,6 +5,7 @@ const source = document.querySelector<HTMLTextAreaElement>("#source")!;
 const preview = document.querySelector<HTMLIFrameElement>("#preview")!;
 const diagnostics = document.querySelector<HTMLElement>("#diagnostics")!;
 const renderStatus = document.querySelector<HTMLElement>("#render-status")!;
+let previewReady = false;
 
 const resources: Readonly<Record<string, TfmResolvedResource>> = {
   dsr_01NABC: {
@@ -21,18 +22,28 @@ const resources: Readonly<Record<string, TfmResolvedResource>> = {
 const resolveResource = ({ id }: TfmResourceRequest): TfmResolvedResource | undefined => resources[id];
 
 const render = (): void => {
+  if (!previewReady || !preview.contentDocument) return;
   const result = renderHtml(source.value, { title: "TFM workbench preview", resolveResource });
   renderStatus.textContent = result.success ? "Rendered safely" : "Fix source errors";
   diagnostics.hidden = result.diagnostics.length === 0;
   diagnostics.textContent = result.diagnostics.map(({ severity, code, message, span }) =>
     `${severity.toUpperCase()} ${code} · ${span.startLine}:${span.startColumn}\n${message}`).join("\n\n");
-  preview.srcdoc = result.success ? result.html : "<!doctype html><title>Invalid TFM</title><p>The TFM source has validation errors.</p>";
+  preview.contentDocument.open();
+  preview.contentDocument.write(result.success
+    ? result.html
+    : "<!doctype html><title>Invalid TFM</title><p>The TFM source has validation errors.</p>");
+  preview.contentDocument.close();
 };
 
 let pending: number | undefined;
 source.value = example;
+const initializePreview = (): void => {
+  previewReady = true;
+  render();
+};
+if (preview.contentDocument?.readyState === "complete") initializePreview();
+else preview.addEventListener("load", initializePreview, { once: true });
 source.addEventListener("input", () => {
   window.clearTimeout(pending);
   pending = window.setTimeout(render, 120);
 });
-render();
