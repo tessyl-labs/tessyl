@@ -1,0 +1,590 @@
+//! Bounded retained-scene and simulation-oriented visualization components.
+
+use std::array::Array
+use std::math::float::{ abs, cos, is_finite, log10, sin }
+use std::msgpack::self as msgpack
+use std::msgpack::MsgPack
+use std::number::cast::{ to_f64, to_string }
+use std::string::type::String
+use std::vx::self as vx
+use std::vx::{ GenericEvent, KeyboardEvent }
+use src::science::{ Matrix2, Vec2, add, distance, matrix_multiply, normalize, scale, transform }
+
+pub type PointerGesture = {
+  kind: String,
+  phase: String,
+  pointer_id: i32,
+  buttons: i32,
+  x: f64,
+  y: f64,
+  client_x: f64,
+  client_y: f64,
+  button: i32,
+  alt_key: bool,
+  ctrl_key: bool,
+  meta_key: bool,
+  shift_key: bool,
+  delta_x: f64,
+  delta_y: f64
+}
+pub type KeyboardGesture = KeyboardEvent
+pub type FocusGesture = GenericEvent
+
+pub enum ScenePrimitive
+  Coordinates { x_label: String, y_label: String }
+  PointMark { position: Vec2, radius: f64, label: String }
+  LineMark { from: Vec2, to: Vec2, label: String }
+  ArrowMark { from: Vec2, to: Vec2, label: String }
+  CircleMark { center: Vec2, radius: f64, label: String }
+  RectangleMark { origin: Vec2, width: f64, height: f64, label: String }
+  PathMark { points: Array<Vec2>, label: String }
+  LabelMark { position: Vec2, text: String }
+
+pub enum ParticleTone
+  Neutral
+  Accent
+  Informative
+  Positive
+  Caution
+  Critical
+
+pub fn neutral_particle_tone() -> ParticleTone
+  ParticleTone::Neutral {}
+
+pub fn accent_particle_tone() -> ParticleTone
+  ParticleTone::Accent {}
+
+pub fn informative_particle_tone() -> ParticleTone
+  ParticleTone::Informative {}
+
+pub fn positive_particle_tone() -> ParticleTone
+  ParticleTone::Positive {}
+
+pub fn caution_particle_tone() -> ParticleTone
+  ParticleTone::Caution {}
+
+pub fn critical_particle_tone() -> ParticleTone
+  ParticleTone::Critical {}
+
+pub obj ClipRect { api origin: Vec2, api width: f64, api height: f64, api enabled: bool }
+pub obj SceneObject { api primitive: ScenePrimitive, api layer: i32, api transform: Matrix2, api clip: ClipRect, api annotation: String }
+pub obj SceneGroup { api objects: Array<SceneObject>, api layer: i32, api transform: Matrix2, api clip: ClipRect }
+pub obj Particle { api position: Vec2, api radius: f64, api label: String, api tone: ParticleTone, api opacity: f64, api glow: f64 }
+pub obj VectorSample { api position: Vec2, api vector: Vec2, api label: String }
+pub obj HeatCell { api row: i32, api column: i32, api value: f64, api label: String }
+pub obj UncertaintyPoint { api x: f64, api value: f64, api lower: f64, api upper: f64, api label: String }
+pub obj Contour { api level: f64, api points: Array<Vec2>, api label: String }
+pub obj SurfaceSample { api position: Vec2, api height: f64, api label: String }
+pub obj MatrixRow { api values: Array<f64> }
+pub obj LogPoint { api x: f64, api y: f64, api label: String }
+pub obj GestureState { api origin: Vec2, api current: Vec2, api pan: Vec2, api zoom: f64, api dragging: bool }
+
+fn scene_attr(name: String) -> MsgPack
+  vx::attr(name: "data-native-component", value: name)
+
+fn tone_name(value: ParticleTone) -> String
+  match(value)
+    ParticleTone::Neutral: "neutral"
+    ParticleTone::Accent: "accent"
+    ParticleTone::Informative: "informative"
+    ParticleTone::Positive: "positive"
+    ParticleTone::Caution: "caution"
+    ParticleTone::Critical: "critical"
+
+fn tone_code(value: ParticleTone) -> i32
+  match(value)
+    ParticleTone::Neutral: 0
+    ParticleTone::Accent: 1
+    ParticleTone::Informative: 2
+    ParticleTone::Positive: 3
+    ParticleTone::Caution: 4
+    ParticleTone::Critical: 5
+
+fn identity_matrix() -> Matrix2
+  Matrix2 { m11: 1.0, m12: 0.0, m21: 0.0, m22: 1.0 }
+
+fn finite_vec(value: Vec2) -> bool
+  is_finite(value.x) and is_finite(value.y)
+
+fn blank(value: String) -> bool
+  value.trimmed().is_empty()
+
+fn finite_matrix(value: Matrix2) -> bool
+  is_finite(value.m11) and is_finite(value.m12) and is_finite(value.m21) and is_finite(value.m22)
+
+fn empty_clip() -> ClipRect
+  ClipRect { origin: Vec2 { x: 0.0, y: 0.0 }, width: 0.0, height: 0.0, enabled: false }
+
+pub fn clip_rect({ origin: Vec2, width: f64, height: f64 }) -> ClipRect
+  if not finite_vec(origin) or not is_finite(width) or not is_finite(height) or width <= 0.0 or height <= 0.0: panic("Scene clipping requires finite, positive geometry")
+  ClipRect { origin, width, height, enabled: true }
+
+pub fn scene_object(primitive: ScenePrimitive) -> SceneObject
+  SceneObject { primitive, layer: 0, transform: identity_matrix(), clip: empty_clip(), annotation: String::init() }
+
+pub fn scene_group({ objects: Array<SceneObject>, layer: i32 = 0, transform?: Matrix2, clip?: ClipRect }) -> SceneGroup
+  if objects.len() > 128 or layer < -32 or layer > 32: panic("Scene groups exceed Native limits")
+  let selected_transform = transform ?? identity_matrix()
+  let selected_clip = clip ?? empty_clip()
+  if not finite_matrix(selected_transform) or (selected_clip.enabled and (not finite_vec(selected_clip.origin) or not is_finite(selected_clip.width) or not is_finite(selected_clip.height) or selected_clip.width <= 0.0 or selected_clip.height <= 0.0)): panic("Scene groups require finite transforms and clipping")
+  SceneGroup { objects, layer, transform: selected_transform, clip: selected_clip }
+
+pub fn group_objects(group: SceneGroup) -> Array<SceneObject>
+  let ~items = Array<SceneObject>::with_capacity(group.objects.len())
+  var index = 0
+  while index < group.objects.len():
+    let item = group.objects.at(index)
+    let selected_clip = if item.clip.enabled then: item.clip else: group.clip
+    items.push(SceneObject { primitive: item.primitive, layer: item.layer + group.layer, transform: matrix_multiply(group.transform, item.transform), clip: selected_clip, annotation: item.annotation })
+    index = index + 1
+  items
+
+pub fn with_layer(item: SceneObject, layer: i32) -> SceneObject
+  if layer < -32 or layer > 32: panic("Scene layers must be from -32 through 32")
+  SceneObject { primitive: item.primitive, layer, transform: item.transform, clip: item.clip, annotation: item.annotation }
+
+pub fn with_transform(item: SceneObject, matrix: Matrix2) -> SceneObject
+  if not finite_matrix(matrix): panic("Scene transforms must be finite")
+  SceneObject { primitive: item.primitive, layer: item.layer, transform: matrix_multiply(matrix, item.transform), clip: item.clip, annotation: item.annotation }
+
+pub fn with_clip(item: SceneObject, clip: ClipRect) -> SceneObject
+  if not clip.enabled or not finite_vec(clip.origin) or not is_finite(clip.width) or not is_finite(clip.height) or clip.width <= 0.0 or clip.height <= 0.0: panic("Scene clipping requires finite, positive geometry")
+  SceneObject { primitive: item.primitive, layer: item.layer, transform: item.transform, clip, annotation: item.annotation }
+
+pub fn with_annotation(item: SceneObject, annotation: String) -> SceneObject
+  if blank(annotation): panic("Semantic annotations cannot be empty")
+  SceneObject { primitive: item.primitive, layer: item.layer, transform: item.transform, clip: item.clip, annotation }
+
+pub fn coordinates({ x_label: String, y_label: String }) -> SceneObject
+  if blank(x_label) or blank(y_label): panic("Coordinate axes require labels")
+  scene_object(ScenePrimitive::Coordinates { x_label, y_label })
+
+pub fn point_mark({ position: Vec2, radius: f64, label: String }) -> SceneObject
+  if not finite_vec(position) or not is_finite(radius) or radius <= 0.0 or blank(label): panic("Scene points require finite geometry and labels")
+  scene_object(ScenePrimitive::PointMark { position, radius, label })
+
+pub fn line_mark({ from: Vec2, to: Vec2, label: String }) -> SceneObject
+  if not finite_vec(from) or not finite_vec(to) or blank(label): panic("Scene lines require finite geometry and labels")
+  scene_object(ScenePrimitive::LineMark { from, to, label })
+
+pub fn arrow_mark({ from: Vec2, to: Vec2, label: String }) -> SceneObject
+  if not finite_vec(from) or not finite_vec(to) or blank(label): panic("Scene arrows require finite geometry and labels")
+  scene_object(ScenePrimitive::ArrowMark { from, to, label })
+
+pub fn circle_mark({ center: Vec2, radius: f64, label: String }) -> SceneObject
+  if not finite_vec(center) or not is_finite(radius) or radius <= 0.0 or blank(label): panic("Scene circles require finite geometry and labels")
+  scene_object(ScenePrimitive::CircleMark { center, radius, label })
+
+pub fn rectangle_mark({ origin: Vec2, width: f64, height: f64, label: String }) -> SceneObject
+  if not finite_vec(origin) or not is_finite(width) or not is_finite(height) or width <= 0.0 or height <= 0.0 or blank(label): panic("Scene rectangles require finite geometry and labels")
+  scene_object(ScenePrimitive::RectangleMark { origin, width, height, label })
+
+pub fn path_mark({ points: Array<Vec2>, label: String }) -> SceneObject
+  if points.len() < 2 or points.len() > 100 or blank(label): panic("Scene paths require 2 through 100 finite points and a label")
+  var index = 0
+  while index < points.len():
+    if not finite_vec(points.at(index)): panic("Scene path coordinates must be finite")
+    index = index + 1
+  scene_object(ScenePrimitive::PathMark { points, label })
+
+pub fn label_mark({ position: Vec2, text: String }) -> SceneObject
+  if not finite_vec(position) or blank(text): panic("Scene labels require finite positions and text")
+  scene_object(ScenePrimitive::LabelMark { position, text })
+
+fn point_text(point: Vec2) -> String
+  to_string(point.x).concat(",").concat(to_string(point.y))
+
+fn points_text(points: Array<Vec2>, matrix: Matrix2) -> String
+  var value = String::init()
+  var index = 0
+  while index < points.len():
+    if index > 0:
+      value = value.concat(" ")
+    let point = transform(matrix, points.at(index))
+    if not finite_vec(point): panic("Scene transform produced non-finite geometry")
+    value = value.concat(point_text(point))
+    index = index + 1
+  value
+
+fn primitive_label(primitive: ScenePrimitive) -> String
+  match(primitive)
+    ScenePrimitive::Coordinates { x_label, y_label }: "Coordinate system: ".concat(x_label).concat(" and ").concat(y_label)
+    ScenePrimitive::PointMark { label }: label
+    ScenePrimitive::LineMark { label }: label
+    ScenePrimitive::ArrowMark { label }: label
+    ScenePrimitive::CircleMark { label }: label
+    ScenePrimitive::RectangleMark { label }: label
+    ScenePrimitive::PathMark { label }: label
+    ScenePrimitive::LabelMark { text }: text
+
+fn object_label(item: SceneObject) -> String
+  if blank(item.annotation) then: primitive_label(item.primitive) else: primitive_label(item.primitive).concat(": ").concat(item.annotation)
+
+fn primitive_node(item: SceneObject) -> MsgPack
+  let matrix = item.transform
+  match(item.primitive)
+    ScenePrimitive::Coordinates { x_label, y_label }:
+      if blank(x_label) or blank(y_label): panic("Coordinate axes require labels")
+      let x_start = transform(matrix, Vec2 { x: 0.0, y: 50.0 })
+      let x_end = transform(matrix, Vec2 { x: 100.0, y: 50.0 })
+      let y_start = transform(matrix, Vec2 { x: 50.0, y: 0.0 })
+      let y_end = transform(matrix, Vec2 { x: 50.0, y: 100.0 })
+      let x_label_position = transform(matrix, Vec2 { x: 96.0, y: 48.0 })
+      let y_label_position = transform(matrix, Vec2 { x: 52.0, y: 6.0 })
+      if not finite_vec(x_start) or not finite_vec(x_end) or not finite_vec(y_start) or not finite_vec(y_end) or not finite_vec(x_label_position) or not finite_vec(y_label_position): panic("Coordinate transform produced non-finite geometry")
+      vx::html_element(tag: "g", attrs: [vx::attr(name: "aria-label", value: "Coordinate system")], children: [
+        vx::html_element(tag: "line", attrs: [vx::attr(name: "x1", value: to_string(x_start.x)), vx::attr(name: "y1", value: to_string(x_start.y)), vx::attr(name: "x2", value: to_string(x_end.x)), vx::attr(name: "y2", value: to_string(x_end.y))], children: Array<MsgPack>::init()),
+        vx::html_element(tag: "line", attrs: [vx::attr(name: "x1", value: to_string(y_start.x)), vx::attr(name: "y1", value: to_string(y_start.y)), vx::attr(name: "x2", value: to_string(y_end.x)), vx::attr(name: "y2", value: to_string(y_end.y))], children: Array<MsgPack>::init()),
+        vx::html_element(tag: "text", attrs: [vx::attr(name: "x", value: to_string(x_label_position.x)), vx::attr(name: "y", value: to_string(x_label_position.y))], children: [vx::text(x_label)]),
+        vx::html_element(tag: "text", attrs: [vx::attr(name: "x", value: to_string(y_label_position.x)), vx::attr(name: "y", value: to_string(y_label_position.y))], children: [vx::text(y_label)])
+      ])
+    ScenePrimitive::PointMark { position, radius, label }:
+      let point = transform(matrix, position)
+      if not finite_vec(point) or blank(label) or radius <= 0.0 or not is_finite(radius): panic("Scene points require finite geometry and a label")
+      vx::html_element(tag: "circle", attrs: [vx::attr(name: "cx", value: to_string(point.x)), vx::attr(name: "cy", value: to_string(point.y)), vx::attr(name: "r", value: to_string(radius)), vx::attr(name: "aria-label", value: label)], children: Array<MsgPack>::init())
+    ScenePrimitive::LineMark { from, to, label }:
+      let start = transform(matrix, from)
+      let end = transform(matrix, to)
+      if not finite_vec(start) or not finite_vec(end) or blank(label): panic("Scene lines require finite geometry and a label")
+      vx::html_element(tag: "line", attrs: [vx::attr(name: "x1", value: to_string(start.x)), vx::attr(name: "y1", value: to_string(start.y)), vx::attr(name: "x2", value: to_string(end.x)), vx::attr(name: "y2", value: to_string(end.y)), vx::attr(name: "aria-label", value: label)], children: Array<MsgPack>::init())
+    ScenePrimitive::ArrowMark { from, to, label }:
+      let start = transform(matrix, from)
+      let end = transform(matrix, to)
+      if not finite_vec(start) or not finite_vec(end) or blank(label): panic("Scene arrows require finite geometry and a label")
+      let backwards = scale(normalize(Vec2 { x: start.x - end.x, y: start.y - end.y }), 4.0)
+      let left = add(end, Vec2 { x: backwards.x - backwards.y * 0.6, y: backwards.y + backwards.x * 0.6 })
+      let right = add(end, Vec2 { x: backwards.x + backwards.y * 0.6, y: backwards.y - backwards.x * 0.6 })
+      vx::html_element(tag: "g", attrs: [vx::attr(name: "aria-label", value: label)], children: [
+        vx::html_element(tag: "line", attrs: [vx::attr(name: "x1", value: to_string(start.x)), vx::attr(name: "y1", value: to_string(start.y)), vx::attr(name: "x2", value: to_string(end.x)), vx::attr(name: "y2", value: to_string(end.y))], children: Array<MsgPack>::init()),
+        vx::html_element(tag: "polygon", attrs: [vx::attr(name: "points", value: point_text(end).concat(" ").concat(point_text(left)).concat(" ").concat(point_text(right)))], children: Array<MsgPack>::init())
+      ])
+    ScenePrimitive::CircleMark { center, radius, label }:
+      if not finite_vec(center) or blank(label) or radius <= 0.0 or not is_finite(radius): panic("Scene circles require finite geometry and a label")
+      let ~points = Array<Vec2>::with_capacity(32)
+      var index = 0
+      while index < 32:
+        let angle = 6.283185307179586 * to_f64(index) / 32.0
+        points.push(Vec2 { x: center.x + radius * cos(angle), y: center.y + radius * sin(angle) })
+        index = index + 1
+      vx::html_element(tag: "polygon", attrs: [vx::attr(name: "points", value: points_text(points, matrix)), vx::attr(name: "aria-label", value: label)], children: Array<MsgPack>::init())
+    ScenePrimitive::RectangleMark { origin, width, height, label }:
+      if not finite_vec(origin) or blank(label) or width <= 0.0 or height <= 0.0 or not is_finite(width) or not is_finite(height): panic("Scene rectangles require finite geometry and a label")
+      let corners = [origin, Vec2 { x: origin.x + width, y: origin.y }, Vec2 { x: origin.x + width, y: origin.y + height }, Vec2 { x: origin.x, y: origin.y + height }]
+      vx::html_element(tag: "polygon", attrs: [vx::attr(name: "points", value: points_text(corners, matrix)), vx::attr(name: "aria-label", value: label)], children: Array<MsgPack>::init())
+    ScenePrimitive::PathMark { points, label }:
+      if points.len() < 2 or points.len() > 100 or blank(label): panic("Scene paths require 2 through 100 points and a label")
+      vx::html_element(tag: "polyline", attrs: [vx::attr(name: "points", value: points_text(points, matrix)), vx::attr(name: "aria-label", value: label)], children: Array<MsgPack>::init())
+    ScenePrimitive::LabelMark { position, text }:
+      let point = transform(matrix, position)
+      if not finite_vec(point) or blank(text): panic("Scene labels require finite positions and text")
+      vx::html_element(tag: "text", attrs: [vx::attr(name: "x", value: to_string(point.x)), vx::attr(name: "y", value: to_string(point.y))], children: [vx::text(text)])
+
+fn clipped_node(item: SceneObject) -> MsgPack
+  if item.clip.enabled and (not finite_vec(item.clip.origin) or not is_finite(item.clip.width) or not is_finite(item.clip.height) or item.clip.width <= 0.0 or item.clip.height <= 0.0): panic("Scene clipping requires finite, positive geometry")
+  let node = primitive_node(item)
+  if item.clip.enabled:
+    let clip = item.clip
+    return vx::html_element(tag: "svg", attrs: [vx::attr(name: "x", value: to_string(clip.origin.x)), vx::attr(name: "y", value: to_string(clip.origin.y)), vx::attr(name: "width", value: to_string(clip.width)), vx::attr(name: "height", value: to_string(clip.height)), vx::attr(name: "viewbox", value: point_text(clip.origin).concat(" ").concat(to_string(clip.width)).concat(" ").concat(to_string(clip.height)))], children: [node])
+  node
+
+fn path_point_count(primitive: ScenePrimitive) -> i32
+  match(primitive)
+    ScenePrimitive::PathMark { points }:
+      points.len()
+    ScenePrimitive::Coordinates:
+      6
+    ScenePrimitive::PointMark:
+      0
+    ScenePrimitive::LineMark:
+      0
+    ScenePrimitive::ArrowMark:
+      0
+    ScenePrimitive::CircleMark:
+      32
+    ScenePrimitive::RectangleMark:
+      4
+    ScenePrimitive::LabelMark:
+      0
+
+fn scene_children(objects: Array<SceneObject>) -> Array<MsgPack>
+  if objects.len() > 128: panic("Scene object limit exceeded before scene construction")
+  var path_points = 0
+  var validation_index = 0
+  while validation_index < objects.len():
+    path_points = path_points + path_point_count(objects.at(validation_index).primitive)
+    if path_points > 4096: panic("Scene path point limit exceeded before scene construction")
+    validation_index = validation_index + 1
+  let ~ordered = Array<MsgPack>::with_capacity(objects.len())
+  var layer = -32
+  while layer <= 32:
+    var index = 0
+    while index < objects.len():
+      let item = objects.at(index)
+      if item.layer < -32 or item.layer > 32: panic("Scene layers must be from -32 through 32")
+      if item.layer == layer:
+        ordered.push(clipped_node(item))
+      index = index + 1
+    layer = layer + 1
+  let ~groups = Array<MsgPack>::with_capacity((ordered.len() + 199) / 200)
+  var start = 0
+  while start < ordered.len():
+    let ~chunk = Array<MsgPack>::with_capacity(200)
+    var offset = 0
+    while offset < 200 and start + offset < ordered.len():
+      chunk.push(ordered.at(start + offset))
+      offset = offset + 1
+    groups.push(vx::html_element(tag: "g", children: chunk))
+    start = start + offset
+  groups
+
+fn scene_data(objects: Array<SceneObject>, description: String) -> MsgPack
+  let ~items = [vx::html_element(tag: "li", children: [vx::text(description)])]
+  var start = 0
+  while start < objects.len():
+    let ~chunk = Array<MsgPack>::with_capacity(200)
+    var offset = 0
+    while offset < 200 and start + offset < objects.len():
+      chunk.push(vx::html_element(tag: "li", children: [vx::text(object_label(objects.at(start + offset)))]))
+      offset = offset + 1
+    items.push(vx::html_element(tag: "li", children: [vx::html_element(tag: "ul", children: chunk)]))
+    start = start + offset
+  vx::html_element(tag: "ul", attrs: [vx::attr(name: "aria-label", value: "Scene data")], children: items)
+
+pub fn Scene({ title: String, description: String, objects: Array<SceneObject> }) -> MsgPack
+  if blank(title) or blank(description): panic("Scene requires a title and description")
+  vx::html_element(tag: "figure", attrs: [scene_attr("scene"), vx::attr(name: "aria-label", value: title)], children: [
+    vx::html_element(tag: "figcaption", children: [vx::text(title)]),
+    vx::html_element(tag: "svg", attrs: [vx::attr(name: "viewbox", value: "0 0 100 100"), vx::attr(name: "role", value: "img"), vx::attr(name: "aria-label", value: description), vx::attr(name: "data-native-scene", value: true)], children: scene_children(objects)),
+    scene_data(objects, description)
+  ])
+
+pub fn InteractiveScene<Msg>({ title: String, description: String, objects: Array<SceneObject>, on_pointer: fn(PointerGesture) -> Msg, on_hover: fn(PointerGesture) -> Msg, on_wheel: fn(PointerGesture) -> Msg, on_focus: fn(FocusGesture) -> Msg, on_key: fn(KeyboardGesture) -> Msg }) -> MsgPack
+  if blank(title) or blank(description): panic("InteractiveScene requires a title and description")
+  let ~attrs = [
+    vx::attr(name: "viewbox", value: "0 0 100 100"), vx::attr(name: "role", value: "application"), vx::attr(name: "aria-roledescription", value: "interactive scientific diagram"), vx::attr(name: "aria-label", value: description), vx::attr(name: "tabindex", value: 0), vx::attr(name: "data-native-scene", value: true), vx::attr(name: "data-native-interactive-gestures", value: true),
+    vx::html_event_payload_handler<PointerGesture, MsgPack>(name: "pointerdown", handler: (event: PointerGesture) -> MsgPack => msgpack::pack_boundary_value<Msg>(on_pointer(event))),
+    vx::html_event_payload_handler<PointerGesture, MsgPack>(name: "pointermove", handler: (event: PointerGesture) -> MsgPack => msgpack::pack_boundary_value<Msg>(on_pointer(event))),
+    vx::html_event_payload_handler<PointerGesture, MsgPack>(name: "pointerup", handler: (event: PointerGesture) -> MsgPack => msgpack::pack_boundary_value<Msg>(on_pointer(event))),
+    vx::html_event_payload_handler<PointerGesture, MsgPack>(name: "pointercancel", handler: (event: PointerGesture) -> MsgPack => msgpack::pack_boundary_value<Msg>(on_pointer(event))),
+    vx::html_event_payload_handler<PointerGesture, MsgPack>(name: "mouseenter", handler: (event: PointerGesture) -> MsgPack => msgpack::pack_boundary_value<Msg>(on_hover(event))),
+    vx::html_event_payload_handler<PointerGesture, MsgPack>(name: "mouseleave", handler: (event: PointerGesture) -> MsgPack => msgpack::pack_boundary_value<Msg>(on_hover(event))),
+    vx::html_event_payload_handler<PointerGesture, MsgPack>(name: "wheel", handler: (event: PointerGesture) -> MsgPack => msgpack::pack_boundary_value<Msg>(on_wheel(event))),
+    vx::html_event_payload_handler<GenericEvent, MsgPack>(name: "focus", handler: (event: GenericEvent) -> MsgPack => msgpack::pack_boundary_value<Msg>(on_focus(event))),
+    vx::html_event_payload_handler<GenericEvent, MsgPack>(name: "blur", handler: (event: GenericEvent) -> MsgPack => msgpack::pack_boundary_value<Msg>(on_focus(event))),
+    vx::html_event_payload_handler<KeyboardEvent, MsgPack>(name: "keydown", handler: (event: KeyboardEvent) -> MsgPack => msgpack::pack_boundary_value<Msg>(on_key(event)))
+  ]
+  vx::html_element(tag: "figure", attrs: [scene_attr("interactive-scene"), vx::attr(name: "aria-label", value: title)], children: [
+    vx::html_element(tag: "figcaption", children: [vx::text(title)]),
+    vx::html_element(tag: "svg", attrs: attrs, children: scene_children(objects)),
+    scene_data(objects, description)
+  ])
+
+fn particle_semantics(particles: Array<Particle>) -> MsgPack
+  let ~items = Array<MsgPack>::with_capacity(particles.len())
+  var summary = String::init()
+  var index = 0
+  while index < particles.len() and index < 12:
+    let particle = particles.at(index)
+    let description = particle.label.concat(": x ").concat(to_string(particle.position.x)).concat(", y ").concat(to_string(particle.position.y)).concat(", radius ").concat(to_string(particle.radius))
+    if not summary.is_empty() and summary.byte_len() + description.byte_len() + 2 > 7000:
+      items.push(vx::html_element(tag: "li", children: [vx::text(summary)]))
+      summary = description
+    else:
+      summary = if summary.is_empty() then: description else: summary.concat("; ").concat(description)
+    index = index + 1
+  if not summary.is_empty():
+    items.push(vx::html_element(tag: "li", children: [vx::text(summary)]))
+  if particles.len() > 12:
+    items.push(vx::html_element(tag: "li", children: [vx::text("Representative details shown for 12 of ".concat(to_string(particles.len())).concat(" particles."))]))
+  vx::html_element(tag: "ul", attrs: [vx::attr(name: "aria-label", value: "Particle data")], children: items)
+
+fn particle_buffers(particles: Array<Particle>) -> MsgPack
+  let ~buffers = Array<MsgPack>::with_capacity(particles.len())
+  var packed = String::init()
+  var index = 0
+  while index < particles.len():
+    let particle = particles.at(index)
+    let value = to_string(particle.position.x).concat(",").concat(to_string(particle.position.y)).concat(",").concat(to_string(particle.radius)).concat(",").concat(to_string(tone_code(particle.tone))).concat(",").concat(to_string(particle.opacity)).concat(",").concat(to_string(particle.glow))
+    if not packed.is_empty() and packed.byte_len() + value.byte_len() + 1 > 7000:
+      buffers.push(vx::html_element(tag: "span", attrs: [vx::attr(name: "aria-hidden", value: true), vx::attr(name: "data-native-particle-buffer", value: packed)], children: Array<MsgPack>::init()))
+      packed = value
+    else:
+      packed = if packed.is_empty() then: value else: packed.concat(";").concat(value)
+    index = index + 1
+  if not packed.is_empty():
+    buffers.push(vx::html_element(tag: "span", attrs: [vx::attr(name: "aria-hidden", value: true), vx::attr(name: "data-native-particle-buffer", value: packed)], children: Array<MsgPack>::init()))
+  vx::fragment(buffers)
+
+fn validate_particles(particles: Array<Particle>) -> void
+  if particles.len() > 512: panic("Particle limit exceeded before canvas construction")
+  var aggregate_bytes = 0
+  var index = 0
+  while index < particles.len():
+    let particle = particles.at(index)
+    let opacity = particle.opacity
+    let glow = particle.glow
+    if not finite_vec(particle.position) or not is_finite(particle.radius) or blank(particle.label) or particle.label.byte_len() > 1024 or particle.radius <= 0.0: panic("Particles require finite geometry, bounded labels, and positive radii")
+    if not is_finite(opacity) or opacity < 0.0 or opacity > 1.0 or not is_finite(glow) or glow < 0.0 or glow > 4.0: panic("Particle appearance must use bounded opacity and glow values")
+    let numeric = to_string(particle.position.x).concat(",").concat(to_string(particle.position.y)).concat(",").concat(to_string(particle.radius)).concat(",").concat(to_string(tone_code(particle.tone))).concat(",").concat(to_string(opacity)).concat(",").concat(to_string(glow))
+    aggregate_bytes = aggregate_bytes + particle.label.byte_len() + numeric.byte_len() * 2 + 28
+    if aggregate_bytes > 120000: panic("Particle data exceeds the aggregate frame budget")
+    index = index + 1
+
+pub fn ParticleField({ title: String, description: String, particles: Array<Particle>, width: i32 = 800, height: i32 = 450, tone: ParticleTone = ParticleTone::Neutral {}, caption_visible: bool = true, details_visible: bool = true }) -> MsgPack
+  if blank(title) or blank(description) or title.byte_len() > 4096 or description.byte_len() > 4096 or width < 1 or height < 1 or height > 2000000 or width > 2000000 / height: panic("ParticleField metadata or canvas dimensions are invalid")
+  validate_particles(particles)
+  vx::html_element(tag: "figure", attrs: [scene_attr("particle-field"), vx::attr(name: "aria-label", value: title), vx::attr(name: "data-native-tone", value: tone_name(tone)), vx::attr(name: "data-native-caption-visible", value: caption_visible), vx::attr(name: "data-native-details-visible", value: details_visible)], children: [
+    vx::html_element(tag: "figcaption", children: [vx::text(title)]),
+    vx::html_element(tag: "p", children: [vx::text(description)]),
+    vx::html_element(tag: "canvas", attrs: [vx::attr(name: "width", value: width), vx::attr(name: "height", value: height), vx::attr(name: "role", value: "img"), vx::attr(name: "aria-label", value: description), vx::attr(name: "data-native-particles", value: true)], children: Array<MsgPack>::init()),
+    particle_buffers(particles),
+    particle_semantics(particles)
+  ])
+
+pub fn VectorField({ title: String, description: String, samples: Array<VectorSample> }) -> MsgPack
+  if samples.len() > 128: panic("Vector sample count exceeds the scene profile")
+  let ~objects = Array<SceneObject>::with_capacity(samples.len())
+  var index = 0
+  while index < samples.len():
+    let sample = samples.at(index)
+    if not finite_vec(sample.position) or not finite_vec(sample.vector) or blank(sample.label): panic("Vector samples require finite coordinates and labels")
+    objects.push(scene_object(ScenePrimitive::ArrowMark { from: sample.position, to: add(sample.position, sample.vector), label: sample.label }))
+    index = index + 1
+  Scene(title: title, description: description, objects: objects)
+
+pub fn Heatmap({ title: String, description: String, cells: Array<HeatCell>, rows: i32, columns: i32 }) -> MsgPack
+  if rows < 1 or columns < 1 or cells.len() > 128 or cells.len() > rows * columns: panic("Heatmap dimensions exceed the scene profile")
+  let ~objects = Array<SceneObject>::with_capacity(cells.len())
+  var index = 0
+  while index < cells.len():
+    let cell = cells.at(index)
+    if cell.row < 0 or cell.row >= rows or cell.column < 0 or cell.column >= columns or not is_finite(cell.value) or blank(cell.label): panic("Heatmap cells require unique in-range coordinates, finite values, and labels")
+    var previous_index = 0
+    while previous_index < index:
+      let previous = cells.at(previous_index)
+      if previous.row == cell.row and previous.column == cell.column: panic("Heatmap cells must have unique coordinates")
+      previous_index = previous_index + 1
+    objects.push(scene_object(ScenePrimitive::RectangleMark { origin: Vec2 { x: to_f64(cell.column) * 100.0 / to_f64(columns), y: to_f64(cell.row) * 100.0 / to_f64(rows) }, width: 100.0 / to_f64(columns), height: 100.0 / to_f64(rows), label: cell.label.concat(": ").concat(to_string(cell.value)) }))
+    index = index + 1
+  Scene(title: title, description: description, objects: objects)
+
+pub fn ContourPlot({ title: String, description: String, contours: Array<Contour> }) -> MsgPack
+  if contours.len() > 128: panic("Contour count exceeds the plot profile")
+  let ~objects = Array<SceneObject>::with_capacity(contours.len())
+  var index = 0
+  var total_points = 0
+  while index < contours.len():
+    let contour = contours.at(index)
+    total_points = total_points + contour.points.len()
+    if contour.points.len() < 2 or contour.points.len() > 100 or total_points > 4096 or blank(contour.label) or not is_finite(contour.level): panic("Contours require a finite level, a label, and two through 100 points within the plot profile")
+    var point_index = 0
+    while point_index < contour.points.len():
+      if not finite_vec(contour.points.at(point_index)): panic("Contour coordinates must be finite")
+      point_index = point_index + 1
+    objects.push(path_mark(points: contour.points, label: contour.label.concat(" at ").concat(to_string(contour.level))))
+    index = index + 1
+  Scene(title: title, description: description, objects: objects)
+
+pub fn SurfacePlot({ title: String, description: String, samples: Array<SurfaceSample> }) -> MsgPack
+  if samples.len() > 128: panic("Surface sample count exceeds the scene profile")
+  let ~objects = Array<SceneObject>::with_capacity(samples.len())
+  var index = 0
+  while index < samples.len():
+    let sample = samples.at(index)
+    if not finite_vec(sample.position) or not is_finite(sample.height) or blank(sample.label): panic("Surface samples require finite positions, heights, and labels")
+    let radius = 0.8 + (if abs(sample.height) > 8.0 then: 8.0 else: abs(sample.height)) * 0.25
+    objects.push(point_mark(position: Vec2 { x: sample.position.x, y: sample.position.y - sample.height * 0.35 }, radius: radius, label: sample.label.concat(": ").concat(to_string(sample.height))))
+    index = index + 1
+  Scene(title: title, description: description, objects: objects)
+
+pub fn UncertaintyPlot({ title: String, description: String, points: Array<UncertaintyPoint> }) -> MsgPack
+  if points.len() > 64: panic("Uncertainty point count exceeds the scene profile")
+  let ~objects = Array<SceneObject>::with_capacity(points.len() * 2)
+  var index = 0
+  while index < points.len():
+    let point = points.at(index)
+    if blank(point.label) or not is_finite(point.x) or not is_finite(point.value) or not is_finite(point.lower) or not is_finite(point.upper) or point.lower > point.value or point.upper < point.value: panic("Uncertainty intervals must be finite, contain their value, and have a label")
+    objects.push(line_mark(from: Vec2 { x: point.x, y: point.lower }, to: Vec2 { x: point.x, y: point.upper }, label: point.label.concat(" interval")))
+    objects.push(point_mark(position: Vec2 { x: point.x, y: point.value }, radius: 1.5, label: point.label.concat(": ").concat(to_string(point.value))))
+    index = index + 1
+  Scene(title: title, description: description, objects: objects)
+
+pub fn MatrixView({ title: String, description: String, rows: Array<MatrixRow> }) -> MsgPack
+  if blank(title) or blank(description) or rows.is_empty() or rows.len() > 90: panic("MatrixView requires metadata and one through 90 rows")
+  let columns = rows.at(0).values.len()
+  if columns < 1 or columns > 90 or rows.len() * columns > 1500: panic("Matrix dimensions exceed the table profile")
+  let ~body = Array<MsgPack>::with_capacity(rows.len())
+  var row_index = 0
+  while row_index < rows.len():
+    if rows.at(row_index).values.len() != columns: panic("Matrix rows must have equal length")
+    let ~cells = Array<MsgPack>::with_capacity(columns)
+    var column_index = 0
+    while column_index < columns:
+      let value = rows.at(row_index).values.at(column_index)
+      if not is_finite(value): panic("Matrix values must be finite")
+      cells.push(vx::html_element(tag: "td", children: [vx::text(to_string(value))]))
+      column_index = column_index + 1
+    body.push(vx::html_element(tag: "tr", children: cells))
+    row_index = row_index + 1
+  vx::html_element(tag: "figure", attrs: [scene_attr("matrix-view"), vx::attr(name: "aria-label", value: title)], children: [
+    vx::html_element(tag: "figcaption", children: [vx::text(title.concat(". ").concat(description))]),
+    vx::html_element(tag: "table", attrs: [vx::attr(name: "aria-label", value: title)], children: [vx::html_element(tag: "tbody", children: body)])
+  ])
+
+pub fn LogPlot({ title: String, description: String, points: Array<LogPoint> }) -> MsgPack
+  if points.len() > 128: panic("Log plot point count exceeds the scene profile")
+  let ~objects = Array<SceneObject>::with_capacity(points.len())
+  var index = 0
+  while index < points.len():
+    let point = points.at(index)
+    if not is_finite(point.x) or not is_finite(point.y) or point.x <= 0.0 or point.y <= 0.0 or blank(point.label): panic("Log plots require finite positive labeled values")
+    objects.push(point_mark(position: Vec2 { x: log10(point.x), y: log10(point.y) }, radius: 1.25, label: point.label.concat(": ").concat(to_string(point.x)).concat(", ").concat(to_string(point.y))))
+    index = index + 1
+  Scene(title: title, description: description.concat(" Logarithmic x and y axes."), objects: objects)
+
+pub fn gesture_start(position: Vec2) -> GestureState
+  if not finite_vec(position): panic("Gesture positions must be finite")
+  GestureState { origin: position, current: position, pan: Vec2 { x: 0.0, y: 0.0 }, zoom: 1.0, dragging: true }
+
+pub fn gesture_drag(state: GestureState, position: Vec2) -> GestureState
+  if not finite_gesture(state) or not finite_vec(position): panic("Gesture state and positions must be finite")
+  GestureState { origin: state.origin, current: position, pan: add(state.pan, Vec2 { x: position.x - state.current.x, y: position.y - state.current.y }), zoom: state.zoom, dragging: state.dragging }
+
+pub fn gesture_end(state: GestureState) -> GestureState
+  if not finite_gesture(state): panic("Gesture state must be finite")
+  GestureState { origin: state.origin, current: state.current, pan: state.pan, zoom: state.zoom, dragging: false }
+
+pub fn gesture_zoom(state: GestureState, delta: f64) -> GestureState
+  if not finite_gesture(state) or not is_finite(delta): panic("Gesture state and zoom input must be finite")
+  let next_zoom = state.zoom * (if delta < 0.0 then: 1.1 else: 0.9)
+  var bounded_zoom = next_zoom
+  if bounded_zoom < 0.1:
+    bounded_zoom = 0.1
+  if bounded_zoom > 20.0:
+    bounded_zoom = 20.0
+  GestureState { origin: state.origin, current: state.current, pan: state.pan, zoom: bounded_zoom, dragging: state.dragging }
+
+pub fn nearest_point(points: Array<Vec2>, target: Vec2, maximum_distance: f64) -> i32
+  if points.len() > 500 or not finite_vec(target) or not is_finite(maximum_distance) or maximum_distance < 0.0: panic("Selection requires at most 500 finite points and a finite nonnegative distance")
+  var best = -1
+  var best_distance = maximum_distance
+  var index = 0
+  while index < points.len():
+    if not finite_vec(points.at(index)): panic("Selection points must be finite")
+    let candidate = distance(points.at(index), target)
+    if candidate <= best_distance:
+      best = index
+      best_distance = candidate
+    index = index + 1
+  best
+
+pub fn brush_contains({ point: Vec2, from: Vec2, to: Vec2 }) -> bool
+  if not finite_vec(point) or not finite_vec(from) or not finite_vec(to): panic("Brush coordinates must be finite")
+  let minimum_x = if from.x < to.x then: from.x else: to.x
+  let maximum_x = if from.x > to.x then: from.x else: to.x
+  let minimum_y = if from.y < to.y then: from.y else: to.y
+  let maximum_y = if from.y > to.y then: from.y else: to.y
+  point.x >= minimum_x and point.x <= maximum_x and point.y >= minimum_y and point.y <= maximum_y
+
+fn finite_gesture(state: GestureState) -> bool
+  finite_vec(state.origin) and finite_vec(state.current) and finite_vec(state.pan) and is_finite(state.zoom) and state.zoom > 0.0

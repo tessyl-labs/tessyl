@@ -1,36 +1,110 @@
 use pkg::tessyl_native::all
+use std::number::cast::to_string
 
-obj Model { amount: f64, percent: f64 }
+obj Model { amount: f64, percent: f64, currency_scale: f64, mass: f64, velocity: f64 }
 enum Msg
   Amount { amount: f64 }
   Percent { percent: f64 }
+  CurrencyScale { currency_scale: f64 }
+  Mass { mass: f64 }
+  Velocity { velocity: f64 }
 
 pub fn app() -> Tessera<Model, Msg>
-  tessera({ init, step, view })
+  tessera({ init, step, view, subscriptions })
+
+fn subscriptions(_model: Model) -> Sub<Msg>
+  sub_input_number<Msg>(name: "currency_scale", on_value: (value) => Msg::CurrencyScale { currency_scale: value })
 
 fn init() -> Model
-  Model { amount: 48.0, percent: 20.0 }
+  Model { amount: 48.0, percent: 20.0, currency_scale: 1.0, mass: 2.0, velocity: 3.0 }
 
 fn step(model: Model, msg: Msg) -> Update<Model, Msg>
   match(msg)
     Msg::Amount { amount }:
-      next(Model { amount: amount, percent: model.percent })
+      next(Model { amount: amount, percent: model.percent, currency_scale: model.currency_scale, mass: model.mass, velocity: model.velocity })
     Msg::Percent { percent }:
-      next(Model { amount: model.amount, percent: percent })
+      next(Model { amount: model.amount, percent: percent, currency_scale: model.currency_scale, mass: model.mass, velocity: model.velocity })
+    Msg::CurrencyScale { currency_scale }:
+      next(Model { amount: model.amount, percent: model.percent, currency_scale: currency_scale, mass: model.mass, velocity: model.velocity })
+    Msg::Mass { mass }:
+      next(Model { amount: model.amount, percent: model.percent, currency_scale: model.currency_scale, mass: mass, velocity: model.velocity })
+    Msg::Velocity { velocity }:
+      next(Model { amount: model.amount, percent: model.percent, currency_scale: model.currency_scale, mass: model.mass, velocity: velocity })
 
 fn view(model: Model) -> View<Msg>
+  let energy_quantity = quantity_multiply(
+    quantity(value: model.mass, dimension: Dimension { mass: 1, length: 0, time: 0, current: 0, temperature: 0 }),
+    quantity(value: model.velocity * model.velocity, dimension: Dimension { mass: 0, length: 2, time: -2, current: 0, temperature: 0 })
+  )
+  let kinetic_energy = energy_quantity.value / 2.0
+  let vector_length = magnitude(vec2(model.mass, model.velocity))
+  let complex_product = complex_multiply(Complex { real: model.mass, imaginary: model.velocity }, Complex { real: 1.0, imaginary: -1.0 })
+  let integral = integrate(function: (value: f64) -> f64 => value * value, from: 0.0, to: model.velocity, steps: 128)
+  let energy_root = root_bisection(function: (value: f64) -> f64 => value * value - kinetic_energy, lower: 0.0, upper: kinetic_energy + 1.0, tolerance: 0.000001, iterations: 96)
+  let light_speed = speed_of_light()
+  let dimensioned_distance = quantity_add(
+    quantity(value: 12.0, dimension: Dimension { mass: 0, length: 1, time: 0, current: 0, temperature: 0 }),
+    quantity(value: 8.0, dimension: Dimension { mass: 0, length: 1, time: 0, current: 0, temperature: 0 })
+  )
+  let amount = model.amount * model.currency_scale
   if model.amount >= 100.0:
-    return <Column>
-      <Heading level={2}>Tip calculator</Heading>
+    return <Column width={content_width()}>
+      <Heading level={2}>Scientific calculator</Heading>
+      <Column>
+        <Heading level={3}>Scientific workspace</Heading>
+        <Text>Explore a dimension-checked mechanics calculation and deterministic numerical methods.</Text>
+        <Equation source="E_k = 1/2 m v^2" display={true} />
+        <NumberField label="Mass" unit="kg" value={model.mass} min={0.1} max={1000.0} on_change={(value) => Msg::Mass { mass: value }} />
+        <NumberField label="Velocity" unit="m/s" value={model.velocity} min={0.1} max={10000.0} on_change={(value) => Msg::Velocity { velocity: value }} />
+        <Grid columns={2}>
+          <Metric label="Kinetic energy" value={kinetic_energy} unit="J" precision={3} description="Derived from mass × velocity² with physical dimensions." />
+          <Metric label="Speed of light" value={light_speed.value} unit="m/s" precision={0} />
+          <Metric label="Vector magnitude" value={vector_length} precision={4} />
+          <Metric label="Complex product real part" value={complex_product.real} precision={4} />
+          <Metric label="Integral of x squared" value={integral} precision={4} />
+          <Metric label="Square root of energy" value={energy_root} precision={4} />
+          <Metric label="Dimension-checked distance sum" value={dimensioned_distance.value} unit="m" precision={3} />
+        </Grid>
+        <DynamicResult label="Significant-figure energy result" value={to_string(round_significant(kinetic_energy, 6))} />
+      </Column>
+      <Heading level={3}>Percentage workspace</Heading>
+        <Equation source="total = amount * currency_scale * (1 + tip / 100)" display={true} />
+        <Metric label="Currency scale" value={model.currency_scale} precision={2} description="Host-supplied multiplier applied before the percentage." />
       <Slider key="tip" label="Tip" unit="%" value={model.percent} min={0.0} max={40.0} on_change={(value) => Msg::Percent { percent: value }} />
       <NumberField key="bill" label="Bill amount" unit="$" value={model.amount} min={0.0} on_change={(value) => Msg::Amount { amount: value }} />
-      <Metric label="Tip" value={model.amount * model.percent / 100.0} unit="$" precision={1} />
-      <Metric label="Total" value={model.amount * (1.0 + model.percent / 100.0)} unit="$" precision={1} />
+      <Grid columns={2}>
+        <Metric label="Tip" value={amount * model.percent / 100.0} unit="$" precision={1} />
+        <Metric label="Total" value={amount * (1.0 + model.percent / 100.0)} unit="$" precision={1} />
+      </Grid>
+      <DynamicResult label="Calculated total" value={to_string(round_significant(amount * (1.0 + model.percent / 100.0), 6))} />
     </Column>
-  <Column>
-    <Heading level={2}>Tip calculator</Heading>
+  <Column width={content_width()}>
+    <Heading level={2}>Scientific calculator</Heading>
+    <Column>
+      <Heading level={3}>Scientific workspace</Heading>
+      <Text>Explore a dimension-checked mechanics calculation and deterministic numerical methods.</Text>
+      <Equation source="E_k = 1/2 m v^2" display={true} />
+      <NumberField label="Mass" unit="kg" value={model.mass} min={0.1} max={1000.0} on_change={(value) => Msg::Mass { mass: value }} />
+      <NumberField label="Velocity" unit="m/s" value={model.velocity} min={0.1} max={10000.0} on_change={(value) => Msg::Velocity { velocity: value }} />
+      <Grid columns={2}>
+        <Metric label="Kinetic energy" value={kinetic_energy} unit="J" precision={3} description="Derived from mass × velocity² with physical dimensions." />
+        <Metric label="Speed of light" value={light_speed.value} unit="m/s" precision={0} />
+        <Metric label="Vector magnitude" value={vector_length} precision={4} />
+        <Metric label="Complex product real part" value={complex_product.real} precision={4} />
+        <Metric label="Integral of x squared" value={integral} precision={4} />
+        <Metric label="Square root of energy" value={energy_root} precision={4} />
+        <Metric label="Dimension-checked distance sum" value={dimensioned_distance.value} unit="m" precision={3} />
+      </Grid>
+      <DynamicResult label="Significant-figure energy result" value={to_string(round_significant(kinetic_energy, 6))} />
+    </Column>
+    <Heading level={3}>Percentage workspace</Heading>
+    <Equation source="total = amount * currency_scale * (1 + tip / 100)" display={true} />
+    <Metric label="Currency scale" value={model.currency_scale} precision={2} description="Host-supplied multiplier applied before the percentage." />
     <NumberField key="bill" label="Bill amount" unit="$" value={model.amount} min={0.0} on_change={(value) => Msg::Amount { amount: value }} />
     <Slider key="tip" label="Tip" unit="%" value={model.percent} min={0.0} max={40.0} on_change={(value) => Msg::Percent { percent: value }} />
-    <Metric label="Tip" value={model.amount * model.percent / 100.0} unit="$" precision={1} />
-    <Metric label="Total" value={model.amount * (1.0 + model.percent / 100.0)} unit="$" precision={1} />
+    <Grid columns={2}>
+      <Metric label="Tip" value={amount * model.percent / 100.0} unit="$" precision={1} />
+      <Metric label="Total" value={amount * (1.0 + model.percent / 100.0)} unit="$" precision={1} />
+    </Grid>
+    <DynamicResult label="Calculated total" value={to_string(round_significant(amount * (1.0 + model.percent / 100.0), 6))} />
   </Column>

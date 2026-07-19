@@ -1,11 +1,13 @@
 use std::msgpack::self as msgpack
 use std::msgpack::MsgPack
 use std::dict::Dict
+use std::math::float::is_finite
 use std::optional::types::all
 use std::result::types::all
 use std::string::type::String
 
 pub obj SemanticView { api frame: MsgPack }
+obj SemanticBudget { nodes: i32, string_bytes: i32, handlers: i32, table_cells: i32, scene_objects: i32, plotted_points: i32, particles: i32 }
 
 impl SemanticView
   api fn has_metric(self, { label: String, unit?: String }) -> bool
@@ -29,15 +31,21 @@ impl SemanticView
   api fn has_chart_series(self, { title: String, series: String }) -> bool
     self.has_chart(title) and find_text(self.frame, series, 0)
 
+  api fn has_scene(self, title: String) -> bool
+    find_component(self.frame, "scene", title, None {}, 0) or find_component(self.frame, "interactive-scene", title, None {}, 0) or find_component(self.frame, "particle-field", title, None {}, 0)
+
 pub fn semantic_view(value: MsgPack) -> SemanticView
-  let nodes = validate_tree(value, 0)
-  if nodes < 1 or nodes > 2000:
+  let ~budget = SemanticBudget { nodes: 0, string_bytes: 0, handlers: 0, table_cells: 0, scene_objects: 0, plotted_points: 0, particles: 0 }
+  if not validate_tree(value, 0, budget) or budget.nodes < 1:
     panic("semantic_view received an invalid or oversized Native tree")
   SemanticView { frame: value }
 
-fn validate_tree(value: MsgPack, depth: i32) -> i32
+fn validate_tree(value: MsgPack, depth: i32, ~budget: SemanticBudget) -> bool
   if depth > 32:
-    return 2001
+    return false
+  budget.nodes = budget.nodes + 1
+  if budget.nodes > 5000:
+    return false
   match(msgpack::unpack_map(value))
     Ok { value: map }:
       match(map.get("kind"))
@@ -45,36 +53,46 @@ fn validate_tree(value: MsgPack, depth: i32) -> i32
           match(msgpack::unpack_string(kind_value))
             Ok<String> { value: kind }:
               if not valid_node_keys(map, kind):
-                return 2001
+                return false
+              match(map_string(map.get("key")))
+                Some<String> { value: key }:
+                  if not count_string(key, budget):
+                    return false
+                None:
+                  if map.contains("key"):
+                    return false
               if kind == "text":
                 match(map_string(map.get("value")))
                   Some<String> { value }:
-                    if value.byte_len() > 8192:
-                      return 2001
-                    return 1
+                    return count_string(value, budget)
                   None:
-                    return 2001
+                    return false
               if kind == "fragment":
-                if map.contains("key"):
-                  return 2001
-                return validate_children(map.get("children"), depth + 1)
+                return validate_children(map.get("children"), depth + 1, budget)
               if kind == "element":
                 match(map_string(map.get("tag")))
                   Some<String> { value: tag }:
                     if not is_native_tag(tag):
-                      return 2001
+                      return false
                   None:
-                    return 2001
-                if not validate_element_fields(map):
-                  return 2001
-                return validate_children(map.get("children"), depth + 1)
-              2001
+                    return false
+                if not validate_element_fields(map, budget):
+                  return false
+                return validate_children(map.get("children"), depth + 1, budget)
+              false
             Err:
-              2001
+              false
         None:
-          2001
+          false
     Err:
-      2001
+      false
+
+fn count_string(value: String, ~budget: SemanticBudget) -> bool
+  let bytes = value.byte_len()
+  if bytes > 8192:
+    return false
+  budget.string_bytes = budget.string_bytes + bytes
+  budget.string_bytes <= 196608
 
 fn valid_node_keys(map: Dict<String, MsgPack>, kind: String) -> bool
   let keys = map.keys()
@@ -91,14 +109,43 @@ fn valid_node_keys(map: Dict<String, MsgPack>, kind: String) -> bool
     index = index + 1
   true
 
-fn validate_element_fields(map: Dict<String, MsgPack>) -> bool
-  if not validate_attribute_map(map.get("attrs")) or not validate_attribute_map(map.get("props")):
+fn validate_element_fields(map: Dict<String, MsgPack>, ~budget: SemanticBudget) -> bool
+  if not validate_attribute_map(map.get("attrs"), budget) or not validate_attribute_map(map.get("props"), budget):
     return false
+  let tag = map_string(map.get("tag")) ?? ""
+  if tag == "td" or tag == "th":
+    budget.table_cells = budget.table_cells + 1
+    if budget.table_cells > 1500:
+      return false
+  let has_series = attribute_exists(map.get("attrs"), "data-native-series")
+  if tag == "circle" or tag == "rect" or tag == "polyline" or tag == "polygon":
+    if has_series:
+      budget.plotted_points = budget.plotted_points + 1
+      if budget.plotted_points > 4096:
+        return false
+    else:
+      budget.scene_objects = budget.scene_objects + 1
+      if budget.scene_objects > 512:
+        return false
+  if tag == "line" or tag == "path" or tag == "text":
+    if not has_series:
+      budget.scene_objects = budget.scene_objects + 1
+      if budget.scene_objects > 512:
+        return false
+  match(attribute_string(map.get("attrs"), "data-native-particle-buffer"))
+    Some<String> { value }:
+      let entries = value.split(on: ";", keep_empty: false)
+      budget.particles = budget.particles + entries.len()
+      if entries.is_empty() or budget.particles > 512:
+        return false
+    None:
+      void
   match(map.get("events"))
     Some<MsgPack> { value }:
       match(msgpack::unpack_array(value))
         Ok { value: events }:
-          if events.len() > 256:
+          budget.handlers = budget.handlers + events.len()
+          if budget.handlers > 256:
             return false
           var index = 0
           while index < events.len():
@@ -119,7 +166,7 @@ fn validate_element_fields(map: Dict<String, MsgPack>) -> bool
                     return false
                 match(map_string(event.get("event")))
                   Some<String> { value: name }:
-                    if name != "click" and name != "input" and name != "change" and name != "keydown":
+                    if name != "click" and name != "input" and name != "change" and name != "keydown" and name != "keyup" and name != "pointerdown" and name != "pointermove" and name != "pointerup" and name != "pointercancel" and name != "mouseenter" and name != "mouseleave" and name != "wheel" and name != "focus" and name != "blur":
                       return false
                   None:
                     return false
@@ -132,7 +179,7 @@ fn validate_element_fields(map: Dict<String, MsgPack>) -> bool
     None:
       true
 
-fn validate_attribute_map(value: Option<MsgPack>) -> bool
+fn validate_attribute_map(value: Option<MsgPack>, ~budget: SemanticBudget) -> bool
   match(value)
     Some<MsgPack> { value }:
       match(msgpack::unpack_map(value))
@@ -142,8 +189,15 @@ fn validate_attribute_map(value: Option<MsgPack>) -> bool
           let keys = attrs.keys()
           var index = 0
           while index < keys.len():
-            if not is_native_attribute(keys.at(index)):
+            let key = keys.at(index)
+            if not is_native_attribute(key) or not count_string(key, budget):
               return false
+            match(attrs.get(key))
+              Some<MsgPack> { value }:
+                if not validate_scalar(value, budget):
+                  return false
+              None:
+                return false
             index = index + 1
           true
         Err:
@@ -152,30 +206,69 @@ fn validate_attribute_map(value: Option<MsgPack>) -> bool
       true
 
 fn is_native_attribute(name: String) -> bool
-  name == "aria-label" or name == "aria-describedby" or name == "aria-live" or name == "aria-invalid" or name == "aria-valuemin" or name == "aria-valuemax" or name == "aria-valuenow" or name == "aria-hidden" or name == "role" or name == "title" or name == "tabindex" or name == "data-native-component" or name == "data-article-slug" or name == "data-native-gap" or name == "data-native-align" or name == "data-native-width" or name == "data-native-width-px" or name == "data-native-wrap" or name == "data-native-columns" or name == "data-native-tone" or name == "data-native-padding" or name == "data-native-size" or name == "data-native-weight" or name == "data-native-language" or name == "data-native-display" or name == "data-native-series" or name == "type" or name == "min" or name == "max" or name == "step" or name == "value" or name == "checked" or name == "disabled" or name == "maxlength" or name == "placeholder" or name == "selected" or name == "scope" or name == "colspan" or name == "rowspan" or name == "viewbox" or name == "width" or name == "height" or name == "d" or name == "x1" or name == "x2" or name == "y1" or name == "y2" or name == "points" or name == "cx" or name == "cy" or name == "r" or name == "x" or name == "y" or name == "rx" or name == "text-anchor"
+  name == "aria-label" or name == "aria-describedby" or name == "aria-live" or name == "aria-invalid" or name == "aria-valuemin" or name == "aria-valuemax" or name == "aria-valuenow" or name == "aria-hidden" or name == "aria-roledescription" or name == "role" or name == "title" or name == "tabindex" or name == "data-native-component" or name == "data-article-slug" or name == "data-native-asset-id" or name == "data-native-particle-buffer" or name == "data-native-interactive-gestures" or name == "data-native-caption-visible" or name == "data-native-details-visible" or name == "data-native-gap" or name == "data-native-align" or name == "data-native-width" or name == "data-native-width-px" or name == "data-native-wrap" or name == "data-native-columns" or name == "data-native-tone" or name == "data-native-padding" or name == "data-native-size" or name == "data-native-weight" or name == "data-native-language" or name == "data-native-display" or name == "data-native-series" or name == "data-native-scene" or name == "data-native-particles" or name == "data-native-description" or name == "data-native-announcement" or name == "data-native-math-source" or name == "type" or name == "min" or name == "max" or name == "step" or name == "value" or name == "checked" or name == "disabled" or name == "maxlength" or name == "placeholder" or name == "selected" or name == "scope" or name == "colspan" or name == "rowspan" or name == "viewbox" or name == "width" or name == "height" or name == "d" or name == "x1" or name == "x2" or name == "y1" or name == "y2" or name == "points" or name == "cx" or name == "cy" or name == "r" or name == "fill-opacity" or name == "x" or name == "y" or name == "rx" or name == "text-anchor"
 
-fn validate_children(children: Option<MsgPack>, depth: i32) -> i32
+fn validate_children(children: Option<MsgPack>, depth: i32, ~budget: SemanticBudget) -> bool
   match(children)
     Some<MsgPack> { value }:
       match(msgpack::unpack_array(value))
         Ok { value: values }:
           if values.len() > 200:
-            return 2001
-          var total = 1
+            return false
           var index = 0
           while index < values.len():
-            total = total + validate_tree(values.at(index), depth)
-            if total > 2000:
-              return 2001
+            if not validate_tree(values.at(index), depth, budget):
+              return false
             index = index + 1
-          total
+          true
         Err:
-          2001
+          false
     None:
-      1
+      true
+
+fn validate_scalar(value: MsgPack, ~budget: SemanticBudget) -> bool
+  match(msgpack::unpack_string(value))
+    Ok<String> { value }:
+      count_string(value, budget)
+    Err:
+      match(msgpack::unpack_bool(value))
+        Ok<bool>:
+          true
+        Err:
+          match(msgpack::unpack_i64(value))
+            Ok<i64>:
+              true
+            Err:
+              match(msgpack::unpack_f64(value))
+                Ok<f64> { value }:
+                  is_finite(value)
+                Err:
+                  false
+
+fn attribute_exists(value: Option<MsgPack>, name: String) -> bool
+  match(value)
+    Some<MsgPack> { value }:
+      match(msgpack::unpack_map(value))
+        Ok { value: attrs }:
+          attrs.contains(name)
+        Err:
+          false
+    None:
+      false
+
+fn attribute_string(value: Option<MsgPack>, name: String) -> Option<String>
+  match(value)
+    Some<MsgPack> { value }:
+      match(msgpack::unpack_map(value))
+        Ok { value: attrs }:
+          map_string(attrs.get(name))
+        Err:
+          None {}
+    None:
+      None {}
 
 fn is_native_tag(tag: String) -> bool
-  tag == "div" or tag == "section" or tag == "article" or tag == "header" or tag == "footer" or tag == "main" or tag == "aside" or tag == "p" or tag == "span" or tag == "strong" or tag == "em" or tag == "code" or tag == "pre" or tag == "h2" or tag == "h3" or tag == "h4" or tag == "h5" or tag == "h6" or tag == "hr" or tag == "a" or tag == "button" or tag == "label" or tag == "input" or tag == "select" or tag == "option" or tag == "table" or tag == "caption" or tag == "thead" or tag == "tbody" or tag == "tr" or tag == "th" or tag == "td" or tag == "dl" or tag == "dt" or tag == "dd" or tag == "ul" or tag == "ol" or tag == "li" or tag == "figure" or tag == "figcaption" or tag == "svg" or tag == "g" or tag == "path" or tag == "line" or tag == "polyline" or tag == "circle" or tag == "rect" or tag == "text"
+  tag == "div" or tag == "section" or tag == "article" or tag == "header" or tag == "footer" or tag == "main" or tag == "aside" or tag == "p" or tag == "span" or tag == "strong" or tag == "em" or tag == "code" or tag == "pre" or tag == "output" or tag == "h2" or tag == "h3" or tag == "h4" or tag == "h5" or tag == "h6" or tag == "hr" or tag == "a" or tag == "button" or tag == "label" or tag == "input" or tag == "select" or tag == "option" or tag == "table" or tag == "caption" or tag == "thead" or tag == "tbody" or tag == "tr" or tag == "th" or tag == "td" or tag == "dl" or tag == "dt" or tag == "dd" or tag == "ul" or tag == "ol" or tag == "li" or tag == "figure" or tag == "figcaption" or tag == "svg" or tag == "g" or tag == "path" or tag == "line" or tag == "polyline" or tag == "polygon" or tag == "circle" or tag == "rect" or tag == "text" or tag == "canvas" or tag == "img"
 
 fn map_string(value: Option<MsgPack>) -> Option<String>
   match(value)

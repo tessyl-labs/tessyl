@@ -155,11 +155,11 @@ runtime security boundary.
 ### Artifact manifest
 
 ```ts
-type TesseraManifestV1 = {
-  schemaVersion: 1;
+type TesseraManifestV2 = {
+  schemaVersion: 2;
   frameProtocolVersion: 1;
   rpcProtocolVersion: 1;
-  sdkVersion: string;
+  sdkVersion: "2";
   vxRuntimeVersion: string;
   compilerVersion: string;
   sourceHash: string;
@@ -167,18 +167,22 @@ type TesseraManifestV1 = {
   wasmHash: string;
   fallbackHash: string;
   buildProvenanceHash: string;
+  metadataHash: string;
+  resourcesHash: string;
   entrypoint: "app";
-  capabilityProfile: "public-v1";
+  capabilityProfile: "public-v2";
   resourceProfile: "standard-v1";
 };
 
-type TesseraArtifactV1 = {
-  manifest: TesseraManifestV1;
+type TesseraArtifactV2 = {
+  manifest: TesseraManifestV2;
   wasm: Uint8Array;
   sourceBundle: Uint8Array;
   dependencyLock: TesseraDependencyLockV1;
   fallback: NativeStaticFrameV1;
   buildProvenance: NativeBuildProvenanceV1;
+  metadata: TesseraMetadataV1;
+  resources: TesseraResourceContractV1;
 };
 ```
 
@@ -307,11 +311,15 @@ remain part of coordination. Unknown leaf commands or subscriptions fail
 closed. A capability profile is a server-owned mapping to concrete trusted
 handlers, never a set of functions or permissions supplied by the Tessera.
 
-### Public v1 capabilities
+### Public v2 capabilities
 
 - Bounded delay.
 - Rate-limited animation frames, paused offscreen and under reduced motion.
+- Deterministic fixed-timestep simulation with bounded catch-up.
+- Live reduced-motion state.
 - Container-size observation scoped to the iframe.
+- Manifest-declared typed inputs and hash-pinned dataset text.
+- Bounded initial deep-link state and host-observed share-state publication.
 
 Reader-initiated article navigation is a native renderer feature, not an
 application command. `ArticleLink` carries a validated Tessyl slug in the frame;
@@ -450,7 +458,7 @@ per-instance browser quota, so termination remains the primary recovery
 mechanism for an allocation storm. Keep the watchdog short, run one Tessera per
 Worker, and test allocation pressure across supported browsers.
 
-Do not add compiler fuel or GC-allocation instrumentation for v1. Reconsider a
+Do not add compiler fuel or GC-allocation instrumentation for v2. Reconsider a
 per-operation allocation counter only if production-like hostile tests show
 unacceptable process-level memory spikes before termination.
 
@@ -465,17 +473,17 @@ disposal.
 ## Lifecycle and recovery
 
 ```text
-fallback -> loading -> ready -> active
+fallback -> loading -> initialized -> starting -> running
                     \-> unsupported
-                    \-> failed -> restart -> loading
-active -> reset -> loading
-active -> paused/offscreen -> active
-active -> disposed
+                    \-> failed -> restart -> initialized -> starting -> running
+running -> reset -> initialized -> starting -> running
+running -> paused/offscreen -> starting -> running
+running -> disposed
 ```
 
 The static fallback exists outside the untrusted runtime and remains available
 throughout startup. A failure replaces only that Tessera's interactive surface.
-Restart creates a fresh Worker generation and initial model; v1 does not restore
+Restart creates a fresh Worker generation and initial model; v2 does not restore
 ephemeral application state after a crash.
 
 The standard shell's Reset action uses the same fresh-generation path during

@@ -1,0 +1,121 @@
+use pkg::tessyl_native::all
+use std::math::float::sqrt
+
+obj Model { position: Vec2, velocity: Vec2, previous: Vec2, running: bool, dragging: bool, speed: f64, alpha: f64 }
+enum Msg
+  Toggle
+  Frame { frame: SimulationFrame }
+  StepOnce
+  Speed { value: f64 }
+  Pointer { gesture: PointerGesture }
+  Key { gesture: KeyboardGesture }
+  Interaction
+  Replay
+
+fn initial_body() -> Body2
+  let sample = random_next(random(42i64))
+  let radius = 22.0 + sample.value * 6.0
+  let position = Vec2 { x: radius, y: 0.0 }
+  Body2 { position, velocity: Vec2 { x: 0.0, y: sqrt(3337.15 / radius) }, mass: 1.0 }
+
+fn initial_model() -> Model
+  let body = initial_body()
+  Model { position: body.position, velocity: body.velocity, previous: body.position, running: true, dragging: false, speed: 1.0, alpha: 0.0 }
+
+pub fn app() -> Tessera<Model, Msg>
+  tessera({ init, step, view, subscriptions })
+
+fn init() -> Model
+  initial_model()
+
+fn advance(model: Model, count: i32, alpha: f64) -> Model
+  var body = Body2 { position: model.position, velocity: model.velocity, mass: 1.0 }
+  var previous = model.previous
+  var index = 0
+  while index < count:
+    previous = body.position
+    body = mechanics_step(body: body, acceleration: orbital_acceleration(position: body.position, central_mass: 50000000000000.0), dt: model.speed / 60.0)
+    index = index + 1
+  Model { position: body.position, velocity: body.velocity, previous, running: model.running, dragging: model.dragging, speed: model.speed, alpha }
+
+fn body_at_scene_position(x: f64, y: f64) -> Body2
+  let position = Vec2 { x: x - 50.0, y: y - 50.0 }
+  let radius = magnitude(position)
+  let safe_position = if radius < 8.0 then: Vec2 { x: 8.0, y: 0.0 } else: position
+  let speed = sqrt(3337.15 / magnitude(safe_position))
+  let tangent = normalize(Vec2 { x: 0.0 - safe_position.y, y: safe_position.x })
+  Body2 { position: safe_position, velocity: scale(tangent, speed), mass: 1.0 }
+
+fn dragged_body(gesture: PointerGesture) -> Body2
+  body_at_scene_position(gesture.x, gesture.y)
+
+fn step(model: Model, msg: Msg) -> Update<Model, Msg>
+  match(msg)
+    Msg::Toggle:
+      next(Model { position: model.position, velocity: model.velocity, previous: model.previous, running: not model.running, dragging: false, speed: model.speed, alpha: model.alpha })
+    Msg::Frame { frame }:
+      next(advance(model, frame.steps, frame.alpha))
+    Msg::StepOnce:
+      let paused = Model { position: model.position, velocity: model.velocity, previous: model.previous, running: false, dragging: false, speed: model.speed, alpha: 0.0 }
+      next(advance(paused, 1, 0.0))
+    Msg::Speed { value }:
+      next(Model { position: model.position, velocity: model.velocity, previous: model.previous, running: model.running, dragging: model.dragging, speed: value, alpha: model.alpha })
+    Msg::Pointer { gesture }:
+      if gesture.phase == "pointerdown" or (gesture.phase == "pointermove" and model.dragging):
+        let body = dragged_body(gesture)
+        return next(Model { position: body.position, velocity: body.velocity, previous: body.position, running: false, dragging: true, speed: model.speed, alpha: 0.0 })
+      if gesture.phase == "pointerup" or gesture.phase == "pointercancel":
+        return next(Model { position: model.position, velocity: model.velocity, previous: model.previous, running: false, dragging: false, speed: model.speed, alpha: model.alpha })
+      next(model)
+    Msg::Replay:
+      next(initial_model())
+    Msg::Interaction:
+      next(model)
+    Msg::Key { gesture }:
+      let scene_position = Vec2 { x: model.position.x + 50.0, y: model.position.y + 50.0 }
+      if gesture.key == "ArrowLeft":
+        let body = body_at_scene_position(scene_position.x - 1.0, scene_position.y)
+        return next(Model { position: body.position, velocity: body.velocity, previous: body.position, running: false, dragging: false, speed: model.speed, alpha: 0.0 })
+      if gesture.key == "ArrowRight":
+        let body = body_at_scene_position(scene_position.x + 1.0, scene_position.y)
+        return next(Model { position: body.position, velocity: body.velocity, previous: body.position, running: false, dragging: false, speed: model.speed, alpha: 0.0 })
+      if gesture.key == "ArrowUp":
+        let body = body_at_scene_position(scene_position.x, scene_position.y - 1.0)
+        return next(Model { position: body.position, velocity: body.velocity, previous: body.position, running: false, dragging: false, speed: model.speed, alpha: 0.0 })
+      if gesture.key == "ArrowDown":
+        let body = body_at_scene_position(scene_position.x, scene_position.y + 1.0)
+        return next(Model { position: body.position, velocity: body.velocity, previous: body.position, running: false, dragging: false, speed: model.speed, alpha: 0.0 })
+      next(model)
+
+fn subscriptions(model: Model) -> Sub<Msg>
+  if model.running:
+    sub_fixed_timestep<Msg>(hz: 60, on_step: (frame) => Msg::Frame { frame })
+  else:
+    Sub<Msg>::none()
+
+fn view(model: Model) -> View<Msg>
+  let position = Vec2 { x: interpolate(from: model.previous.x, to: model.position.x, fraction: model.alpha) + 50.0, y: interpolate(from: model.previous.y, to: model.position.y, fraction: model.alpha) + 50.0 }
+  <Column width={content_width()}>
+    <Heading level={2}>Deterministic orbital model</Heading>
+    <Text>Drag Earth to set a circular initial orbit, adjust speed, or replay deterministic seed 42.</Text>
+    <Column width={visualization_width()}>
+      <InteractiveScene
+      title="Sun and Earth model"
+      description="The Sun is centered and Earth follows a fixed-timestep orbit. Earth can be moved with pointer or keyboard controls."
+      objects={[
+        coordinates(x_label: "x", y_label: "y"),
+        circle_mark(center: Vec2 { x: 50.0, y: 50.0 }, radius: 4.0, label: "Sun"),
+        circle_mark(center: position, radius: 2.0, label: "Earth")
+      ]}
+      on_pointer={(gesture: PointerGesture) -> Msg => Msg::Pointer { gesture }}
+      on_hover={(_gesture: PointerGesture) -> Msg => Msg::Interaction {}}
+      on_wheel={(gesture: PointerGesture) -> Msg => Msg::Speed { value: if gesture.delta_y > 0.0 then: 0.5 else: 2.0 }}
+      on_focus={(_gesture: FocusGesture) -> Msg => Msg::Interaction {}}
+      on_key={(gesture: KeyboardGesture) -> Msg => Msg::Key { gesture }}
+      />
+    </Column>
+    <Slider label="Simulation speed" value={model.speed} min={0.25} max={4.0} step={0.25} on_change={(value) => Msg::Speed { value }} />
+    <Button on_press={Msg::Toggle {}}>{if model.running then: "Pause" else: "Play"}</Button>
+    <Button on_press={Msg::StepOnce {}}>Step orbit</Button>
+    <Button on_press={Msg::Replay {}}>Replay seed 42</Button>
+  </Column>

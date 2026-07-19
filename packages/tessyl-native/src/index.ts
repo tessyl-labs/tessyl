@@ -1,31 +1,10 @@
-import { compileTessera } from "./build/compiler.js";
+import { checkTessera, compileTessera, testTessera } from "./build/compiler.js";
 import { createFacade } from "./facade.js";
 import type { TessylNative, TessylNativeConfig } from "./types.js";
 
 export { TessylNativeError } from "./errors.js";
+export { renderStaticArtifact, renderStaticArtifactHtml, renderStaticFallback, renderStaticFallbackHtml, staticFallbackStyles } from "./fallback-renderer.js";
 export type { NativeErrorCode } from "./errors.js";
-export type {
-  CapabilityProfileName,
-  CompileTesseraInput,
-  CompileTesseraResult,
-  InitializeTesseraInput,
-  NativeBuildProfile,
-  NativeDiagnostic,
-  NativeTelemetry,
-  NativeTelemetryEvent,
-  ResourceProfileName,
-  RunTesseraInput,
-  TesseraArtifact,
-  TesseraArtifactV1,
-  TesseraAuthorManifest,
-  TesseraDependencyLockV1,
-  TesseraInstance,
-  TesseraManifestV1,
-  TesseraPresentation,
-  TesseraSourceBundle,
-  TesseraStatus,
-  TessylNative,
-  TessylNativeConfig,
-} from "./types.js";
+export type * from "./types.js";
 
-export const createTessylNative = (config: TessylNativeConfig = {}): TessylNative => createFacade(config, compileTessera);
+export const createTessylNative = (config: TessylNativeConfig = {}): TessylNative => createFacade(config, { build: compileTessera, check: checkTessera, test: testTessera });
