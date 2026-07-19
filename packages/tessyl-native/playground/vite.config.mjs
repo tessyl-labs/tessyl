@@ -2,7 +2,7 @@ import { defineConfig } from "vite";
 import { resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readFile } from "node:fs/promises";
-import { createTessylNative, renderStaticArtifactHtml } from "@tessyl/native";
+import { createTessylNative, renderStaticArtifactHtml, staticFallbackStyles } from "@tessyl/native";
 
 const appRoot = resolve(fileURLToPath(new URL(".", import.meta.url)));
 const examplesRoot = resolve(appRoot, "../examples");
@@ -50,7 +50,7 @@ const examplesPlugin = () => {
       for (const [name, artifact] of await compileExamples()) this.emitFile({ type: "asset", fileName: `assets/showcase/${name}.json`, source: serialize(artifact) });
     },
     async transformIndexHtml(html) {
-      let transformed = html;
+      let transformed = html.replace("</head>", `<style data-tessyl-fallback-styles>${staticFallbackStyles}</style></head>`);
       for (const [name, artifact] of await compileExamples()) {
         const fallback = `<section class="fallback" role="region" aria-label="${escapeAttribute(artifact.metadata.accessibleName)}">${await renderStaticArtifactHtml(artifact)}</section>`;
         const stage = new RegExp(`(<div class="tessera-stage"[^>]*data-tessera-id="${name}"[^>]*>)[\\s\\S]*?(</div>\\s*<p class="status-line")`);

@@ -105,16 +105,6 @@ document.querySelectorAll<HTMLButtonElement>("[data-tessera-reset]").forEach((bu
     if (container) void start(container);
   }
 }));
-document.querySelectorAll<HTMLButtonElement>("[data-tessera-export]").forEach((button) => button.addEventListener("click", () => {
-  const id = button.dataset.tesseraExport!;
-  const output = document.querySelector<HTMLElement>(`[data-tessera-export-status="${CSS.escape(id)}"]`);
-  void instances.get(id)?.exportResult().then(async (blob) => {
-    if (!output) return;
-    output.textContent = `Export ready: ${blob.type}, ${blob.size} bytes`;
-    output.dataset.tesseraExportText = await blob.text();
-  });
-}));
-
 window.addEventListener("pagehide", (event) => {
   if (event.persisted) return;
   pageDisposed = true;

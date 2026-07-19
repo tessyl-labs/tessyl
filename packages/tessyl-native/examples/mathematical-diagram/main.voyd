@@ -52,11 +52,12 @@ fn step(model: Model, msg: Msg) -> Update<Model, Msg>
       next(model)
 
 fn view(model: Model) -> View<Msg>
-  <Column>
+  <Column width={content_width()}>
     <Heading level={2}>Vector decomposition</Heading>
     <Text>Drag the endpoint, use the wheel, or focus the diagram and press an arrow key.</Text>
     <Text>Interaction state: {model.interaction}</Text>
-    <InteractiveScene
+    <Column width={visualization_width()}>
+      <InteractiveScene
       title="Vector decomposition diagram"
       description="A movable vector endpoint on Cartesian coordinates. The endpoint is keyboard controllable."
       objects={[
@@ -69,5 +70,6 @@ fn view(model: Model) -> View<Msg>
       on_wheel={(gesture: PointerGesture) -> Msg => Msg::Wheel { gesture }}
       on_focus={(gesture: FocusGesture) -> Msg => Msg::Focus { gesture }}
       on_key={(gesture: KeyboardGesture) -> Msg => Msg::Key { gesture }}
-    />
+      />
+    </Column>
   </Column>

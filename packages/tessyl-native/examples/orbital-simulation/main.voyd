@@ -95,10 +95,11 @@ fn subscriptions(model: Model) -> Sub<Msg>
 
 fn view(model: Model) -> View<Msg>
   let position = Vec2 { x: interpolate(from: model.previous.x, to: model.position.x, fraction: model.alpha) + 50.0, y: interpolate(from: model.previous.y, to: model.position.y, fraction: model.alpha) + 50.0 }
-  <Column>
+  <Column width={content_width()}>
     <Heading level={2}>Deterministic orbital model</Heading>
     <Text>Drag Earth to set a circular initial orbit, adjust speed, or replay deterministic seed 42.</Text>
-    <InteractiveScene
+    <Column width={visualization_width()}>
+      <InteractiveScene
       title="Sun and Earth model"
       description="The Sun is centered and Earth follows a fixed-timestep orbit. Earth can be moved with pointer or keyboard controls."
       objects={[
@@ -111,7 +112,8 @@ fn view(model: Model) -> View<Msg>
       on_wheel={(gesture: PointerGesture) -> Msg => Msg::Speed { value: if gesture.delta_y > 0.0 then: 0.5 else: 2.0 }}
       on_focus={(_gesture: FocusGesture) -> Msg => Msg::Interaction {}}
       on_key={(gesture: KeyboardGesture) -> Msg => Msg::Key { gesture }}
-    />
+      />
+    </Column>
     <Slider label="Simulation speed" value={model.speed} min={0.25} max={4.0} step={0.25} on_change={(value) => Msg::Speed { value }} />
     <Button on_press={Msg::Toggle {}}>{if model.running then: "Pause" else: "Play"}</Button>
     <Button on_press={Msg::StepOnce {}}>Step orbit</Button>

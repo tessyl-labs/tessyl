@@ -7,12 +7,51 @@ const SVG_TAGS = new Set(["svg", "g", "path", "line", "polyline", "polygon", "ci
 
 export const staticFallbackStyles = `
 [data-tessyl-fallback]{display:block;max-width:100%;color:CanvasText;font:16px/1.5 system-ui,sans-serif}
+[data-tessyl-fallback] figure{margin:0}
+[data-tessyl-fallback] [data-native-component="column"]{display:flex;flex-direction:column;gap:1rem}
+[data-tessyl-fallback] [data-native-component="row"]{display:flex;align-items:stretch;gap:1rem}
+[data-tessyl-fallback] [data-native-component="grid"]{display:grid;grid-template-columns:1fr;gap:1rem}
+[data-tessyl-fallback] [data-native-columns="2"]{grid-template-columns:repeat(2,minmax(0,1fr))}
+[data-tessyl-fallback] [data-native-columns="3"]{grid-template-columns:repeat(3,minmax(0,1fr))}
+[data-tessyl-fallback] [data-native-columns="4"]{grid-template-columns:repeat(4,minmax(0,1fr))}
+[data-tessyl-fallback] [data-native-columns="5"]{grid-template-columns:repeat(5,minmax(0,1fr))}
+[data-tessyl-fallback] [data-native-columns="6"]{grid-template-columns:repeat(6,minmax(0,1fr))}
+[data-tessyl-fallback] [data-native-columns="7"]{grid-template-columns:repeat(7,minmax(0,1fr))}
+[data-tessyl-fallback] [data-native-columns="8"]{grid-template-columns:repeat(8,minmax(0,1fr))}
+[data-tessyl-fallback] [data-native-columns="9"]{grid-template-columns:repeat(9,minmax(0,1fr))}
+[data-tessyl-fallback] [data-native-columns="10"]{grid-template-columns:repeat(10,minmax(0,1fr))}
+[data-tessyl-fallback] [data-native-columns="11"]{grid-template-columns:repeat(11,minmax(0,1fr))}
+[data-tessyl-fallback] [data-native-columns="12"]{grid-template-columns:repeat(12,minmax(0,1fr))}
+[data-tessyl-fallback] [data-native-gap="none"]{gap:0}
+[data-tessyl-fallback] [data-native-gap="xs"]{gap:.25rem}
+[data-tessyl-fallback] [data-native-gap="sm"]{gap:.5rem}
+[data-tessyl-fallback] [data-native-gap="lg"]{gap:1.5rem}
+[data-tessyl-fallback] [data-native-gap="xl"]{gap:2rem}
+[data-tessyl-fallback] [data-native-align="start"]{align-items:flex-start}
+[data-tessyl-fallback] [data-native-align="center"]{align-items:center}
+[data-tessyl-fallback] [data-native-align="end"]{align-items:flex-end}
+[data-tessyl-fallback] [data-native-align="stretch"]{align-items:stretch}
+[data-tessyl-fallback] [data-native-wrap="true"]{flex-wrap:wrap}
+[data-tessyl-fallback] [data-native-width="fit"]{width:fit-content}
+[data-tessyl-fallback] [data-native-width="fill"]{width:100%}
+[data-tessyl-fallback] [data-native-width="content"]{width:100%;max-width:60rem;margin-inline:auto}
+[data-tessyl-fallback] [data-native-width="visualization"]{width:100%;max-width:56rem;margin-inline:auto}
 [data-tessyl-fallback] table{border-collapse:collapse;width:100%}
 [data-tessyl-fallback] th,[data-tessyl-fallback] td{border:1px solid GrayText;padding:.4rem;text-align:left}
 [data-tessyl-fallback] svg,[data-tessyl-fallback] canvas{display:block;width:100%;max-width:100%;height:auto;min-height:10rem;overflow:hidden}
+[data-tessyl-fallback] [data-native-component="particle-snapshot"]{min-height:0;border-radius:.75rem;background:#f8fafc}
+[data-tessyl-fallback] [data-native-component="particle-field"][data-native-tone="accent"] [data-native-component="particle-snapshot"]{background:radial-gradient(circle at 50% 48%,#134e4a 0,#0f2531 42%,#08131f 100%)}
+[data-tessyl-fallback] [data-native-component="particle-snapshot"] circle{paint-order:stroke fill}
+[data-tessyl-fallback] [data-native-component="particle-snapshot"] circle[data-native-tone="neutral"]{fill:#94a3b8;stroke:#94a3b8}
+[data-tessyl-fallback] [data-native-component="particle-snapshot"] circle[data-native-tone="accent"]{fill:#67e8f9;stroke:#67e8f9}
+[data-tessyl-fallback] [data-native-component="particle-snapshot"] circle[data-native-tone="informative"]{fill:#93c5fd;stroke:#93c5fd}
+[data-tessyl-fallback] [data-native-component="particle-snapshot"] circle[data-native-tone="positive"]{fill:#5eead4;stroke:#5eead4}
+[data-tessyl-fallback] [data-native-component="particle-snapshot"] circle[data-native-tone="caution"]{fill:#fde68a;stroke:#fde68a}
+[data-tessyl-fallback] [data-native-component="particle-snapshot"] circle[data-native-tone="critical"]{fill:#fda4af;stroke:#fda4af}
 [data-tessyl-fallback] [aria-label="Particle data"],[data-tessyl-fallback] [aria-label="Scene data"]{max-height:14rem;overflow:auto}
+[data-tessyl-fallback] [data-native-component="particle-field"][data-native-caption-visible="false"] figcaption,[data-tessyl-fallback] [data-native-component="particle-field"][data-native-details-visible="false"]>[aria-label="Particle data"]{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 [data-tessyl-fallback] [data-native-component="static-value"]{display:flex;gap:.35rem}
-@media(max-width:38rem){[data-tessyl-fallback] table{font-size:.875rem}}
+@media(max-width:38rem){[data-tessyl-fallback] [data-native-component="grid"]{grid-template-columns:1fr}[data-tessyl-fallback] table{font-size:.875rem}}
 `;
 
 export const renderStaticFallback = (container: HTMLElement, frame: NativeStaticFrameV1): void => {

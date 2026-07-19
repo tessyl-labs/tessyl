@@ -139,11 +139,28 @@ const validateElement = (
     const pixels = Number(attrs["data-native-width-px"]);
     if (!Number.isFinite(pixels) || pixels <= 0 || pixels > 1_200) fail(`${path}: invalid fixed width`);
   }
+  if (tag === "circle") {
+    for (const name of ["fill-opacity", "stroke-opacity"] as const) {
+      if (attrs?.[name] === undefined) continue;
+      const opacity = Number(attrs[name]);
+      if (!Number.isFinite(opacity) || opacity < 0 || opacity > 1) fail(`${path}: invalid ${name}`);
+    }
+    if (attrs?.["stroke-width"] !== undefined) {
+      const width = Number(attrs["stroke-width"]);
+      if (!Number.isFinite(width) || width < 0 || width > 144) fail(`${path}: invalid stroke-width`);
+    }
+  }
   if (attrs?.["data-native-asset-id"] !== undefined && (typeof attrs["data-native-asset-id"] !== "string" || !/^[a-z][a-z0-9_-]{0,63}$/.test(attrs["data-native-asset-id"] as string))) fail(`${path}: invalid reviewed asset id`);
   if (attrs?.["data-native-particle-buffer"] !== undefined) {
     const buffer = attrs["data-native-particle-buffer"];
     const entries = typeof buffer === "string" && /^[0-9eE.,+;\-\s]+$/.test(buffer) ? buffer.split(";").filter(Boolean) : [];
-    if (!entries.length || entries.some((entry) => entry.split(",").length !== 3 || entry.split(",").some((value) => !Number.isFinite(Number(value))))) fail(`${path}: invalid particle data`);
+    if (!entries.length || entries.some((entry) => {
+      const values = entry.split(",").map(Number);
+      if ((values.length !== 3 && values.length !== 6) || values.some((value) => !Number.isFinite(value))) return true;
+      if (values.length === 3) return false;
+      const [, , , tone, opacity, glow] = values;
+      return !Number.isInteger(tone) || tone < 0 || tone > 5 || opacity < 0 || opacity > 1 || glow < 0 || glow > 4;
+    })) fail(`${path}: invalid particle data`);
     state.particles += entries.length;
     if (state.particles > profile.maxSceneObjects) fail(`${path}: particle limit exceeded`);
   }

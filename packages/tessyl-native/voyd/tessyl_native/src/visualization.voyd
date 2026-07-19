@@ -40,10 +40,36 @@ pub enum ScenePrimitive
   PathMark { points: Array<Vec2>, label: String }
   LabelMark { position: Vec2, text: String }
 
+pub enum ParticleTone
+  Neutral
+  Accent
+  Informative
+  Positive
+  Caution
+  Critical
+
+pub fn neutral_particle_tone() -> ParticleTone
+  ParticleTone::Neutral {}
+
+pub fn accent_particle_tone() -> ParticleTone
+  ParticleTone::Accent {}
+
+pub fn informative_particle_tone() -> ParticleTone
+  ParticleTone::Informative {}
+
+pub fn positive_particle_tone() -> ParticleTone
+  ParticleTone::Positive {}
+
+pub fn caution_particle_tone() -> ParticleTone
+  ParticleTone::Caution {}
+
+pub fn critical_particle_tone() -> ParticleTone
+  ParticleTone::Critical {}
+
 pub obj ClipRect { api origin: Vec2, api width: f64, api height: f64, api enabled: bool }
 pub obj SceneObject { api primitive: ScenePrimitive, api layer: i32, api transform: Matrix2, api clip: ClipRect, api annotation: String }
 pub obj SceneGroup { api objects: Array<SceneObject>, api layer: i32, api transform: Matrix2, api clip: ClipRect }
-pub obj Particle { api position: Vec2, api radius: f64, api label: String }
+pub obj Particle { api position: Vec2, api radius: f64, api label: String, api tone: ParticleTone, api opacity: f64, api glow: f64 }
 pub obj VectorSample { api position: Vec2, api vector: Vec2, api label: String }
 pub obj HeatCell { api row: i32, api column: i32, api value: f64, api label: String }
 pub obj UncertaintyPoint { api x: f64, api value: f64, api lower: f64, api upper: f64, api label: String }
@@ -55,6 +81,24 @@ pub obj GestureState { api origin: Vec2, api current: Vec2, api pan: Vec2, api z
 
 fn scene_attr(name: String) -> MsgPack
   vx::attr(name: "data-native-component", value: name)
+
+fn tone_name(value: ParticleTone) -> String
+  match(value)
+    ParticleTone::Neutral: "neutral"
+    ParticleTone::Accent: "accent"
+    ParticleTone::Informative: "informative"
+    ParticleTone::Positive: "positive"
+    ParticleTone::Caution: "caution"
+    ParticleTone::Critical: "critical"
+
+fn tone_code(value: ParticleTone) -> i32
+  match(value)
+    ParticleTone::Neutral: 0
+    ParticleTone::Accent: 1
+    ParticleTone::Informative: 2
+    ParticleTone::Positive: 3
+    ParticleTone::Caution: 4
+    ParticleTone::Critical: 5
 
 fn identity_matrix() -> Matrix2
   Matrix2 { m11: 1.0, m12: 0.0, m21: 0.0, m22: 1.0 }
@@ -360,7 +404,7 @@ fn particle_buffers(particles: Array<Particle>) -> MsgPack
   var index = 0
   while index < particles.len():
     let particle = particles.at(index)
-    let value = to_string(particle.position.x).concat(",").concat(to_string(particle.position.y)).concat(",").concat(to_string(particle.radius))
+    let value = to_string(particle.position.x).concat(",").concat(to_string(particle.position.y)).concat(",").concat(to_string(particle.radius)).concat(",").concat(to_string(tone_code(particle.tone))).concat(",").concat(to_string(particle.opacity)).concat(",").concat(to_string(particle.glow))
     if not packed.is_empty() and packed.byte_len() + value.byte_len() + 1 > 7000:
       buffers.push(vx::html_element(tag: "span", attrs: [vx::attr(name: "aria-hidden", value: true), vx::attr(name: "data-native-particle-buffer", value: packed)], children: Array<MsgPack>::init()))
       packed = value
@@ -377,16 +421,19 @@ fn validate_particles(particles: Array<Particle>) -> void
   var index = 0
   while index < particles.len():
     let particle = particles.at(index)
+    let opacity = particle.opacity
+    let glow = particle.glow
     if not finite_vec(particle.position) or not is_finite(particle.radius) or blank(particle.label) or particle.label.byte_len() > 1024 or particle.radius <= 0.0: panic("Particles require finite geometry, bounded labels, and positive radii")
-    let numeric = to_string(particle.position.x).concat(",").concat(to_string(particle.position.y)).concat(",").concat(to_string(particle.radius))
+    if not is_finite(opacity) or opacity < 0.0 or opacity > 1.0 or not is_finite(glow) or glow < 0.0 or glow > 4.0: panic("Particle appearance must use bounded opacity and glow values")
+    let numeric = to_string(particle.position.x).concat(",").concat(to_string(particle.position.y)).concat(",").concat(to_string(particle.radius)).concat(",").concat(to_string(tone_code(particle.tone))).concat(",").concat(to_string(opacity)).concat(",").concat(to_string(glow))
     aggregate_bytes = aggregate_bytes + particle.label.byte_len() + numeric.byte_len() * 2 + 28
     if aggregate_bytes > 120000: panic("Particle data exceeds the aggregate frame budget")
     index = index + 1
 
-pub fn ParticleField({ title: String, description: String, particles: Array<Particle>, width: i32 = 800, height: i32 = 450 }) -> MsgPack
+pub fn ParticleField({ title: String, description: String, particles: Array<Particle>, width: i32 = 800, height: i32 = 450, tone: ParticleTone = ParticleTone::Neutral {}, caption_visible: bool = true, details_visible: bool = true }) -> MsgPack
   if blank(title) or blank(description) or title.byte_len() > 4096 or description.byte_len() > 4096 or width < 1 or height < 1 or height > 2000000 or width > 2000000 / height: panic("ParticleField metadata or canvas dimensions are invalid")
   validate_particles(particles)
-  vx::html_element(tag: "figure", attrs: [scene_attr("particle-field"), vx::attr(name: "aria-label", value: title)], children: [
+  vx::html_element(tag: "figure", attrs: [scene_attr("particle-field"), vx::attr(name: "aria-label", value: title), vx::attr(name: "data-native-tone", value: tone_name(tone)), vx::attr(name: "data-native-caption-visible", value: caption_visible), vx::attr(name: "data-native-details-visible", value: details_visible)], children: [
     vx::html_element(tag: "figcaption", children: [vx::text(title)]),
     vx::html_element(tag: "p", children: [vx::text(description)]),
     vx::html_element(tag: "canvas", attrs: [vx::attr(name: "width", value: width), vx::attr(name: "height", value: height), vx::attr(name: "role", value: "img"), vx::attr(name: "aria-label", value: description), vx::attr(name: "data-native-particles", value: true)], children: Array<MsgPack>::init()),

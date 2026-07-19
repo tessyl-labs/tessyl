@@ -145,6 +145,8 @@ so literal and computed text can appear directly in `children`.
 enum Width
   Fit
   Fill
+  Content
+  Visualization
   Fixed { pixels: f64 }
 
 enum Align
@@ -410,6 +412,8 @@ Space::Small
 Space::Medium
 Align::Center
 Width::Fill
+content_width()
+visualization_width()
 Tone::Accent
 TextSize::Large
 ```
@@ -417,7 +421,16 @@ TextSize::Large
 The native renderer translates tokens into versioned Tessyl styles. There are
 no arbitrary classes, inline styles, global selectors, external fonts, or
 resource URLs. Components respond to their container rather than the browser
-window.
+window. `content_width()` selects the bounded reading width, while
+`visualization_width()` selects the narrower chart and simulation width. These
+choices belong in the Voyd view rather than the host page or renderer defaults.
+
+Particle appearance is declarative as well. Each `Particle` can select a
+bounded `ParticleTone`, `opacity`, and `glow`; the exported
+`*_particle_tone()` constructors provide its safe palette. `ParticleField` selects its tone and
+whether its caption and detailed data remain visually exposed. The trusted
+Canvas renderer only interprets these values—it does not choose per-Tessera
+colors, emphasis, or visibility.
 
 ## Accessibility requirements
 

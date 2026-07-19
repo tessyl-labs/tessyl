@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
 import binaryen from "binaryen";
 
 type HostileKind = "infinite-loop" | "stack-overflow" | "trap" | "rapid-allocation";
@@ -61,6 +62,7 @@ test("five STEM Tesserae start independently and remain accessible", async ({ pa
   await expect(calculator.getByLabel("Total", { exact: true })).toContainText("150");
   const chart = page.frameLocator('[data-showcase-card="chart"] iframe');
   await expect(chart.getByRole("figure", { name: "Value over four periods" })).toBeVisible();
+  expect(await chart.getByRole("figure", { name: "Value over four periods" }).locator("xpath=..").evaluate((element) => element.getAttribute("data-native-width"))).toBe("visualization");
   await expect(chart.getByRole("table", { name: "View chart data" })).toBeVisible();
   await expect(chart.getByRole("list", { name: "Legend" })).toContainText("Compounded");
   await expect(chart.getByRole("list", { name: "Legend" })).toContainText("Baseline");
@@ -77,10 +79,13 @@ test("five STEM Tesserae start independently and remain accessible", async ({ pa
   await slider.press("ArrowRight");
   await expect(slider).not.toHaveValue(initialValue);
   await expect(page.locator("html")).toHaveAttribute("data-last-shareable-state", /.+/);
-  await page.getByRole("button", { name: "Export reviewed snapshot" }).click();
-  await expect(page.locator('[data-tessera-export-status="chart"]')).toContainText("Export ready: text/html");
-  await expect(page.locator('[data-tessera-export-status="chart"]')).toHaveAttribute("data-tessera-export-text", /Revision growth-r2[\s\S]*Assumptions[\s\S]*source [a-f0-9]{64}/);
   const chartCard = page.locator('[data-showcase-card="chart"]');
+  await expect(page.getByRole("button", { name: "Export result" })).toHaveCount(5);
+  const downloadPromise = page.waitForEvent("download");
+  await chartCard.getByRole("button", { name: "Export result" }).click();
+  const downloadPath = await (await downloadPromise).path();
+  expect(downloadPath).not.toBeNull();
+  expect(await readFile(downloadPath!, "utf8")).toMatch(/Revision growth-r2[\s\S]*Assumptions[\s\S]*source [a-f0-9]{64}/);
   await chartCard.getByRole("button", { name: "Source" }).click();
   await expect(page.getByRole("dialog", { name: "Tessera source" })).toContainText("main.voyd");
   await page.getByRole("dialog", { name: "Tessera source" }).getByRole("button", { name: "Close" }).click();
@@ -100,7 +105,16 @@ test("five STEM Tesserae start independently and remain accessible", async ({ pa
   await expect(particle.getByRole("list", { name: "Particle data" })).toContainText("Particle A");
   await expect(particle.getByRole("list", { name: "Particle data" })).toContainText("Representative details shown for 12 of 240 particles.");
   expect(await page.locator('[data-showcase-card="simulation"] .tessera-stage').evaluate((stage) => stage.getBoundingClientRect().width)).toBeLessThanOrEqual(1088);
-  expect(await particle.locator("#root").evaluate((root) => root.getBoundingClientRect().width)).toBeLessThanOrEqual(960);
+  const particleContent = particle.locator('#root > [data-native-width="content"]');
+  await expect(particleContent).toHaveCount(1);
+  expect(await particleContent.evaluate((root) => root.getBoundingClientRect().width)).toBeLessThanOrEqual(960);
+  await expect(particle.locator('[data-native-component="particle-field"]')).toHaveAttribute("data-native-tone", "accent");
+  await expect(particle.locator('[data-native-component="particle-field"]')).toHaveAttribute("data-native-caption-visible", "false");
+  await expect(particle.locator('[data-native-component="particle-field"]')).toHaveAttribute("data-native-details-visible", "false");
+  expect(await particle.locator("[data-native-particle-buffer]").first().evaluate((buffer) => {
+    const first = (buffer.getAttribute("data-native-particle-buffer") ?? "").split(";")[0]?.split(",").map(Number) ?? [];
+    return first.length === 6 && first[3] === 1 && first[4] >= 0 && first[4] <= 1 && first[5] > 0;
+  })).toBe(true);
   expect(await particle.locator("canvas").evaluate((canvas) => canvas.getBoundingClientRect().width)).toBeLessThanOrEqual(896);
   const positionsBefore = await particle.locator("[data-native-particle-buffer]").evaluateAll((buffers) => buffers.flatMap((buffer) => (buffer.getAttribute("data-native-particle-buffer") ?? "").split(";").filter(Boolean).map((entry) => entry.split(",").slice(0, 2).map(Number))));
   await particle.getByRole("button", { name: "Run" }).click();
@@ -114,7 +128,10 @@ test("five STEM Tesserae start independently and remain accessible", async ({ pa
   await expect(orbitalCard.locator('[data-tessera-status="orbital-simulation"]')).toHaveText("running");
   const orbit = page.frameLocator('[data-showcase-card="orbital-simulation"] iframe');
   expect(await orbitalCard.locator(".tessera-stage").evaluate((stage) => stage.getBoundingClientRect().width)).toBeLessThanOrEqual(1088);
-  expect(await orbit.locator("#root").evaluate((root) => root.getBoundingClientRect().width)).toBeLessThanOrEqual(960);
+  const orbitalContent = orbit.locator('#root > [data-native-width="content"]');
+  await expect(orbitalContent).toHaveCount(1);
+  expect(await orbitalContent.evaluate((root) => root.getBoundingClientRect().width)).toBeLessThanOrEqual(960);
+  expect(await orbit.locator('[data-native-width="visualization"]').evaluate((element) => element.getBoundingClientRect().width)).toBeLessThanOrEqual(896);
   const orbitalScene = orbit.getByRole("application", { name: /Sun is centered/i });
   await orbitalScene.focus();
   await orbitalScene.press("ArrowRight");
@@ -154,18 +171,24 @@ test("five STEM Tesserae start independently and remain accessible", async ({ pa
 });
 
 test("live reduced-motion changes pause and resume fixed-step simulation", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 1000 });
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.goto("/showcase");
   const card = page.locator('[data-showcase-card="simulation"]');
+  const iframe = card.locator("iframe");
+  await card.scrollIntoViewIfNeeded();
+  await expect(iframe).toHaveCount(1);
+  const shellContent = card.locator("[data-tessyl-shell-content]");
   await expect.poll(async () => {
-    await card.scrollIntoViewIfNeeded();
+    await shellContent.scrollIntoViewIfNeeded();
     return card.locator('[data-tessera-status="simulation"]').textContent();
   }).toBe("running");
   const simulation = page.frameLocator('[data-showcase-card="simulation"] iframe');
   const step = simulation.getByLabel("Step", { exact: true });
   const run = simulation.getByRole("button", { name: "Run" });
-  await run.focus();
-  await run.press("Enter");
+  await expect(run).toBeVisible();
+  await run.click();
+  await expect(simulation.getByRole("button", { name: "Pause" })).toBeVisible();
   await expect(step).not.toContainText(/^Step\s*0$/);
   await page.emulateMedia({ reducedMotion: "reduce" });
   await expect(card.locator("[data-tessyl-native-failure-code]")).toHaveCount(0);
@@ -358,5 +381,16 @@ test.describe("static and responsive behavior", () => {
     await expect(page.getByRole("region", { name: "Interactive vector decomposition diagram" })).toContainText("Vector decomposition diagram");
     await expect(page.locator("iframe")).toHaveCount(0);
     await expect.poll(() => page.locator('[data-showcase-card="chart"] svg').first().evaluate((svg) => svg.namespaceURI)).toBe("http://www.w3.org/2000/svg");
+  });
+
+  test("static fallbacks interpret Voyd layout and visibility tokens", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/showcase");
+    const particle = page.getByRole("region", { name: "Bounded particle simulation" });
+    expect(await particle.locator('[data-native-width="content"]').evaluate((element) => element.getBoundingClientRect().width)).toBeLessThanOrEqual(960);
+    expect(await particle.locator('[data-native-width="visualization"]').evaluate((element) => element.getBoundingClientRect().width)).toBeLessThanOrEqual(896);
+    await expect(particle.locator('svg[data-native-component="particle-snapshot"] [data-native-component="particle"]')).toHaveCount(240);
+    expect(await particle.getByText("Orbital particle swarm", { exact: true }).evaluate((element) => getComputedStyle(element).position)).toBe("absolute");
+    expect(await particle.getByRole("list", { name: "Particle data" }).evaluate((element) => getComputedStyle(element).position)).toBe("absolute");
   });
 });

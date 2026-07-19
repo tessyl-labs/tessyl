@@ -1,4 +1,5 @@
 import type { TesseraMetadataV1, TesseraStatus } from "../types.js";
+import { staticFallbackStyles } from "../fallback-renderer.js";
 
 export type NativeShell = {
   readonly content: HTMLElement;
@@ -15,6 +16,7 @@ export const createNativeShell = (input: {
   onReset(): void;
   onRestart(): void;
   onExpandedChange(expanded: boolean): void;
+  onExport?(): Promise<Blob>;
   onInspectSource(): void;
   onInspectProvenance(): void;
 }): NativeShell => {
@@ -42,7 +44,18 @@ export const createNativeShell = (input: {
   const expand = actionButton(input.expanded ? "Exit expanded view" : "Expanded view", () => api.setExpanded(shell.dataset.tessylExpanded !== "true"));
   const source = actionButton("Source", input.onInspectSource);
   const provenance = actionButton("Revision and provenance", input.onInspectProvenance);
-  actions.append(reset, restart, expand, source, provenance);
+  actions.append(reset, restart, expand);
+  if (input.onExport) {
+    const exportButton = actionButton("Export result", () => {
+      exportButton.disabled = true;
+      void input.onExport!()
+        .then((blob) => downloadExport(blob, input.metadata.title))
+        .catch(() => { exportButton.textContent = "Export failed"; })
+        .finally(() => { exportButton.disabled = false; });
+    });
+    actions.append(exportButton);
+  }
+  actions.append(source, provenance);
   header.append(identity, actions);
 
   const content = document.createElement("div");
@@ -162,6 +175,19 @@ const actionButton = (label: string, activate: () => void): HTMLButtonElement =>
   return button;
 };
 
+const downloadExport = (blob: Blob, title: string): void => {
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  const baseName = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "tessera";
+  link.href = url;
+  link.download = `${baseName}.html`;
+  link.hidden = true;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+};
+
 const metadataDetails = (metadata: TesseraMetadataV1): HTMLElement => {
   const details = document.createElement("details");
   details.dataset.tessylShellInformation = "";
@@ -209,6 +235,6 @@ const statusLabel = (status: TesseraStatus): string => ({
 
 const createStyles = (): HTMLStyleElement => {
   const style = document.createElement("style");
-  style.textContent = `[data-tessyl-native-shell]{position:static;display:grid;width:auto;height:auto;margin:0;padding:0;gap:.75rem;max-width:100%;border:1px solid #cbd5e1;border-radius:1rem;background:#fff;color:#0f172a;box-shadow:0 8px 30px rgb(15 23 42/.08);overflow:hidden;font:14px/1.45 system-ui,sans-serif}[data-tessyl-native-shell]::backdrop{background:rgb(15 23 42/.72)}[data-tessyl-native-shell]>header{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.75rem 1rem;border-bottom:1px solid #e2e8f0;background:#f8fafc}[data-tessyl-native-shell]>header>div:first-child{display:grid;gap:.1rem}[data-tessyl-shell-status]{color:#475569;font-size:.78rem}[data-tessyl-shell-actions]{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.35rem}[data-tessyl-shell-actions] button{min-height:2rem;padding:.35rem .6rem;border:1px solid #94a3b8;border-radius:.5rem;background:#fff;color:#0f172a;font:inherit;cursor:pointer}[data-tessyl-shell-actions] button:focus-visible,summary:focus-visible{outline:3px solid #0ea5e9;outline-offset:2px}[data-tessyl-shell-content]{min-height:8rem}[data-tessyl-fallback] [aria-label="Particle data"],[data-tessyl-fallback] [aria-label="Scene data"]{max-height:14rem;overflow:auto}[data-tessyl-shell-information]{margin:0 .75rem .75rem;padding:.65rem .75rem;border-radius:.65rem;background:#f8fafc}[data-tessyl-shell-information] summary{cursor:pointer;font-weight:700}[data-tessyl-expanded="true"]{position:fixed;inset:1rem;width:calc(100vw - 2rem);max-width:none;max-height:calc(100vh - 2rem);overflow:auto}[data-tessyl-expanded="true"] [data-tessyl-shell-content]{min-height:60vh}@media(max-width:40rem){[data-tessyl-native-shell]>header{align-items:flex-start;flex-direction:column}[data-tessyl-shell-actions]{justify-content:flex-start}}@media(prefers-reduced-motion:reduce){[data-tessyl-native-shell]{scroll-behavior:auto}}`;
+  style.textContent = `${staticFallbackStyles}[data-tessyl-native-shell]{position:static;display:grid;width:auto;height:auto;margin:0;padding:0;gap:.75rem;max-width:100%;border:1px solid #cbd5e1;border-radius:1rem;background:#fff;color:#0f172a;box-shadow:0 8px 30px rgb(15 23 42/.08);overflow:hidden;font:14px/1.45 system-ui,sans-serif}[data-tessyl-native-shell]::backdrop{background:rgb(15 23 42/.72)}[data-tessyl-native-shell]>header{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.75rem 1rem;border-bottom:1px solid #e2e8f0;background:#f8fafc}[data-tessyl-native-shell]>header>div:first-child{display:grid;gap:.1rem}[data-tessyl-shell-status]{color:#475569;font-size:.78rem}[data-tessyl-shell-actions]{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:.35rem}[data-tessyl-shell-actions] button{min-height:2rem;padding:.35rem .6rem;border:1px solid #94a3b8;border-radius:.5rem;background:#fff;color:#0f172a;font:inherit;cursor:pointer}[data-tessyl-shell-actions] button:focus-visible,summary:focus-visible{outline:3px solid #0ea5e9;outline-offset:2px}[data-tessyl-shell-content]{min-height:8rem}[data-tessyl-shell-information]{margin:0 .75rem .75rem;padding:.65rem .75rem;border-radius:.65rem;background:#f8fafc}[data-tessyl-shell-information] summary{cursor:pointer;font-weight:700}[data-tessyl-expanded="true"]{position:fixed;inset:1rem;width:calc(100vw - 2rem);max-width:none;max-height:calc(100vh - 2rem);overflow:auto}[data-tessyl-expanded="true"] [data-tessyl-shell-content]{min-height:60vh}@media(max-width:40rem){[data-tessyl-native-shell]>header{align-items:flex-start;flex-direction:column}[data-tessyl-shell-actions]{justify-content:flex-start}}@media(prefers-reduced-motion:reduce){[data-tessyl-native-shell]{scroll-behavior:auto}}`;
   return style;
 };

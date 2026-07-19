@@ -90,6 +90,7 @@ export class BrowserTesseraInstance implements TesseraInstance {
         }
         try { this.#config.runtime?.onExpandedViewChange?.(expanded); } catch { /* Shell adapters are observational. */ }
       },
+      onExport: () => this.exportResult(),
       onInspectSource: () => this.#inspectSource(),
       onInspectProvenance: () => this.#inspectProvenance(),
     });

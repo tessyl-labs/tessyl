@@ -30,13 +30,14 @@ fn subscriptions(model: Model) -> Sub<Msg>
   ])
 
 fn view(model: Model) -> View<Msg>
-  <Column>
+  <Column width={content_width()}>
     <Heading level={2}>Compounding growth</Heading>
     <Text>Pinned data: {model.dataset}</Text>
     <Text>Deep-link state: {model.shared}</Text>
     <ReviewedImage asset_id="growth_badge" accessible_name="Reviewed teal growth badge" caption="Hash-verified example asset" />
     <Slider label="Growth factor" value={model.growth} min={0.5} max={2.0} on_change={(value) => Msg::Growth { value: value }} />
-    <LineChart
+    <Column width={visualization_width()}>
+      <LineChart
       title="Value over four periods"
       description="The plotted value compounds by the selected factor in each period."
       series={[Series { name: "Compounded", points: [
@@ -52,11 +53,14 @@ fn view(model: Model) -> View<Msg>
       ] }]}
       x_axis={Axis { label: "Period", unit: None {}, min: None {}, max: None {} }}
       y_axis={Axis { label: "Value", unit: None {}, min: None {}, max: None {} }}
-    />
-    <Heatmap title="Scenario matrix" description="A two by two matrix comparing baseline and compounded scenarios." rows={2} columns={2} cells={[
-      HeatCell { row: 0, column: 0, value: 1.0, label: "Baseline period one" },
-      HeatCell { row: 0, column: 1, value: model.growth, label: "Compounded period one" },
-      HeatCell { row: 1, column: 0, value: 1.0, label: "Baseline period two" },
-      HeatCell { row: 1, column: 1, value: model.growth * model.growth, label: "Compounded period two" }
-    ]} />
+      />
+    </Column>
+    <Column width={visualization_width()}>
+      <Heatmap title="Scenario matrix" description="A two by two matrix comparing baseline and compounded scenarios." rows={2} columns={2} cells={[
+        HeatCell { row: 0, column: 0, value: 1.0, label: "Baseline period one" },
+        HeatCell { row: 0, column: 1, value: model.growth, label: "Compounded period one" },
+        HeatCell { row: 1, column: 0, value: 1.0, label: "Baseline period two" },
+        HeatCell { row: 1, column: 1, value: model.growth * model.growth, label: "Compounded period two" }
+      ]} />
+    </Column>
   </Column>

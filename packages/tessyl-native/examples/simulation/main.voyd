@@ -30,6 +30,18 @@ fn subscriptions(model: Model) -> Sub<Msg>
   else:
     Sub<Msg>::none()
 
+fn particle_tone(index: i32) -> ParticleTone
+  let selected = index % 5
+  if selected == 0:
+    return accent_particle_tone()
+  if selected == 1:
+    return informative_particle_tone()
+  if selected == 2:
+    return positive_particle_tone()
+  if selected == 3:
+    return caution_particle_tone()
+  critical_particle_tone()
+
 fn particles(model: Model) -> Array<Particle>
   let ~values = Array<Particle>::with_capacity(240)
   let phase = to_f64(model.step) * 0.008726646259971648
@@ -42,19 +54,24 @@ fn particles(model: Model) -> Array<Particle>
     let ripple = phase * to_f64(3 + index % 3) + lane * 0.55 + band * 0.28
     values.push(Particle {
       position: Vec2 {
-        x: 400.0 + cos(angle) * orbit * 1.72 + sin(ripple) * 9.0,
-        y: 220.0 + sin(angle) * orbit * 0.86 + cos(ripple) * 7.0
+        x: 448.0 + cos(angle) * orbit * 1.72 + sin(ripple) * 9.0,
+        y: 252.0 + sin(angle) * orbit * 0.86 + cos(ripple) * 7.0
       },
       radius: if index == 0 then: 7.0 else: 1.8 + to_f64(index % 5) * 0.55,
-      label: if index == 0 then: "Particle A" else: "Particle ".concat(to_string(index))
+      label: if index == 0 then: "Particle A" else: "Particle ".concat(to_string(index)),
+      tone: particle_tone(index),
+      opacity: 0.68 + to_f64(index % 5) * 0.065,
+      glow: if index % 12 == 0 then: 2.4 else: 0.0
     })
     index = index + 1
   values
 
 fn view(model: Model) -> View<Msg>
-  <Column>
+  <Column width={content_width()}>
     <Text>Two hundred forty particles follow layered deterministic orbits. Every particle moves, the phase remains bounded, and the swarm can be paused or advanced one step at a time.</Text>
-    <ParticleField title="Orbital particle swarm" description="Two hundred forty moving particles form a layered, deterministic orbital swarm around the center of the field." particles={particles(model)} width={800} height={450} />
+    <Column width={visualization_width()}>
+      <ParticleField title="Orbital particle swarm" description="Two hundred forty moving particles form a layered, deterministic orbital swarm around the center of the field." particles={particles(model)} width={896} height={504} tone={accent_particle_tone()} caption_visible={false} details_visible={false} />
+    </Column>
     <Metric label="Step" value={to_f64(model.step)} />
     <Button on_press={Msg::Toggle {}}>{if model.running then: "Pause" else: "Run"}</Button>
     <Button on_press={Msg::StepOnce {}}>Step once</Button>

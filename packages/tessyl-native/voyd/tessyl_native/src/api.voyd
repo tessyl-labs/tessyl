@@ -137,7 +137,15 @@ pub fn next<Model, Msg>({ model: Model, cmd: Cmd<Msg> }) -> Update<Model, Msg>
 pub enum Width
   Fit
   Fill
+  Content
+  Visualization
   Fixed { pixels: f64 }
+
+pub fn content_width() -> Width
+  Width::Content {}
+
+pub fn visualization_width() -> Width
+  Width::Visualization {}
 
 pub enum Align
   Start
@@ -212,6 +220,8 @@ fn width_name(value: Width) -> String
   match(value)
     Width::Fit: "fit"
     Width::Fill: "fill"
+    Width::Content: "content"
+    Width::Visualization: "visualization"
     Width::Fixed { pixels }: "fixed"
 
 fn add_width_attrs(~attrs: Array<MsgPack>, width: Width) -> void

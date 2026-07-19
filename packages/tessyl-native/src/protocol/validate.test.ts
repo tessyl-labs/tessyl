@@ -29,7 +29,8 @@ test("accepts the closed native frame surface", () => {
           events: [{ kind: "event", event: "pointermove", handlerId: 2 }],
           children: [],
         },
-        { kind: "element", tag: "span", attrs: { "data-native-particle-buffer": "10,20,3;30,40,2", "aria-hidden": true }, children: [] },
+        { kind: "element", tag: "span", attrs: { "data-native-particle-buffer": "10,20,3;30,40,2,1,0.8,2.4", "aria-hidden": true }, children: [] },
+        { kind: "element", tag: "svg", attrs: { viewbox: "0 0 10 10" }, children: [{ kind: "element", tag: "circle", attrs: { cx: 5, cy: 5, r: 2, "fill-opacity": 0.8, "stroke-opacity": 0.2, "stroke-width": 4 }, children: [] }] },
       ],
     },
   }, STANDARD_V1);
@@ -54,6 +55,9 @@ test("rejects unsafe render surface and cyclic frames", () => {
   }, STANDARD_V1), /frame byte budget/);
   assert.throws(() => validateFrame({ version: 1, root: { kind: "element", tag: "canvas", attrs: { width: 4_000, height: 4_000 }, children: [] } }, STANDARD_V1), /canvas pixel/);
   assert.throws(() => validateFrame({ version: 1, root: { kind: "element", tag: "span", attrs: { "data-native-particle-buffer": "javascript:bad" }, children: [] } }, STANDARD_V1), /particle data/);
+  assert.throws(() => validateFrame({ version: 1, root: { kind: "element", tag: "span", attrs: { "data-native-particle-buffer": "10,20,3,6,0.8,2.4" }, children: [] } }, STANDARD_V1), /particle data/);
+  assert.throws(() => validateFrame({ version: 1, root: { kind: "element", tag: "circle", attrs: { cx: 5, cy: 5, r: 2, "fill-opacity": 1.1 }, children: [] } }, STANDARD_V1), /fill-opacity/);
+  assert.throws(() => validateFrame({ version: 1, root: { kind: "element", tag: "circle", attrs: { cx: 5, cy: 5, r: 2, "stroke-width": 145 }, children: [] } }, STANDARD_V1), /stroke-width/);
 });
 
 test("canonical article slugs have aligned separator and length boundaries", () => {
