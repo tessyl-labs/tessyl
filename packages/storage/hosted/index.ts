@@ -238,7 +238,7 @@ const pgMigrations = `
     content_type text NOT NULL, byte_length bigint NOT NULL, checksum_sha256 text NOT NULL,
     metadata_json jsonb NOT NULL, idempotency_key text NOT NULL, backend_upload_id text NOT NULL,
     backend_key text NOT NULL, expires_at timestamptz NOT NULL, completed boolean NOT NULL DEFAULT false,
-    version text, request_hash text NOT NULL, part_count integer NOT NULL, operation_state text, operation_token text, operation_started_at timestamptz,
+    version text, backend_version_id text, request_hash text NOT NULL, part_count integer NOT NULL, operation_state text, operation_token text, operation_started_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(), UNIQUE(namespace, idempotency_key)
   );
   ALTER TABLE tessyl_storage_upload_sessions ADD COLUMN IF NOT EXISTS request_hash text NOT NULL DEFAULT '';
@@ -246,12 +246,13 @@ const pgMigrations = `
   ALTER TABLE tessyl_storage_upload_sessions ADD COLUMN IF NOT EXISTS operation_state text;
   ALTER TABLE tessyl_storage_upload_sessions ADD COLUMN IF NOT EXISTS operation_token text;
   ALTER TABLE tessyl_storage_upload_sessions ADD COLUMN IF NOT EXISTS operation_started_at timestamptz;
+  ALTER TABLE tessyl_storage_upload_sessions ADD COLUMN IF NOT EXISTS backend_version_id text;
   CREATE TABLE IF NOT EXISTS tessyl_storage_object_keys (
     namespace text NOT NULL, object_key text NOT NULL, session_id text NOT NULL,
     PRIMARY KEY(namespace, object_key), UNIQUE(session_id)
   );
 `;
-const PG_MIGRATION_ID = 4;
+const PG_MIGRATION_ID = 5;
 const PG_MIGRATION_CHECKSUM = createHash("sha256").update(pgMigrations).digest("hex");
 
 const assertCondition = (condition: WriteCondition, current: PgRow | undefined, operation: string): void => {
@@ -652,6 +653,19 @@ export class HostedObjectStore extends HostedService implements ObjectStore {
   constructor(readonly s3: S3Client, readonly pool: Pool, readonly bucket: string, readonly prefix: string, limits: Readonly<StorageLimits>, semaphore: Semaphore, observe?: ObservabilityHook, private readonly ownsS3 = false) { super(limits, "object", semaphore, observe); }
   private backendKey(namespace: string, key: string, sessionId: string): string { return `${this.prefix}${nsHash(namespace)}/${createHash("sha256").update(key).digest("hex")}/${createHash("sha256").update(sessionId).digest("hex")}`; }
   private async abortUpload(key: string, uploadId: string): Promise<void> { await this.s3.send(new AbortMultipartUploadCommand({ Bucket: this.bucket, Key: key, UploadId: uploadId }), { abortSignal: AbortSignal.timeout(5_000) }).catch(() => undefined); }
+  private async deleteBackendObject(key: string, signal: AbortSignal, knownVersionId?: string): Promise<void> {
+    let versionId = knownVersionId;
+    if (!versionId) {
+      try {
+        const head = await this.s3.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }), { abortSignal: signal });
+        versionId = head.VersionId;
+      } catch (error) {
+        if (isS3NotFound(error)) return;
+        throw error;
+      }
+    }
+    await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key, ...(versionId ? { VersionId: versionId } : {}) }), { abortSignal: signal });
+  }
   private async renewSessionOperation(namespace: string, sessionId: string, state: string, token: string, signal: AbortSignal, options?: OperationOptions): Promise<void> {
     const client = await acquirePgClient(this.pool, signal); const release = bindPgAbort(client, signal);
     try { await client.query("BEGIN"); await configurePgTimeout(client, options); const renewed = await client.query("UPDATE tessyl_storage_upload_sessions SET operation_started_at=now() WHERE namespace=$1 AND session_id=$2 AND operation_state=$3 AND operation_token=$4", [namespace, sessionId, state, token]); if (renewed.rowCount !== 1) throw new StorageError("unavailable", "Object operation lease was lost", { operation: "object.complete_upload", retryable: true }); await client.query("COMMIT"); }
@@ -751,18 +765,19 @@ export class HostedObjectStore extends HostedService implements ObjectStore {
         head = await this.s3.send(new HeadObjectCommand({ Bucket: this.bucket, Key: String(row.backend_key) }), { abortSignal: signal });
       }
       await renewLease();
-      if (Number(head.ContentLength) !== Number(row.byte_length)) { await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: String(row.backend_key) }), { abortSignal: signal }).catch(() => undefined); throw new StorageError("failed_condition", "Uploaded byte length does not match", { operation: "object.complete_upload" }); }
+      if (Number(head.ContentLength) !== Number(row.byte_length)) { await this.deleteBackendObject(String(row.backend_key), signal, head.VersionId).catch(() => undefined); throw new StorageError("failed_condition", "Uploaded byte length does not match", { operation: "object.complete_upload" }); }
       actualChecksum = await this.hashObject(String(row.backend_key), signal, renewLease);
       await renewLease();
-      if (actualChecksum !== String(row.checksum_sha256)) { await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: String(row.backend_key) }), { abortSignal: signal }).catch(() => undefined); throw new StorageError("failed_condition", "Uploaded checksum does not match", { operation: "object.complete_upload" }); }
+      if (actualChecksum !== String(row.checksum_sha256)) { await this.deleteBackendObject(String(row.backend_key), signal, head.VersionId).catch(() => undefined); throw new StorageError("failed_condition", "Uploaded checksum does not match", { operation: "object.complete_upload" }); }
     } catch (error) { clearInterval(leaseTimer); await renewal?.catch(() => undefined); await this.releaseSessionOperation(namespace, sessionId, "completing", operationToken); throw error; }
     clearInterval(leaseTimer); await renewal;
-    const version = completed.VersionId ?? completed.ETag ?? head.VersionId ?? head.ETag ?? actualChecksum;
+    const backendVersionId = completed.VersionId ?? head.VersionId;
+    const version = backendVersionId ?? completed.ETag ?? head.ETag ?? actualChecksum;
     let client: PoolClient;
     try { client = await acquirePgClient(this.pool, signal); }
     catch (error) { await this.releaseSessionOperation(namespace, sessionId, "completing", operationToken); throw error; }
     const release = bindPgAbort(client, signal);
-    try { await client.query("BEGIN"); await configurePgTimeout(client, options); const finalized = await client.query("UPDATE tessyl_storage_upload_sessions SET completed=true,version=$3,created_at=now(),operation_state=NULL,operation_token=NULL,operation_started_at=NULL WHERE namespace=$1 AND session_id=$2 AND completed=false AND operation_state='completing' AND operation_token=$4", [namespace, sessionId, version, operationToken]); if (finalized.rowCount !== 1) throw new StorageError("unavailable", "Object completion lease was lost", { operation: "object.complete_upload", retryable: true }); await client.query("COMMIT"); }
+    try { await client.query("BEGIN"); await configurePgTimeout(client, options); const finalized = await client.query("UPDATE tessyl_storage_upload_sessions SET completed=true,version=$3,backend_version_id=$4,created_at=now(),operation_state=NULL,operation_token=NULL,operation_started_at=NULL WHERE namespace=$1 AND session_id=$2 AND completed=false AND operation_state='completing' AND operation_token=$5", [namespace, sessionId, version, backendVersionId ?? null, operationToken]); if (finalized.rowCount !== 1) throw new StorageError("unavailable", "Object completion lease was lost", { operation: "object.complete_upload", retryable: true }); await client.query("COMMIT"); }
     catch (error) { await client.query("ROLLBACK").catch(() => undefined); release(); await this.releaseSessionOperation(namespace, sessionId, "completing", operationToken); throw error; }
     finally { release(); }
     return this.statInternal(namespace, objectKey, signal, options);
@@ -805,7 +820,7 @@ export class HostedObjectStore extends HostedService implements ObjectStore {
       await abortableDelay(signal, 25);
     }
     if (!session) return;
-    try { await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: String(session.backend_key) }), { abortSignal: signal }); }
+    try { await this.deleteBackendObject(String(session.backend_key), signal, typeof session.backend_version_id === "string" ? session.backend_version_id : undefined); }
     catch (error) { await this.releaseSessionOperation(namespace, String(session.session_id), "deleting", operationToken); throw error; }
     try { client = await acquirePgClient(this.pool, signal); }
     catch (error) { await this.releaseSessionOperation(namespace, String(session.session_id), "deleting", operationToken); throw error; }
@@ -837,7 +852,7 @@ export class HostedObjectStore extends HostedService implements ObjectStore {
       try {
         try { await this.s3.send(new AbortMultipartUploadCommand({ Bucket: this.bucket, Key: String(row.backend_key), UploadId: String(row.backend_upload_id) }), { abortSignal: signal }); }
         catch (error) { if (!isS3Absent(error)) throw error; }
-        await this.s3.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: String(row.backend_key) }), { abortSignal: signal });
+        await this.deleteBackendObject(String(row.backend_key), signal, typeof row.backend_version_id === "string" ? row.backend_version_id : undefined);
         client = await acquirePgClient(this.pool, signal); release = bindPgAbort(client, signal);
         try { await client.query("BEGIN"); await configurePgTimeout(client, options); const deletion = await client.query("DELETE FROM tessyl_storage_upload_sessions WHERE namespace=$1 AND session_id=$2 AND completed=false AND operation_state='cleaning' AND operation_token=$3", [namespace, row.session_id, row.operation_token]); if (deletion.rowCount) { await client.query("DELETE FROM tessyl_storage_object_keys WHERE namespace=$1 AND session_id=$2", [namespace, row.session_id]); removed += 1; } await client.query("COMMIT"); }
         catch (error) { await client.query("ROLLBACK").catch(() => undefined); throw error; }

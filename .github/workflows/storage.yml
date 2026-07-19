@@ -6,6 +6,8 @@ on:
       - "packages/storage/**"
       - "package.json"
       - "package-lock.json"
+      - ".voyd-source"
+      - ".gitmodules"
       - ".github/workflows/storage.yml"
 
 jobs:

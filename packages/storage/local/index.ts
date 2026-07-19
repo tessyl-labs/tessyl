@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants as fsConstants, createReadStream } from "node:fs";
-import { copyFile, mkdir, readdir, realpath, rm, stat as fileStat, writeFile } from "node:fs/promises";
+import { copyFile, link, mkdir, readdir, realpath, rm, stat as fileStat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { DatabaseSync, type SQLInputValue } from "node:sqlite";
@@ -838,11 +838,35 @@ const localObjectPath = (objectsDirectory: string, namespace: string, key: strin
 export class LocalObjectStore extends LocalService implements ObjectStore {
   readonly #objectsDirectory: string;
   readonly #uploadsDirectory: string;
+  readonly #downloadsDirectory: string;
   readonly #sessionLocks = new Map<string, Promise<void>>();
+  readonly #downloadTimers = new Map<string, NodeJS.Timeout>();
   constructor(backend: LocalDatabase, limits: Readonly<StorageLimits>, observe?: ObservabilityHook) {
     super(backend, limits, "object", observe);
     this.#objectsDirectory = path.join(backend.dataDirectory, "objects");
     this.#uploadsDirectory = path.join(backend.dataDirectory, "uploads");
+    this.#downloadsDirectory = path.join(backend.dataDirectory, "downloads");
+  }
+
+  async initialize(): Promise<void> {
+    await mkdir(this.#downloadsDirectory, { recursive: true, mode: 0o700 });
+    await this.cleanupExpiredDownloadHandles();
+  }
+
+  async closeDownloadHandles(): Promise<void> {
+    for (const timer of this.#downloadTimers.values()) clearTimeout(timer);
+    const handles = [...this.#downloadTimers.keys()];
+    this.#downloadTimers.clear();
+    await Promise.all(handles.map((handlePath) => rm(handlePath, { force: true })));
+  }
+
+  private async cleanupExpiredDownloadHandles(): Promise<void> {
+    const now = Date.now();
+    for (const entry of await readdir(this.#downloadsDirectory).catch(() => [])) {
+      const expiresAt = Number(entry.split("-", 1)[0]);
+      if (!Number.isSafeInteger(expiresAt) || expiresAt > now) continue;
+      await rm(path.join(this.#downloadsDirectory, entry), { force: true });
+    }
   }
 
   private async withSessionLock<T>(key: string, run: () => Promise<T>): Promise<T> {
@@ -1013,13 +1037,27 @@ export class LocalObjectStore extends LocalService implements ObjectStore {
   }
 
   async resolveDownload(namespace: string, key: string, expiresInSeconds: number, options?: OperationOptions): Promise<DownloadResolution> {
-    return this.operation("object.resolve_download", options, () => {
+    return this.operation("object.resolve_download", options, async () => {
       assertNamespace(namespace, this.limits); assertKey(key, this.limits);
       const row = this.authoritativeObjectRow(namespace, key);
       if (!row) throw new StorageError("not_found", "Object was not found", { operation: "object.resolve_download" });
       if (!Number.isSafeInteger(expiresInSeconds) || expiresInSeconds < 1) throw new StorageError("invalid_request", "Download expiry must be a positive integer", { operation: "object.resolve_download" });
       const seconds = Math.min(expiresInSeconds, 86_400);
-      return { metadata: objectFromRow(row), url: pathToFileURL(String(row.file_path)).href, expiresAt: new Date(Date.now() + seconds * 1000).toISOString() };
+      await this.cleanupExpiredDownloadHandles();
+      const expiresAt = Date.now() + seconds * 1000;
+      const handlePath = path.join(this.#downloadsDirectory, `${expiresAt}-${randomUUID()}.download`);
+      try { await link(String(row.file_path), handlePath); }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new StorageError("not_found", "Object was not found", { operation: "object.resolve_download", cause: error });
+        throw error;
+      }
+      const timer = setTimeout(() => {
+        this.#downloadTimers.delete(handlePath);
+        void rm(handlePath, { force: true }).catch(() => undefined);
+      }, seconds * 1000);
+      timer.unref();
+      this.#downloadTimers.set(handlePath, timer);
+      return { metadata: objectFromRow(row), url: pathToFileURL(handlePath).href, expiresAt: new Date(expiresAt).toISOString() };
     });
   }
 
@@ -1125,7 +1163,9 @@ export const createLocalStorage = async (options: LocalStorageOptions): Promise<
   const search = new LocalSearchService(backend, limits, options.observability);
   const searchIndex = new LocalSearchIndexService(backend, limits, options.observability);
   const object = new LocalObjectStore(backend, limits, options.observability);
-  const owner = { async close(): Promise<void> { backend.close(); } };
+  try { await object.initialize(); }
+  catch (error) { backend.close(); throw error; }
+  const owner = { async close(): Promise<void> { await object.closeDownloadHandles(); backend.close(); } };
   for (const provider of [document, search, searchIndex, object]) attachStorageOwner(provider, owner);
   return Object.freeze({
     document, search, searchIndex, object,

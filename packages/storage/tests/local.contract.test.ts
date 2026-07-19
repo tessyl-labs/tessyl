@@ -54,6 +54,21 @@ describe("local storage conformance", () => {
     } finally { await limited.close(); await rm(limitedDirectory, { recursive: true, force: true }); }
   });
 
+  it("expires local download handles", async () => {
+    const expiryDirectory = await mkdtemp(path.join(os.tmpdir(), "tessyl-storage-download-expiry-"));
+    const expiring = await createLocalStorage({ dataDirectory: expiryDirectory });
+    try {
+      const content = new TextEncoder().encode("temporary local download");
+      const session = await expiring.object.initiateUpload({ namespace: "n", key: "object.txt", contentType: "text/plain", byteLength: String(content.length), checksumSha256: createHash("sha256").update(content).digest("hex"), applicationMetadata: [], idempotencyKey: "download-expiry", partCount: 1, expiresInSeconds: 300 });
+      await writeFile(fileURLToPath(session.uploadHandle), content); await expiring.object.completeUpload("n", session.sessionId);
+      const resolution = await expiring.object.resolveDownload("n", "object.txt", 1); const handlePath = fileURLToPath(resolution.url);
+      await access(handlePath); const peer = await createLocalStorage({ dataDirectory: expiryDirectory }); await access(handlePath); await peer.close(); await access(handlePath);
+      await new Promise((resolve) => setTimeout(resolve, 1_100));
+      await assert.rejects(access(handlePath), (error: NodeJS.ErrnoException) => error.code === "ENOENT");
+      assert.equal((await expiring.object.stat("n", "object.txt")).byteLength, String(content.length));
+    } finally { await expiring.close(); await rm(expiryDirectory, { recursive: true, force: true }); }
+  });
+
   it("does not publish an oversized host-mutated outbox document", async () => {
     const limitedDirectory = await mkdtemp(path.join(os.tmpdir(), "tessyl-storage-small-documents-"));
     const limited = await createLocalStorage({ dataDirectory: limitedDirectory, limits: { maxDocumentBytes: 256 } });

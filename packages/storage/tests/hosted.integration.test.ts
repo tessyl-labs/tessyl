@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { after, before, describe, it } from "node:test";
-import { CreateBucketCommand, PutObjectCommand, S3Client, UploadPartCommand } from "@aws-sdk/client-s3";
+import { CreateBucketCommand, ListObjectVersionsCommand, PutBucketVersioningCommand, PutObjectCommand, S3Client, UploadPartCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { Client as OpenSearchClient } from "@opensearch-project/opensearch";
 import { createSdk } from "@voyd-lang/sdk";
@@ -35,6 +35,7 @@ describe("hosted storage against PostgreSQL, OpenSearch, and S3", { skip: !enabl
       const status = (error as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
       if (status !== 409) throw error;
     });
+    await s3.send(new PutBucketVersioningCommand({ Bucket: bucket, VersioningConfiguration: { Status: "Enabled" } }));
     storage = await createHostedStorage({ postgres: pool, openSearch, s3, bucket, keyPrefix: `ci-${crypto.randomUUID()}`, maxConcurrency: 16 });
     fixtureBase = await readFile(path.resolve(import.meta.dirname, "fixtures/storage.voyd"), "utf8");
   });
@@ -120,6 +121,19 @@ describe("hosted storage against PostgreSQL, OpenSearch, and S3", { skip: !enabl
     await pool.query("UPDATE tessyl_storage_upload_sessions SET created_at='2000-01-01T00:00:00.000Z' WHERE namespace=$1 AND session_id=$2", [namespace, session.sessionId]);
     const completionStartedAt = Date.now(); const metadata = await storage.object.completeUpload(namespace, session.sessionId, [{ partNumber: 1, etag: response.headers.get("etag") ?? "" }]);
     assert.ok(new Date(metadata.createdAt).getTime() >= completionStartedAt - 1_000);
+  });
+
+  it("deletes the exact stored version from versioned buckets", async () => {
+    const namespace = `versioned-object-${crypto.randomUUID()}`; const content = new TextEncoder().encode("delete every stored byte");
+    const session = await storage.object.initiateUpload({ namespace, key: "object.txt", contentType: "text/plain", byteLength: String(content.length), checksumSha256: createHash("sha256").update(content).digest("hex"), applicationMetadata: [], idempotencyKey: "versioned-delete", partCount: 1, expiresInSeconds: 300 });
+    const response = await fetch(session.parts[0]!.url, { method: "PUT", body: content }); assert.equal(response.ok, true, await response.text());
+    const metadata = await storage.object.completeUpload(namespace, session.sessionId, [{ partNumber: 1, etag: response.headers.get("etag") ?? "" }]);
+    const row = (await pool.query<{ backend_key: string; backend_version_id: string }>("SELECT backend_key,backend_version_id FROM tessyl_storage_upload_sessions WHERE namespace=$1 AND session_id=$2", [namespace, session.sessionId])).rows[0]!;
+    assert.ok(row.backend_version_id); assert.equal(metadata.version, row.backend_version_id);
+    await storage.object.delete(namespace, "object.txt", metadata.version);
+    const versions = await s3.send(new ListObjectVersionsCommand({ Bucket: bucket, Prefix: row.backend_key }));
+    assert.equal(versions.Versions?.some(({ Key }) => Key === row.backend_key) ?? false, false);
+    assert.equal(versions.DeleteMarkers?.some(({ Key }) => Key === row.backend_key) ?? false, false);
   });
 
   it("invokes every operation through Voyd, Wasm, the adapter, and real hosted services", async () => {

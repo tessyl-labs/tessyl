@@ -226,6 +226,11 @@ rule as the authoritative backstop for a process crash between multipart
 creation and PostgreSQL persistence; database cleanup handles every tracked
 session.
 
+Local download resolutions are temporary hard-link handles removed at expiry,
+composition shutdown, or the next local-storage startup. Hosted deletion tracks
+and removes the exact S3 object version, so versioned buckets do not retain
+inaccessible object data or delete markers after a successful delete.
+
 ## Local deployment
 
 ```ts
