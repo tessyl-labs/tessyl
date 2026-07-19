@@ -13,7 +13,7 @@ const resources: Readonly<Record<string, TfmResolvedResource>> = {
     columns: ["Planet", "Orbital period", "Relative mass"],
     rows: [["Mercury", "88 days", "0.055"], ["Earth", "365 days", "1.000"], ["Mars", "687 days", "0.107"]],
   },
-  asr_video_01JABC: { url: "/fixtures/demo-video.wav", label: "Authorized video preview" },
+  asr_video_01JABC: { url: "/fixtures/demo-video.webm", label: "Authorized video preview" },
   asr_audio_01KABC: { url: "/fixtures/demo.wav", label: "Authorized audio preview" },
   asr_text_01LABC: { url: "/fixtures/transcript.txt", label: "Open local transcript fixture" },
   tsr_01MABC: { url: "/fixtures/app.html", label: "Sandboxed Tessera fixture" },

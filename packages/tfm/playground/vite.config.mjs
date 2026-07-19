@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFile } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { promisify } from "node:util";
 
 const root = resolve(fileURLToPath(new URL(".", import.meta.url)));
@@ -9,6 +10,7 @@ const port = Number.parseInt(process.env.TFM_PLAYGROUND_PORT ?? "3002", 10);
 const rendererCss = resolve(root, "../renderer.css");
 const designTokensSource = resolve(root, "../../design-tokens/src/index.ts");
 const styleGenerator = resolve(root, "../scripts/generate-renderer-styles.mjs");
+const videoFixture = resolve(root, "fixtures/demo-video.webm.base64");
 const run = promisify(execFile);
 
 const fixtureWav = () => {
@@ -23,6 +25,8 @@ const fixtureWav = () => {
   return output;
 };
 
+const fixtureVideo = () => Buffer.from(readFileSync(videoFixture, "utf8").trim(), "base64");
+
 const tfmPlaygroundPlugin = () => {
   let command;
   return {
@@ -30,9 +34,8 @@ const tfmPlaygroundPlugin = () => {
     configResolved(config) { command = config.command; },
     buildStart() {
       if (command !== "build") return;
-      const source = fixtureWav();
-      this.emitFile({ type: "asset", fileName: "fixtures/demo.wav", source });
-      this.emitFile({ type: "asset", fileName: "fixtures/demo-video.wav", source });
+      this.emitFile({ type: "asset", fileName: "fixtures/demo.wav", source: fixtureWav() });
+      this.emitFile({ type: "asset", fileName: "fixtures/demo-video.webm", source: fixtureVideo() });
     },
     async handleHotUpdate(context) {
       if (context.file !== rendererCss) return;
@@ -43,13 +46,14 @@ const tfmPlaygroundPlugin = () => {
     configureServer(server) {
       server.watcher.add(rendererCss);
       const wav = fixtureWav();
+      const video = fixtureVideo();
       server.middlewares.use((request, response, next) => {
         const path = new URL(request.url ?? "/", "http://tfm.local").pathname;
-        if (path !== "/fixtures/demo.wav" && path !== "/fixtures/demo-video.wav") return next();
+        if (path !== "/fixtures/demo.wav" && path !== "/fixtures/demo-video.webm") return next();
         response.statusCode = 200;
-        response.setHeader("Content-Type", "audio/wav");
+        response.setHeader("Content-Type", path.endsWith(".webm") ? "video/webm" : "audio/wav");
         response.setHeader("Cache-Control", "no-store");
-        response.end(wav);
+        response.end(path.endsWith(".webm") ? video : wav);
       });
     },
   };
