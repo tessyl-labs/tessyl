@@ -1,0 +1,51 @@
+# TFM renderer workbench
+
+This page exercises **CommonMark**, ~~GitHub Flavored Markdown~~, [safe links](https://tessyl.com), tables, and every directive in `tfm-directives-1`.
+
+:::tessyl-aside{tone="tip" title="Safe by construction"}
+Author strings are escaped, raw HTML fails closed, remote images are blocked by default, and resource IDs cross an explicit authorization boundary.
+:::
+
+::tessyl-video[Orbital mechanics demonstration]{asset="asr_video_01JABC" controls=true}
+
+::tessyl-audio[Narrated lesson]{asset="asr_audio_01KABC" transcript="asr_text_01LABC" controls=true}
+
+::tessyl-app[Interactive gravity sandbox]{revision="tsr_01MABC" height="compact"}
+
+::tessyl-data-table[Planet comparison]{dataset="dsr_01NABC" sortable=true}
+
+:::tessyl-infobox{tone="positive" title="Deterministic output"}
+The same accepted TFM and authorized resources produce the same semantic HTML.
+:::
+
+::::tessyl-columns
+:::tessyl-column
+## Left column
+
+- Resource-bounded parsing
+- Closed directive vocabulary
+:::
+:::tessyl-column
+## Right column
+
+> Standalone documents include current Tessyl design tokens and a restrictive CSP.
+:::
+::::
+
+::::tessyl-card-grid{columns=3}
+:::tessyl-card{title="Parser"}
+CommonMark and GFM become a validated flat node table.
+:::
+:::tessyl-card{title="Policy"}
+URLs and external resources pass through explicit policies.
+:::
+:::tessyl-card{title="Renderer"}
+Semantic HTML inherits shared Tessyl design tokens.
+:::
+::::
+
+| Capability | Default |
+| --- | --- |
+| Raw HTML | Rejected |
+| Remote images | Blocked |
+| App iframe | Sandboxed |

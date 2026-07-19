@@ -1,8 +1,25 @@
 package tessyl:tfm@1.0.0;
 
 interface parser {
+  type type-243fbce74e6d06a3 = list<type-546a51e4627a0688>;
   type type-3761ea7248d03056 = list<s32>;
-  type type-9aba7541523cee75 = list<type-d0f3f6aa524c4e66>;
+  record type-546a51e4627a0688 {
+    alignments: type-bd02313bd46e6b5f,
+    attributes: type-be1ea273adc7656f,
+    checked: bool,
+    children: type-3761ea7248d03056,
+    depth: s32,
+    identifier: string,
+    kind: string,
+    language: string,
+    liststart: s32,
+    ordered: bool,
+    span: type-fcfd8952a359fa06,
+    task: bool,
+    text: string,
+    title: string,
+    url: string,
+  }
   record type-a0a50e06b49029d2 {
     maxattributecount: s32,
     maxattributelength: s32,
@@ -19,6 +36,7 @@ interface parser {
     %type: string,
     value: string,
   }
+  type type-bd02313bd46e6b5f = list<string>;
   record type-be08db5efc4e490a {
     code: string,
     message: string,
@@ -26,26 +44,10 @@ interface parser {
     span: type-fcfd8952a359fa06,
   }
   type type-be1ea273adc7656f = list<type-ba409c607bbad614>;
-  record type-d0f3f6aa524c4e66 {
-    attributes: type-be1ea273adc7656f,
-    checked: bool,
-    children: type-3761ea7248d03056,
-    depth: s32,
-    identifier: string,
-    kind: string,
-    language: string,
-    liststart: s32,
-    ordered: bool,
-    span: type-fcfd8952a359fa06,
-    task: bool,
-    text: string,
-    title: string,
-    url: string,
-  }
-  record type-ea7cf68798441f3b {
+  record type-ef8b4c511685847d {
     diagnostics: type-b2e700edb1bd0971,
     limits: type-a0a50e06b49029d2,
-    nodes: type-9aba7541523cee75,
+    nodes: type-243fbce74e6d06a3,
     root: s32,
     schemaversion: string,
     success: bool,
@@ -60,5 +62,44 @@ interface parser {
     startline: s32,
   }
 
-  parse: func(arg0: string) -> type-ea7cf68798441f3b;
+  parse: func(arg0: string) -> type-ef8b4c511685847d;
+}
+
+interface renderer {
+  record type-10a2b3ef971d539b {
+    contentsecuritypolicy: string,
+    diagnostics: type-b2e700edb1bd0971,
+    html: string,
+    schemaversion: string,
+    success: bool,
+    vocabularyversion: string,
+  }
+  record type-6a2b890747eb210b {
+    cells: type-bd02313bd46e6b5f,
+    columns: type-bd02313bd46e6b5f,
+    id: string,
+    kind: string,
+    label: string,
+    url: string,
+  }
+  type type-b2e700edb1bd0971 = list<type-be08db5efc4e490a>;
+  type type-bd02313bd46e6b5f = list<string>;
+  record type-be08db5efc4e490a {
+    code: string,
+    message: string,
+    severity: string,
+    span: type-fcfd8952a359fa06,
+  }
+  type type-f952b6f2017f6266 = list<type-6a2b890747eb210b>;
+  record type-fcfd8952a359fa06 {
+    end: s32,
+    endcolumn: s32,
+    endline: s32,
+    start: s32,
+    startcolumn: s32,
+    startline: s32,
+  }
+
+  render-html: func(arg0: string) -> type-10a2b3ef971d539b;
+  render-html-with-resources: func(arg0: string, arg1: type-f952b6f2017f6266) -> type-10a2b3ef971d539b;
 }

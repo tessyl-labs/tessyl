@@ -25,6 +25,18 @@ export type TfmAttribute = {
   integerValue: number;
 };
 
+export type TfmDirectiveName =
+  | "tessyl-video"
+  | "tessyl-audio"
+  | "tessyl-app"
+  | "tessyl-data-table"
+  | "tessyl-aside"
+  | "tessyl-infobox"
+  | "tessyl-columns"
+  | "tessyl-column"
+  | "tessyl-card-grid"
+  | "tessyl-card";
+
 export type TfmNodeKind =
   | "root"
   | "paragraph"
@@ -50,16 +62,7 @@ export type TfmNodeKind =
   | "footnote-reference"
   | "invalid-directive"
   | "unsupported"
-  | "tessyl-video"
-  | "tessyl-audio"
-  | "tessyl-app"
-  | "tessyl-data-table"
-  | "tessyl-aside"
-  | "tessyl-infobox"
-  | "tessyl-columns"
-  | "tessyl-column"
-  | "tessyl-card-grid"
-  | "tessyl-card";
+  | TfmDirectiveName;
 
 /**
  * A boundary-safe flat node. Empty strings, false, and zero are sentinels for
@@ -80,6 +83,7 @@ export type TfmNode = {
   task: boolean;
   checked: boolean;
   attributes: TfmAttribute[];
+  alignments: string[];
 };
 
 export type TfmLimits = {

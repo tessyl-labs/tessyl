@@ -39,7 +39,8 @@ pub type TfmNode = {
   listStart: i32,
   task: bool,
   checked: bool,
-  attributes: Array<TfmAttribute>
+  attributes: Array<TfmAttribute>,
+  alignments: Array<String>
 }
 
 pub type TfmLimits = {
@@ -61,6 +62,32 @@ pub type ParseResult = {
   limits: TfmLimits
 }
 
+pub type RenderResult = {
+  schemaVersion: String,
+  vocabularyVersion: String,
+  success: bool,
+  html: String,
+  contentSecurityPolicy: String,
+  diagnostics: Array<TfmDiagnostic>
+}
+
+pub type RenderResource = {
+  kind: String,
+  id: String,
+  url: String,
+  label: String,
+  columns: Array<String>,
+  cells: Array<String>
+}
+
 // Parses TFM synchronously without rendering, fetching, or executing content.
 @external(id: "tessyl:tfm/parser@1")
 pub fn parse(source: String) -> ParseResult
+
+// Renders a standalone, styled HTML document with a restrictive security policy.
+@external(id: "tessyl:tfm/renderer@1")
+pub fn render_html(source: String) -> RenderResult
+
+// Renders with a serializable bundle of resources already authorized by the host.
+@external(id: "tessyl:tfm/renderer@1")
+pub fn render_html_with_resources(source: String, resources: Array<RenderResource>) -> RenderResult

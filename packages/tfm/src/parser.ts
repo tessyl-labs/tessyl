@@ -2,7 +2,7 @@ import remarkDirective from "remark-directive";
 import remarkGfm from "remark-gfm";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
-import { DIRECTIVE_SPECS, validateAttributes } from "./schema.js";
+import { DIRECTIVE_SPECS, isDirectiveName, validateAttributes } from "./schema.js";
 import { validateDirectiveSyntax } from "./preflight.js";
 import {
   DEFAULT_TFM_LIMITS,
@@ -35,6 +35,7 @@ type MdNode = {
   attributes?: Record<string, string | null> | null;
   identifier?: string;
   label?: string | null;
+  align?: Array<"left" | "right" | "center" | null>;
   position?: Position;
 };
 
@@ -283,6 +284,11 @@ const convertNode = (
         url: node.url ?? "",
         title: node.title ?? "",
       };
+    case "footnoteDefinition":
+    case "footnoteReference":
+      return { ...base, identifier: normalizeIdentifier(node.identifier ?? node.label ?? "") };
+    case "table":
+      return { ...base, alignments: (node.align ?? []).map((value) => value ?? "") };
     case "list":
       return { ...base, ordered: node.ordered === true, listStart: node.start ?? 0 };
     case "listItem":
@@ -313,7 +319,7 @@ const convertDirective = (
 ): TfmNode => {
   const name = node.name ?? "";
   const span = spanOf(node);
-  const spec = Object.hasOwn(DIRECTIVE_SPECS, name) ? DIRECTIVE_SPECS[name] : undefined;
+  const spec = isDirectiveName(name) ? DIRECTIVE_SPECS[name] : undefined;
   if (!spec) {
     diagnostics.add({
       code: "TFM_UNKNOWN_DIRECTIVE",
@@ -412,7 +418,7 @@ const validateNesting = (
 const directiveInfo = (node: MdNode): { name: string; valid: boolean } | undefined => {
   if (node.type !== "leafDirective" && node.type !== "containerDirective") return undefined;
   const name = node.name ?? "";
-  const spec = Object.hasOwn(DIRECTIVE_SPECS, name) ? DIRECTIVE_SPECS[name] : undefined;
+  const spec = isDirectiveName(name) ? DIRECTIVE_SPECS[name] : undefined;
   const form = node.type === "leafDirective" ? "leaf" : "container";
   return { name, valid: spec?.form === form };
 };
@@ -460,6 +466,7 @@ const emptyNode = (kind: TfmNodeKind, span: TfmSpan): TfmNode => ({
   task: false,
   checked: false,
   attributes: [],
+  alignments: [],
 });
 
 const spanOf = (node: MdNode | undefined): TfmSpan => {

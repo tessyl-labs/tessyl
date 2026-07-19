@@ -6,7 +6,8 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "dist",
-    "rootDir": "."
+    "rootDir": ".",
+    "paths": {}
   },
   "exclude": ["src/**/*.test.ts", "host/**/*.test.ts"]
 }

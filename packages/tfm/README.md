@@ -1,12 +1,13 @@
 # `@tessyl/tfm`
 
 `@tessyl/tfm` parses Tessyl Flavored Markdown (TFM) into a deterministic,
-validated flat node table. It supports CommonMark, GitHub Flavored Markdown,
-and the versioned TFM directive vocabulary. It does not render HTML, fetch
-links or references, or execute author content.
+validated flat node table and safely renders accepted TFM to semantic HTML. It
+supports CommonMark, GitHub Flavored Markdown, and the TFM directive
+vocabulary. It never fetches author links or resources during parsing or
+rendering.
 
-The durable schema version is `tfm-1`; the directive vocabulary version is
-`tfm-directives-1`. Incompatible changes require a new version.
+The current schema version is `tfm-1`; the directive vocabulary version is
+`tfm-directives-1`.
 
 ## TypeScript API
 
@@ -31,17 +32,112 @@ they are not thrown. Per-call limits may be lowered for stricter consumers:
 parse(source, { limits: { maxSourceBytes: 100_000, maxNodeCount: 5_000 } });
 ```
 
+## Safe HTML rendering
+
+`renderHtml` fails closed when parsing produces an error. By default it returns
+a standalone HTML document with current `@tessyl/design-tokens` values,
+renderer styles, a restrictive CSP meta policy, and only a hash-authorized,
+package-owned table sorter—never author scripts:
+
+```ts
+import { renderHtml } from "@tessyl/tfm";
+
+const rendered = renderHtml(source, { title: "Lesson" });
+if (!rendered.success) {
+  console.error(rendered.diagnostics);
+} else {
+  response.setHeader("Content-Security-Policy", rendered.contentSecurityPolicy);
+  response.setHeader("Content-Type", "text/html; charset=utf-8");
+  response.end(rendered.html);
+}
+```
+
+Always send `contentSecurityPolicy` as an HTTP header when serving the result.
+The document also contains the policy as a meta element, but browsers enforce
+`frame-ancestors` only from the response header.
+
+For insertion into an existing trusted page, request a fragment and import the
+shared styles. Fragment styles refer to Tessyl semantic CSS variables, so they
+inherit host theme changes:
+
+```ts
+import "@tessyl/design-tokens/theme.css";
+import "@tessyl/tfm/renderer.css";
+import { hydrateTfm, renderHtml } from "@tessyl/tfm";
+
+const rendered = renderHtml(source, { format: "fragment" });
+container.innerHTML = rendered.html;
+const disposeInteractions = hydrateTfm(container);
+```
+
+Call the returned disposer before replacing or removing a hydrated fragment.
+
+The renderer:
+
+- escapes text, titles, code, captions, directive strings, and dataset cells;
+- rejects raw HTML by failing the whole render;
+- permits only HTTP(S), `mailto`, `tel`, and same-origin relative links;
+- blocks every Markdown image request by default; `imagePolicy: "same-origin"`
+  explicitly permits relative same-origin images and `imagePolicy: "https"`
+  additionally permits HTTPS images;
+- adds no-referrer and safe external-link attributes;
+- emits no author scripts or event handlers; and
+- deduplicates resource resolution and applies render-wide resource, dataset,
+  and diagnostic budgets.
+
+Opaque directive IDs are not authorization. A host can resolve them only after
+checking existence and caller access:
+
+```ts
+const rendered = renderHtml(source, {
+  resolveResource({ kind, id }) {
+    const authorized = authorizeAndLoad(kind, id, currentUser);
+    if (!authorized) return undefined;
+    return kind === "dataset"
+      ? { columns: authorized.columns, rows: authorized.rows }
+      : { url: authorized.url, label: authorized.label };
+  },
+});
+```
+
+For asynchronous authorization or storage, `renderHtmlAsync` parses once,
+deduplicates resource requests, resolves them concurrently, and renders the
+pre-authorized bundle:
+
+```ts
+const rendered = await renderHtmlAsync(source, {
+  async resolveResource({ kind, id }) {
+    return authorizeAndLoadAsync(kind, id, currentUser);
+  },
+});
+```
+
+Callers that already have authorized data can pass serializable `resources`
+directly. `resolveResource` and `resources` are trust boundaries; their output
+is still structurally checked, URL-filtered, escaped, and resource-bounded.
+
+Media and app resource URLs may be same-origin relative URLs or HTTPS URLs.
+Apps are placed in an iframe with `sandbox="allow-scripts"`; the renderer never
+grants `allow-same-origin`, forms, popups, or top-level navigation. Unresolved
+resources render as styled, non-interactive placeholders.
+
 ## Voyd API
 
 The package advertises its Voyd source and Node/browser adapter in
-`package.json`. The adapter implements the synchronous
-`tessyl:tfm/parser@1` interface.
+`package.json`. The adapter implements `tessyl:tfm/parser@1` and the synchronous
+`tessyl:tfm/renderer@1` interface.
 
 ```voyd
-use pkg::tfm::{ parse, ParseResult }
+use pkg::tfm::{ parse, render_html, render_html_with_resources, ParseResult, RenderResult }
 
 let result = parse(source)
+let rendered = render_html(source)
 ```
+
+Voyd hosts can pass a boundary-safe `Array<RenderResource>` to
+`render_html_with_resources`; dataset rows are flattened into `cells` in
+row-major order using the `columns` length. The bundle must already be
+authorized by the host.
 
 Monorepo consumers that resolve Voyd packages from source should include the
 repository's `packages` directory in `roots.pkgDirs`; installed package
@@ -96,7 +192,7 @@ The closest planet to the Sun.
 ::::
 ```
 
-Single-colon inline directives are not part of TFM v1. Directive names,
+Single-colon inline directives are not part of the current TFM grammar. Directive names,
 attributes, forms, and layout nesting are closed and allowlisted.
 
 ### Leaf vocabulary
@@ -120,8 +216,9 @@ attributes, forms, and layout nesting are closed and allowlisted.
 | `tessyl-card` | required `title`; must be a direct child of `tessyl-card-grid` |
 
 Opaque IDs are checked only for their documented prefix and bounded syntax.
-Existence, authorization, storage lookup, rendering, and Tessera execution are
-outside this package.
+Existence, authorization, storage lookup, and Tessera execution remain host
+responsibilities. The renderer accepts authorized resource descriptions but
+does not fetch or authorize them itself.
 
 ## Resource limits
 
@@ -152,3 +249,13 @@ npm run build -w @tessyl/tfm
 ```
 
 Regenerate and commit `generated/` whenever the Voyd external DTO changes.
+
+Run the package workbench to edit representative TFM and inspect its rendered
+output and diagnostics side by side:
+
+```bash
+npm run dev -w @tessyl/tfm
+```
+
+Then open `http://127.0.0.1:3002`. The example exercises CommonMark/GFM and all
+ten directives through the public renderer API.

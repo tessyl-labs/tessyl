@@ -4,10 +4,14 @@ pub self::external
 
 pub use self::external::{
   ParseResult,
+  RenderResult,
+  RenderResource,
   TfmAttribute,
   TfmDiagnostic,
   TfmLimits,
   TfmNode,
   TfmSpan,
-  parse
+  parse,
+  render_html,
+  render_html_with_resources
 }

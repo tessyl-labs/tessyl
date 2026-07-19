@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "baseUrl": ".",
+    "paths": {
+      "@tessyl/tfm": ["../src/index.ts"],
+      "@tessyl/design-tokens": ["../../design-tokens/src/index.ts"]
+    },
+    "customConditions": ["development"],
+    "isolatedModules": true,
+    "noEmit": true,
+    "strict": true,
+    "preserveSymlinks": true
+  },
+  "include": ["src/**/*.ts"]
+}
