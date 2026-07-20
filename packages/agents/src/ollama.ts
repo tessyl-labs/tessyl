@@ -18,6 +18,7 @@ export type OllamaOptions = Omit<
   | "providerName"
   | "streamCursorPrefix"
   | "usePreviousResponseId"
+  | "supportsNativeCompaction"
 > & {
   /** Used by remote or authenticated Ollama-compatible servers. */
   apiKey?: string;
@@ -42,4 +43,5 @@ export const createOllamaAdapter = (
   providerName: "Ollama",
   streamCursorPrefix: "ollama",
   usePreviousResponseId: false,
+  supportsNativeCompaction: false,
 });

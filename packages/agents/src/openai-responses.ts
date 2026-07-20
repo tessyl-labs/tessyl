@@ -1,8 +1,11 @@
 import {
   LLM_ADAPTER_ABI_VERSION,
   defineLlmHandlers,
+  splitCompactionInput,
   type LlmAdapter,
   type LlmAdapterContext,
+  type LlmCompactionRequest,
+  type LlmCompactionResult,
   type LlmEffectHandlers,
   type LlmError,
   type LlmInputItem,
@@ -16,11 +19,13 @@ import {
   type LlmStreamResult,
   type LlmStreamStep,
   type LlmToolDefinition,
+  type LlmUsage,
 } from "./adapter.js";
 
 const DEFAULT_BASE_URL = "https://api.openai.com/v1";
 const DEFAULT_TIMEOUT_MS = 120_000;
 const MAX_ERROR_BODY_CHARS = 8_192;
+const OPENAI_PROVIDER_ITEM = "openai.responses";
 const NETWORK_ERROR_CODES = new Set([
   "ECONNABORTED",
   "ECONNREFUSED",
@@ -64,6 +69,8 @@ export type OpenAIResponsesOptions = {
    * Responses API support.
    */
   usePreviousResponseId?: boolean;
+  /** Whether this provider supports POST /responses/compact. */
+  supportsNativeCompaction?: boolean;
   timeoutMs?: number;
   fetch?: typeof globalThis.fetch;
 };
@@ -74,9 +81,14 @@ type ActiveStream = {
   abort: AbortController;
   events: SseEvents;
   input: Record<string, unknown>[];
+  replayBatches: ReplayBatch[];
   replayTokens: Set<string>;
+  previousReplayToken?: string;
   usePreviousResponseId: boolean;
 };
+
+type ReplayBatch = { start: number; end: number };
+type ReplayState = { items: Record<string, unknown>[]; batches: ReplayBatch[] };
 
 type ResponsesRequestBody = Record<string, unknown> & {
   input: Record<string, unknown>[];
@@ -116,8 +128,9 @@ export const createOpenAIResponsesAdapter = (
   const providerName = options.providerName ?? "OpenAI";
   const streamCursorPrefix = options.streamCursorPrefix ?? "openai";
   const usePreviousResponseId = options.usePreviousResponseId ?? true;
+  const supportsNativeCompaction = options.supportsNativeCompaction ?? true;
   const streams = new Map<string, ActiveStream>();
-  const replays = new Map<string, Record<string, unknown>[]>();
+  const replays = new Map<string, ReplayState>();
   let nextCursor = 1;
 
   const respond: LlmAdapter["respond"] = async (
@@ -137,8 +150,18 @@ export const createOpenAIResponsesAdapter = (
       if (!response.ok) {
         throw apiError(response.status, payload, providerName);
       }
-      const mapped = mapResponse(payload, usePreviousResponseId, providerName);
-      if (!usePreviousResponseId) rememberReplay(replays, body.input, payload, mapped);
+      const mappedResponse = mapResponse(payload, usePreviousResponseId, providerName);
+      const mapped = request.retain_continuation
+        ? mappedResponse
+        : { ...mappedResponse, continuation_token: null };
+      rememberReplay(
+        replays,
+        replayInput(request, body.input, usePreviousResponseId, replays),
+        replayBatches(request, replays),
+        payload,
+        mapped,
+      );
+      if (request.continuation_token) replays.delete(request.continuation_token);
       if (mapped.continuation_token) {
         const token = mapped.continuation_token;
         context.registerResourceCleanup(() => {
@@ -153,6 +176,46 @@ export const createOpenAIResponsesAdapter = (
     }
   };
 
+  const compactNative: NonNullable<LlmAdapter["compactNative"]> = async (request, context) => {
+    const abort = requestAbort(context, providerName, options.timeoutMs);
+    try {
+      const result = await requestNativeCompaction(
+        request,
+        fetchImplementation,
+        baseUrl,
+        options,
+        providerName,
+        replays,
+        abort.signal,
+      );
+      if (result.tag === "CompactionSucceeded" && request.continuation_token) {
+        replays.delete(request.continuation_token);
+      }
+      return result;
+    } catch (error) {
+      return compactionFailure(toLlmError(error, providerName, abort.signal));
+    } finally {
+      abort.abort();
+    }
+  };
+
+  const discardContinuation: NonNullable<LlmAdapter["discardContinuation"]> = (token) => {
+    replays.delete(token);
+  };
+
+  const preparePortableCompaction: NonNullable<
+    LlmAdapter["preparePortableCompaction"]
+  > = (request, prefix, suffix) => {
+    if (!request.continuation_token || !replays.has(request.continuation_token)) {
+      return { prefix, suffix };
+    }
+    const nativeWindow = nativeCompactionWindow(request, prefix, suffix, replays);
+    return {
+      prefix: nativeWindow.prefix.map(portableReplayItem),
+      suffix: nativeWindow.suffix,
+    };
+  };
+
   const openStream: LlmAdapter["openStream"] = async (
     request,
     context,
@@ -160,6 +223,8 @@ export const createOpenAIResponsesAdapter = (
     const abort = requestAbort(context, providerName, options.timeoutMs);
     try {
       const body = requestBody(request, true, usePreviousResponseId, replays);
+      const replay = replayInput(request, body.input, usePreviousResponseId, replays);
+      const batches = replayBatches(request, replays);
       const response = await fetchImplementation(`${baseUrl}/responses`, {
         method: "POST",
         headers: headers(options),
@@ -184,8 +249,10 @@ export const createOpenAIResponsesAdapter = (
       streams.set(cursor, {
         abort,
         events: new SseEvents(response.body.getReader(), providerName),
-        input: body.input,
+        input: replay,
+        replayBatches: batches,
         replayTokens,
+        previousReplayToken: request.continuation_token ?? undefined,
         usePreviousResponseId,
       });
       context.registerResourceCleanup(() => {
@@ -215,6 +282,9 @@ export const createOpenAIResponsesAdapter = (
   return {
     abiVersion: LLM_ADAPTER_ABI_VERSION,
     respond,
+    ...(supportsNativeCompaction ? { compactNative } : {}),
+    discardContinuation,
+    preparePortableCompaction,
     openStream,
     nextStream,
   };
@@ -224,16 +294,13 @@ const requestBody = (
   request: LlmModelRequest,
   stream: boolean,
   usePreviousResponseId: boolean,
-  replays: Map<string, Record<string, unknown>[]>,
+  replays: Map<string, ReplayState>,
 ) => {
   const replay = !usePreviousResponseId && request.continuation_token
     ? replays.get(request.continuation_token)
     : undefined;
-  if (replay && request.continuation_token) {
-    replays.delete(request.continuation_token);
-  }
   const input = replay
-    ? [...replay, ...request.input_delta.map(mapInput)]
+    ? [...replay.items, ...request.input_delta.map(mapInput)]
     : (usePreviousResponseId && request.continuation_token
       ? request.input_delta
       : request.input).map(mapInput);
@@ -244,26 +311,263 @@ const requestBody = (
     stream,
   };
   if (request.instructions) body.instructions = request.instructions;
+  if (request.max_output_tokens && request.max_output_tokens > 0) {
+    body.max_output_tokens = request.max_output_tokens;
+  }
   if (usePreviousResponseId && request.continuation_token) {
     body.previous_response_id = request.continuation_token;
   }
   return body;
 };
 
+const replayInput = (
+  request: LlmModelRequest,
+  sentInput: Record<string, unknown>[],
+  usePreviousResponseId: boolean,
+  replays: Map<string, ReplayState>,
+): Record<string, unknown>[] => {
+  if (!usePreviousResponseId || !request.continuation_token) return sentInput;
+  const previous = replays.get(request.continuation_token);
+  return previous ? [...previous.items, ...sentInput] : request.input.map(mapInput);
+};
+
+const replayBatches = (
+  request: LlmModelRequest,
+  replays: Map<string, ReplayState>,
+): ReplayBatch[] => request.continuation_token
+  ? [...(replays.get(request.continuation_token)?.batches ?? [])]
+  : [];
+
 const rememberReplay = (
-  replays: Map<string, Record<string, unknown>[]>,
+  replays: Map<string, ReplayState>,
   input: Record<string, unknown>[],
+  priorBatches: ReplayBatch[],
   value: unknown,
   response: LlmModelResponse,
 ): void => {
   if (!response.continuation_token || !isRecord(value) || !Array.isArray(value.output)) {
     return;
   }
-  replays.set(response.continuation_token, [
-    ...input,
-    ...value.output.filter(isRecord),
-  ]);
+  const output = value.output.filter(isRecord);
+  replays.set(response.continuation_token, {
+    items: [...input, ...output],
+    batches: output.length === 0
+      ? priorBatches
+      : [...priorBatches, { start: input.length, end: input.length + output.length }],
+  });
 };
+
+const requestNativeCompaction = async (
+  request: LlmCompactionRequest,
+  fetchImplementation: typeof globalThis.fetch,
+  baseUrl: string,
+  options: OpenAIResponsesOptions,
+  providerName: string,
+  replays: Map<string, ReplayState>,
+  signal: AbortSignal,
+): Promise<LlmCompactionResult> => {
+  const { prefix, suffix } = splitCompactionInput(
+    request.input,
+    request.compaction.keep_recent_items,
+    Math.max(0, request.compaction.trigger_tokens * 2),
+  );
+  if (prefix.length === 0) {
+    return compactionFailure({
+      code: "compaction_not_possible",
+      message: "The context does not contain a completed prefix that can be compacted",
+      retryable: false,
+    });
+  }
+  const nativeWindow = nativeCompactionWindow(request, prefix, suffix, replays);
+  const response = await fetchImplementation(`${baseUrl}/responses/compact`, {
+    method: "POST",
+    headers: headers(options),
+    body: JSON.stringify({ model: request.model, input: nativeWindow.prefix }),
+    signal,
+  });
+  const payload = await responsePayload(response, providerName);
+  if (!response.ok) throw apiError(response.status, payload, providerName);
+  if (!isRecord(payload) || !Array.isArray(payload.output)) {
+    throw new ProviderError(
+      "invalid_compaction_response",
+      `${providerName} compaction response is missing its output`,
+    );
+  }
+  const compacted = payload.output.filter(isRecord).map((item) => ({
+    tag: "ProviderItem" as const,
+    provider: OPENAI_PROVIDER_ITEM,
+    data: JSON.stringify(item),
+  }));
+  if (compacted.length === 0) {
+    throw new ProviderError(
+      "empty_compaction",
+      `${providerName} returned an empty compacted context`,
+    );
+  }
+  return compactionSuccess(
+    [...compacted, ...nativeWindow.suffix],
+    mapUsage(payload.usage),
+  );
+};
+
+const nativeCompactionWindow = (
+  request: LlmCompactionRequest,
+  prefix: LlmInputItem[],
+  suffix: LlmInputItem[],
+  replays: Map<string, ReplayState>,
+): { prefix: Record<string, unknown>[]; suffix: LlmInputItem[] } => {
+  const replay = request.continuation_token
+    ? replays.get(request.continuation_token)
+    : undefined;
+  if (!replay) return { prefix: prefix.map(mapInput), suffix };
+  const complete = [...replay.items, ...request.input_delta.map(mapInput)];
+  const protectedTail = protectCanonicalTail(complete, replay.batches, suffix);
+  if (
+    protectedTail &&
+    JSON.stringify(protectedTail.suffix).length <=
+      Math.max(0, request.compaction.trigger_tokens * 2)
+  ) {
+    return protectedTail;
+  }
+  if (protectedTail) return { prefix: complete, suffix: [] };
+  return { prefix: prefix.map(mapInput), suffix };
+};
+
+const protectCanonicalTail = (
+  input: Record<string, unknown>[],
+  batches: ReplayBatch[],
+  suffix: LlmInputItem[],
+): { prefix: Record<string, unknown>[]; suffix: LlmInputItem[] } | undefined => {
+  if (suffix.length === 0) return { prefix: input, suffix: [] };
+  const matched = new Array<number>(suffix.length);
+  let rawIndex = input.length - 1;
+  for (let suffixIndex = suffix.length - 1; suffixIndex >= 0; suffixIndex -= 1) {
+    while (rawIndex >= 0 && !rawItemMatches(input[rawIndex], suffix[suffixIndex]!)) {
+      rawIndex -= 1;
+    }
+    if (rawIndex < 0) return undefined;
+    matched[suffixIndex] = rawIndex;
+    rawIndex -= 1;
+  }
+  let cut = matched[0]!;
+  for (const batch of batches) {
+    if (matched.some((index) => index >= batch.start && index < batch.end)) {
+      cut = Math.min(cut, batch.start);
+    }
+  }
+  const protectedSuffix: LlmInputItem[] = [];
+  let suffixIndex = 0;
+  for (let index = cut; index < input.length; index += 1) {
+    if (matched[suffixIndex] === index) {
+      protectedSuffix.push(suffix[suffixIndex]!);
+      suffixIndex += 1;
+    } else {
+      protectedSuffix.push({
+        tag: "ProviderItem",
+        provider: OPENAI_PROVIDER_ITEM,
+        data: JSON.stringify(input[index]),
+      });
+    }
+  }
+  return { prefix: input.slice(0, cut), suffix: protectedSuffix };
+};
+
+const rawItemMatches = (
+  raw: Record<string, unknown> | undefined,
+  item: LlmInputItem,
+): boolean => {
+  if (!raw) return false;
+  switch (item.tag) {
+    case "Message":
+      if (raw.role === item.role.tag.toLowerCase() && raw.content === item.content) return true;
+      return item.role.tag === "Assistant" && raw.type === "message" &&
+        Array.isArray(raw.content) && raw.content
+          .filter((content) => isRecord(content) && (
+            content.type === "output_text" || content.type === "refusal"
+          ))
+          .map((content) => content.type === "refusal" ? content.refusal : content.text)
+          .filter((text): text is string => typeof text === "string")
+          .join("") === item.content;
+    case "ToolCall":
+      return raw.type === "function_call" && raw.call_id === item.call_id &&
+        raw.name === item.name && raw.arguments === item.arguments;
+    case "ToolOutput":
+      return raw.type === "function_call_output" && raw.call_id === item.call_id &&
+        raw.output === item.output;
+    case "ProviderItem":
+      try {
+        return item.provider === OPENAI_PROVIDER_ITEM &&
+          JSON.stringify(raw) === JSON.stringify(JSON.parse(item.data));
+      } catch {
+        return false;
+      }
+  }
+};
+
+const portableReplayItem = (item: Record<string, unknown>): LlmInputItem => {
+  if (
+    typeof item.role === "string" &&
+    (item.role === "user" || item.role === "assistant" || item.role === "system") &&
+    typeof item.content === "string"
+  ) {
+    const role = item.role === "user"
+      ? { tag: "User" as const }
+      : item.role === "assistant"
+      ? { tag: "Assistant" as const }
+      : { tag: "System" as const };
+    return { tag: "Message", role, content: item.content };
+  }
+  if (
+    item.type === "function_call" &&
+    typeof item.call_id === "string" &&
+    typeof item.name === "string" &&
+    typeof item.arguments === "string"
+  ) {
+    return {
+      tag: "ToolCall",
+      call_id: item.call_id,
+      name: item.name,
+      arguments: item.arguments,
+    };
+  }
+  if (
+    item.type === "function_call_output" &&
+    typeof item.call_id === "string" &&
+    typeof item.output === "string"
+  ) {
+    return { tag: "ToolOutput", call_id: item.call_id, output: item.output };
+  }
+  if (item.type === "message" && Array.isArray(item.content)) {
+    const text = item.content
+      .filter((content) => isRecord(content) && (
+        content.type === "output_text" || content.type === "refusal"
+      ))
+      .map((content) => content.type === "refusal" ? content.refusal : content.text)
+      .filter((value): value is string => typeof value === "string")
+      .join("");
+    if (text) {
+      return { tag: "Message", role: { tag: "Assistant" }, content: text };
+    }
+  }
+  return {
+    tag: "ProviderItem",
+    provider: OPENAI_PROVIDER_ITEM,
+    data: JSON.stringify(item),
+  };
+};
+
+const compactionSuccess = (
+  input: LlmInputItem[],
+  usage: LlmUsage,
+): LlmCompactionResult => ({
+  tag: "CompactionSucceeded",
+  response: { input, continuation_token: null, usage },
+});
+
+const compactionFailure = (error: LlmError): LlmCompactionResult => ({
+  tag: "CompactionFailed",
+  error,
+});
 
 const mapInput = (item: LlmInputItem): Record<string, unknown> => {
   switch (item.tag) {
@@ -285,6 +589,30 @@ const mapInput = (item: LlmInputItem): Record<string, unknown> => {
         call_id: item.call_id,
         output: item.output,
       };
+    case "ProviderItem": {
+      if (item.provider !== OPENAI_PROVIDER_ITEM) {
+        throw new ProviderError(
+          "incompatible_provider_context",
+          `OpenAI cannot consume compacted context from ${item.provider}`,
+        );
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(item.data);
+      } catch {
+        throw new ProviderError(
+          "invalid_provider_context",
+          "OpenAI compacted context contains invalid JSON",
+        );
+      }
+      if (!isRecord(parsed)) {
+        throw new ProviderError(
+          "invalid_provider_context",
+          "OpenAI compacted context must contain a response item object",
+        );
+      }
+      return parsed;
+    }
   }
 };
 
@@ -512,24 +840,28 @@ const mapResponse = (
     }
   }
 
-  const usage = isRecord(response.usage) ? response.usage : {};
   return {
     id: response.id,
     continuation_token: usePreviousResponseId || output.some((item) => item.tag === "ToolCall")
       ? response.id
       : null,
     output,
-    usage: {
-      input_tokens: integer(usage.input_tokens),
-      output_tokens: integer(usage.output_tokens),
-      total_tokens: integer(usage.total_tokens),
-    },
+    usage: mapUsage(response.usage),
+  };
+};
+
+const mapUsage = (value: unknown): LlmUsage => {
+  const usage = isRecord(value) ? value : {};
+  return {
+    input_tokens: integer(usage.input_tokens),
+    output_tokens: integer(usage.output_tokens),
+    total_tokens: integer(usage.total_tokens),
   };
 };
 
 const readStreamStep = async (
   streams: Map<string, ActiveStream>,
-  replays: Map<string, Record<string, unknown>[]>,
+  replays: Map<string, ReplayState>,
   cursor: string,
   providerName: string,
 ): Promise<LlmStreamResult> => {
@@ -579,9 +911,14 @@ const readStreamStep = async (
         active.usePreviousResponseId,
         providerName,
       );
-      if (!active.usePreviousResponseId) {
-        rememberReplay(replays, active.input, event.response, mapped);
-      }
+      rememberReplay(
+        replays,
+        active.input,
+        active.replayBatches,
+        event.response,
+        mapped,
+      );
+      if (active.previousReplayToken) replays.delete(active.previousReplayToken);
       if (mapped.continuation_token) active.replayTokens.add(mapped.continuation_token);
       return streamSuccess({
         tag: "Done",
@@ -696,6 +1033,7 @@ const responsePayload = async (
   try {
     return JSON.parse(text) as unknown;
   } catch {
+    if (!response.ok) return { message: text };
     throw new ProviderError(
       "invalid_response",
       `${providerName} returned non-JSON data: ${text.slice(0, MAX_ERROR_BODY_CHARS)}`,

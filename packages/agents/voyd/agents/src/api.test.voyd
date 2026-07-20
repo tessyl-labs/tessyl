@@ -125,6 +125,61 @@ fn run_tool_case(calculator: ToolFactory) -> RunResult
             assert(false)
         tail(msgpack::pack_boundary_value<LlmResult>(text_response("response-2", "The answer is 3", 4, 4)))
 
+fn run_compaction_case(calculator: ToolFactory) -> RunResult
+  try open
+    run(agent(
+      name: "test",
+      instructions: "Be useful",
+      model: "test-model",
+      tools: [calculator],
+      max_turns: 3,
+      compaction: compaction(
+        trigger_tokens: 30,
+        keep_recent_items: 4,
+        instructions: "Retain citations",
+        prefer_native: false
+      )
+    ), input: [InputItem::Message { role: Role::User {}, content: "add" }])
+  Llm::respond(tail, payload):
+    let request = msgpack::unpack_boundary_value<ModelRequest>(payload)
+    match(request.continuation_token)
+      None:
+        tail(msgpack::pack_boundary_value<LlmResult>(tool_response("response-1", "add", "{}")))
+      Some<String> { value }:
+        assert(value.equals("compaction-token"), eq: true)
+        assert(request.input_delta.len(), eq: 0)
+        match(request.input.at(0))
+          InputItem::Message { role, content }:
+            match(role)
+              Role::Assistant:
+                assert(content.equals("checkpoint"), eq: true)
+              else:
+                assert(false)
+          else:
+            assert(false)
+        tail(msgpack::pack_boundary_value<LlmResult>(text_response("response-2", "The answer is 3", 4, 4)))
+  Llm::compact(tail, payload):
+    let request = msgpack::unpack_boundary_value<CompactionRequest>(payload)
+    assert(request.input.len(), eq: 3)
+    assert(request.input_delta.len(), eq: 1)
+    assert(request.compaction.trigger_tokens, eq: 30)
+    assert(request.compaction.keep_recent_items, eq: 4)
+    assert(request.compaction.instructions.equals("Retain citations"), eq: true)
+    assert(request.compaction.model.equals(""), eq: true)
+    assert(request.compaction.prefer_native, eq: false)
+    match(request.input_delta.at(0))
+      InputItem::ToolOutput { call_id }:
+        assert(call_id.equals("call-1"), eq: true)
+      else:
+        assert(false)
+    tail(msgpack::pack_boundary_value<CompactionResult>(CompactionResult::CompactionSucceeded {
+      response: CompactionResponse {
+        input: [InputItem::Message { role: Role::Assistant {}, content: "checkpoint" }],
+        continuation_token: "compaction-token",
+        usage: usage(2, 1)
+      }
+    }))
+
 fn run_unknown_case() -> RunResult
   try open
     run(test_agent(Array<ToolFactory>::init(), 2), input: [
@@ -132,6 +187,131 @@ fn run_unknown_case() -> RunResult
     ])
   Llm::respond(tail, _payload):
     tail(msgpack::pack_boundary_value<LlmResult>(tool_response("response-1", "missing", "{}")))
+
+fn run_context_retry_case() -> RunResult
+  try open
+    run(agent(
+      name: "test",
+      instructions: "Be useful",
+      model: "test-model",
+      max_turns: 2,
+      compaction: compaction(trigger_tokens: 100000, keep_recent_items: 1)
+    ), input: [user_message("oversized")])
+  Llm::respond(tail, payload):
+    let request = msgpack::unpack_boundary_value<ModelRequest>(payload)
+    match(request.input.at(0))
+      InputItem::Message { role, content }:
+        match(role)
+          Role::Assistant:
+            assert(content.equals("retry checkpoint"), eq: true)
+            tail(msgpack::pack_boundary_value<LlmResult>(text_response("response-retry", "Recovered", 3, 1)))
+          else:
+            tail(msgpack::pack_boundary_value<LlmResult>(LlmResult::LlmFailed {
+              error: LlmError {
+                code: "http_400",
+                message: "the prompt exceeds the model context window",
+                retryable: false
+              }
+            }))
+      else:
+        assert(false)
+        tail(msgpack::pack_boundary_value<LlmResult>(text_response("unexpected", "", 0, 0)))
+  Llm::compact(tail, payload):
+    let request = msgpack::unpack_boundary_value<CompactionRequest>(payload)
+    assert(request.input.len(), eq: 1)
+    assert(request.compaction.keep_recent_items, eq: 0)
+    assert(request.compaction.prefer_native, eq: false)
+    tail(msgpack::pack_boundary_value<CompactionResult>(CompactionResult::CompactionSucceeded {
+      response: CompactionResponse {
+        input: [assistant_message("retry checkpoint")],
+        continuation_token: None {},
+        usage: usage(2, 1)
+      }
+    }))
+
+fn run_invalid_compaction_case(compacted_input: Array<InputItem>) -> RunResult
+  try open
+    run(agent(
+      name: "test",
+      instructions: "Be useful",
+      model: "test-model",
+      compaction: compaction(trigger_tokens: 1, keep_recent_items: 1)
+    ), input: [user_message("older"), user_message("newer")])
+  Llm::compact(tail, _payload):
+    tail(msgpack::pack_boundary_value<CompactionResult>(CompactionResult::CompactionSucceeded {
+      response: CompactionResponse {
+        input: compacted_input,
+        continuation_token: None {},
+        usage: usage(1, 1)
+      }
+    }))
+  Llm::respond(tail, _payload):
+    assert(false)
+    tail(msgpack::pack_boundary_value<LlmResult>(text_response("unexpected", "", 0, 0)))
+
+fn run_invalid_initial_history_case() -> RunResult
+  try open
+    run(test_agent(Array<ToolFactory>::init(), 2), input: [
+      InputItem::ToolOutput { call_id: "orphan", output: "invalid" }
+    ])
+  Llm::respond(tail, _payload):
+    assert(false)
+    tail(msgpack::pack_boundary_value<LlmResult>(text_response("unexpected", "", 0, 0)))
+
+fn run_no_progress_compaction_case(compacted_input: Array<InputItem>) -> RunResult
+  try open
+    run(agent(
+      name: "test",
+      instructions: "Be useful",
+      model: "test-model",
+      compaction: compaction(trigger_tokens: 1, keep_recent_items: 0)
+    ), input: [user_message("unchanged")])
+  Llm::compact(tail, _payload):
+    tail(msgpack::pack_boundary_value<CompactionResult>(CompactionResult::CompactionSucceeded {
+      response: CompactionResponse {
+        input: compacted_input,
+        continuation_token: None {},
+        usage: usage(1, 1)
+      }
+    }))
+  Llm::respond(tail, _payload):
+    assert(false)
+    tail(msgpack::pack_boundary_value<LlmResult>(text_response("unexpected", "", 0, 0)))
+
+fn run_opaque_context_case(calculator: ToolFactory, ~compactions: Array<String>) -> RunResult
+  try open
+    run(agent(
+      name: "test",
+      instructions: "Be useful",
+      model: "test-model",
+      tools: [calculator],
+      max_turns: 3,
+      compaction: compaction(trigger_tokens: 30, keep_recent_items: 0)
+    ), input: [user_message("add twice")])
+  Llm::respond(tail, payload):
+    let request = msgpack::unpack_boundary_value<ModelRequest>(payload)
+    match(request.continuation_token)
+      Some<String>:
+        tail(msgpack::pack_boundary_value<LlmResult>(text_response("response-3", "Done", 10, 1)))
+      None:
+        match(request.input.at(0))
+          InputItem::ProviderItem { data }:
+            tail(msgpack::pack_boundary_value<LlmResult>(tool_response("response-2", "add", "{}")))
+          else:
+            tail(msgpack::pack_boundary_value<LlmResult>(tool_response("response-1", "add", "{}")))
+  Llm::compact(tail, _payload):
+    compactions.push("called")
+    assert(compactions.len(), eq: 1)
+    tail(msgpack::pack_boundary_value<CompactionResult>(CompactionResult::CompactionSucceeded {
+      response: CompactionResponse {
+        input: [InputItem::ProviderItem {
+          provider: "test.provider",
+          data: "opaque-encrypted-data-that-is-much-larger-than-its-logical-token-footprint-opaque-encrypted-data-that-is-much-larger-than-its-logical-token-footprint"
+        }],
+        continuation_token: None {},
+        usage: usage(2, 1)
+      }
+    }))
 
 fn run_limit_case(looping: ToolFactory) -> RunResult
   try open
@@ -200,6 +380,27 @@ test "run executes Voyd tools and preserves the provider-neutral transcript":
     RunResult::Failed:
       assert(false)
 
+test "run compacts at a safe tool boundary and includes compaction usage":
+  let result = run_compaction_case(add_tool)
+
+  match(result)
+    RunResult::Completed { output, turns, usage, history }:
+      assert(output.equals("The answer is 3"), eq: true)
+      assert(turns, eq: 2)
+      assert(usage.total_tokens, eq: 16)
+      assert(history.len(), eq: 2)
+      match(history.at(0))
+        InputItem::Message { role, content }:
+          match(role)
+            Role::Assistant:
+              assert(content.equals("checkpoint"), eq: true)
+            else:
+              assert(false)
+        else:
+          assert(false)
+    RunResult::Failed:
+      assert(false)
+
 test "run reports unknown tools without another model turn":
   let result = run_unknown_case()
 
@@ -214,6 +415,114 @@ test "run reports unknown tools without another model turn":
     RunResult::Completed:
       assert(false)
 
+test "run compacts and retries one provider context-limit failure":
+  let result = run_context_retry_case()
+
+  match(result)
+    RunResult::Completed { output, turns, usage }:
+      assert(output.equals("Recovered"), eq: true)
+      assert(turns, eq: 1)
+      assert(usage.total_tokens, eq: 7)
+    RunResult::Failed:
+      assert(false)
+
+test "run rejects compacted histories with orphaned tool items":
+  let result = run_invalid_compaction_case([
+    InputItem::ToolOutput { call_id: "orphan", output: "invalid" }
+  ])
+
+  match(result)
+    RunResult::Failed { error, turns, usage }:
+      assert(turns, eq: 0)
+      assert(usage.total_tokens, eq: 2)
+      match(error)
+        AgentError::CompactionFailure { error: compaction_error }:
+          assert(compaction_error.code.equals("invalid_compaction_context"), eq: true)
+        else:
+          assert(false)
+    RunResult::Completed:
+      assert(false)
+
+test "run rejects malformed initial history before calling the provider":
+  let result = run_invalid_initial_history_case()
+
+  match(result)
+    RunResult::Failed { error, turns, usage }:
+      assert(turns, eq: 0)
+      assert(usage.total_tokens, eq: 0)
+      match(error)
+        AgentError::InvalidHistory { message }:
+          assert(message.contains("initial input"), eq: true)
+        else:
+          assert(false)
+    RunResult::Completed:
+      assert(false)
+
+test "run rejects empty and unchanged compaction responses":
+  let empty = run_no_progress_compaction_case(Array<InputItem>::init())
+  let unchanged = run_no_progress_compaction_case([user_message("unchanged")])
+
+  match(empty)
+    RunResult::Failed { error }:
+      match(error)
+        AgentError::CompactionFailure { error: compaction_error }:
+          assert(compaction_error.code.equals("compaction_no_progress"), eq: true)
+        else:
+          assert(false)
+    RunResult::Completed:
+      assert(false)
+  match(unchanged)
+    RunResult::Failed { error }:
+      match(error)
+        AgentError::CompactionFailure { error: compaction_error }:
+          assert(compaction_error.code.equals("compaction_no_progress"), eq: true)
+        else:
+          assert(false)
+    RunResult::Completed:
+      assert(false)
+
+test "run rejects reversed and duplicate compacted tool pairs":
+  let reversed = run_invalid_compaction_case([
+    InputItem::ToolOutput { call_id: "pair", output: "invalid" },
+    InputItem::ToolCall { call_id: "pair", name: "tool", arguments: "{}" }
+  ])
+  let duplicate = run_invalid_compaction_case([
+    InputItem::ToolCall { call_id: "pair", name: "tool", arguments: "{}" },
+    InputItem::ToolOutput { call_id: "pair", output: "first" },
+    InputItem::ToolOutput { call_id: "pair", output: "second" }
+  ])
+
+  match(reversed)
+    RunResult::Failed { error }:
+      match(error)
+        AgentError::CompactionFailure { error: compaction_error }:
+          assert(compaction_error.code.equals("invalid_compaction_context"), eq: true)
+        else:
+          assert(false)
+    RunResult::Completed:
+      assert(false)
+
+  match(duplicate)
+    RunResult::Failed { error }:
+      match(error)
+        AgentError::CompactionFailure { error: compaction_error }:
+          assert(compaction_error.code.equals("invalid_compaction_context"), eq: true)
+        else:
+          assert(false)
+    RunResult::Completed:
+      assert(false)
+
+test "run uses provider usage instead of opaque payload bytes for context pressure":
+  let ~compactions = Array<String>::init()
+  let result = run_opaque_context_case(add_tool, compactions)
+
+  assert(compactions.len(), eq: 1)
+  match(result)
+    RunResult::Completed { output, turns }:
+      assert(output.equals("Done"), eq: true)
+      assert(turns, eq: 3)
+    RunResult::Failed:
+      assert(false)
 test "run enforces the turn limit":
   let result = run_limit_case(looping_tool)
 

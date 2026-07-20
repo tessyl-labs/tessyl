@@ -1,7 +1,7 @@
 # `@tessyl/agents`
 
 A minimal Voyd-native agent harness. The package owns the model/tool loop and
-uses the versioned `tessyl.agents.llm.v2` effect as its provider boundary. Every model
+uses the versioned `tessyl.agents.llm.v3` effect as its provider boundary. Every model
 request includes the complete transcript, so adapters can be stateful or
 stateless; provider continuation tokens are an optional optimization.
 
@@ -68,6 +68,67 @@ Use `run_streamed` with an `on_event` function to receive `Started` and
 `TextDelta` events. The harness accumulates usage and stops at the configured
 `max_turns` bound.
 
+## Context compaction
+
+Configure compaction on the agent when a run may accumulate a large tool or
+message transcript:
+
+```voyd
+let librarian = agent(
+  name: "librarian",
+  instructions: "Research the library and retain source identifiers.",
+  model: "gpt-5.6",
+  tools: [lookup],
+  max_turns: 40,
+  compaction: compaction(
+    trigger_tokens: 100000,
+    keep_recent_items: 6,
+    instructions: "Retain claims, source identifiers, open questions, and next actions.",
+    model: "checkpoint-model"
+  )
+)
+```
+
+The harness estimates the initial request size, then uses provider-reported
+input and output usage when available. It checks pressure only at model-call
+boundaries, after every tool call has a corresponding output. A compaction does
+not consume an agent turn, but its token usage is included in `RunResult.usage`.
+For opaque provider compaction items, the next-window estimate uses the
+provider-reported compacted output tokens instead of treating encrypted payload
+bytes as prompt text.
+
+Adapters with a native compaction API may expose it as an optional capability.
+Otherwise the SDK uses the adapter's ordinary `respond` operation to create a
+portable checkpoint and retains a tool-pair-safe recent suffix itself. Native
+compactors preserve the same recent suffix and may return opaque `ProviderItem`
+values for the older prefix. `keep_recent_items` is an upper bound: the SDK also
+caps the suffix relative to `trigger_tokens` and moves complete oversized tool
+batches into the prefix. Portable checkpoints are replayed as assistant
+context so researched or tool-sourced text cannot gain system priority. Normal
+portable compaction summarizes the complete older prefix. Only the last-resort
+context-limit recovery path bounds an oversized transcript excerpt before asking
+the compactor model, preventing the recovery request from repeating the same
+overflow. The checkpoint prompt includes the trusted agent instructions and
+application checkpoint requirements, while transcript content remains explicitly
+untrusted. Portable compactor calls are one-shot and do not retain unreachable
+provider continuation snapshots. The SDK requests a checkpoint output budget and
+deterministically bounds a provider that ignores it, reserving headroom for the
+agent instructions, tools, and recent suffix; proactive requests are capped at
+2,048 output tokens for broad provider compatibility. Before portable
+compaction, adapters may materialize replay-only opaque reasoning as typed input,
+so its conclusions reach the checkpoint before the old continuation is released.
+Overflow recovery uses a
+conservative output cap independent of `trigger_tokens`, since the context error
+may mean that threshold was configured above the provider's actual window. The
+same recovery envelope bounds trusted agent/checkpoint instructions and visible
+transcript data. Opaque provider items remain typed; if they alone cannot fit the
+envelope, recovery fails explicitly rather than silently flattening and losing
+them. The SDK validates any
+visible tool calls and outputs before replacing canonical history. Invalid
+policies, invalid compacted contexts, and compaction failures are reported as
+typed `AgentError` variants. A provider context-limit error triggers one
+bounded compact-and-retry attempt when compaction is configured.
+
 ## OpenAI Responses adapter
 
 Create the host handlers and pass them to the Voyd runtime:
@@ -83,7 +144,13 @@ await compiled.run({ entryName: "answer", handlers });
 ```
 
 The adapter uses `POST /v1/responses`, function tools, response continuation
-IDs, and streamed server-sent events.
+IDs, streamed server-sent events, and native `POST /v1/responses/compact`
+compaction. Set `prefer_native: false` in the Voyd policy to request a semantic
+checkpoint using the model instead. Supplying application-specific compaction
+`instructions` also selects the portable path because opaque native compaction
+cannot guarantee a custom checkpoint schema. Supplying a compaction `model`
+selects that model for portable checkpoint generation; omit it to reuse the
+agent model.
 
 ## Ollama adapter
 
@@ -120,7 +187,9 @@ const handlers = createOllamaHandlers({
 Keep the `/v1` suffix on `baseUrl`. Ollama does not support Responses API
 continuation IDs, so this adapter deliberately sends the complete agent
 transcript on every tool turn. Use a model with tool-calling support when the
-agent declares tools.
+agent declares tools. Ollama does not expose the native compact endpoint, so
+the SDK generates a portable assistant checkpoint with the configured model and
+carries the unsummarized recent tool batch forward.
 
 ## Custom provider adapters
 
@@ -143,6 +212,15 @@ const provider: LlmAdapter = {
   async respond(request) {
     // Translate the complete provider-neutral request.
     return { tag: "LlmFailed", error: {
+      code: "not_implemented",
+      message: `Adapter ABI ${LLM_ADAPTER_ABI_VERSION}`,
+      retryable: false,
+    } };
+  },
+  async compactNative(request) {
+    // Optional. Return opaque or otherwise canonical provider context from a
+    // native compaction API. Omit this method to use the SDK fallback.
+    return { tag: "CompactionFailed", error: {
       code: "not_implemented",
       message: `Adapter ABI ${LLM_ADAPTER_ABI_VERSION}`,
       retryable: false,

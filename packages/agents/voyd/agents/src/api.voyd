@@ -23,7 +23,12 @@ pub obj ToolCall {
   api arguments: String
 }
 pub obj ToolOutput { api call_id: String, api output: String }
-pub type InputItem = Message | ToolCall | ToolOutput
+/// Opaque provider-native context returned by a compaction operation.
+pub obj ProviderItem {
+  api provider: String,
+  api data: String
+}
+pub type InputItem = Message | ToolCall | ToolOutput | ProviderItem
 
 pub obj Text { api text: String }
 pub type ModelOutput = Text | ToolCall
@@ -40,13 +45,41 @@ pub obj ModelRequest {
   api input: Array<InputItem>,
   api input_delta: Array<InputItem>,
   api tools: Array<ToolDefinition>,
-  api continuation_token?: String
+  api continuation_token?: String,
+  api retain_continuation: bool
 }
 
 pub obj ModelResponse {
   api id: String,
   api continuation_token?: String,
   api output: Array<ModelOutput>,
+  api usage: Usage
+}
+
+/// Controls automatic context compaction at safe model-call boundaries.
+pub obj CompactionConfig {
+  api trigger_tokens: i32,
+  api keep_recent_items: i32,
+  api instructions: String,
+  api model: String,
+  api prefer_native: bool
+}
+
+pub obj CompactionRequest {
+  api model: String,
+  api instructions: String,
+  api input: Array<InputItem>,
+  api input_delta: Array<InputItem>,
+  api tools: Array<ToolDefinition>,
+  api continuation_token?: String,
+  api retain_continuation: bool,
+  api overflow_recovery: bool,
+  api compaction: CompactionConfig
+}
+
+pub obj CompactionResponse {
+  api input: Array<InputItem>,
+  api continuation_token?: String,
   api usage: Usage
 }
 
@@ -59,6 +92,10 @@ pub obj LlmError {
 pub obj LlmSucceeded { api response: ModelResponse }
 pub obj LlmFailed { api error: LlmError }
 pub type LlmResult = LlmSucceeded | LlmFailed
+
+pub obj CompactionSucceeded { api response: CompactionResponse }
+pub obj CompactionFailed { api error: LlmError }
+pub type CompactionResult = CompactionSucceeded | CompactionFailed
 
 pub obj Started { api response_id: String }
 pub obj TextDelta { api delta: String }
@@ -73,9 +110,10 @@ pub obj StreamFailed { api error: LlmError }
 pub type StreamResult = StreamSucceeded | StreamFailed
 
 /// Provider adapter surface used by the agent harness.
-@effect(id: "tessyl.agents.llm.v2")
+@effect(id: "tessyl.agents.llm.v3")
 pub eff Llm
   respond(tail, payload: MsgPack) -> MsgPack
+  compact(tail, payload: MsgPack) -> MsgPack
   open_stream(tail, payload: MsgPack) -> MsgPack
   next_stream(tail, payload: MsgPack) -> MsgPack
 
@@ -84,15 +122,18 @@ pub obj Agent {
   instructions: String,
   model: String,
   tools: Array<Tool>,
-  max_turns: i32
+  max_turns: i32,
+  compaction: Option<CompactionConfig>
 }
 
 pub obj InvalidConfig { api message: String }
+pub obj InvalidHistory { api message: String }
 pub obj LlmFailure { api error: LlmError }
 pub obj UnknownTool { api name: String }
 pub obj ToolFailure { api name: String, api message: String }
+pub obj CompactionFailure { api error: LlmError }
 pub obj MaxTurns { api max_turns: i32 }
-pub type AgentError = InvalidConfig | LlmFailure | UnknownTool | ToolFailure | MaxTurns
+pub type AgentError = InvalidConfig | InvalidHistory | LlmFailure | CompactionFailure | UnknownTool | ToolFailure | MaxTurns
 
 pub obj Completed {
   api output: String,
@@ -121,20 +162,40 @@ pub fn assistant_message(content: String) -> InputItem
 pub fn system_message(content: String) -> InputItem
   Message { role: System {}, content: content }
 
+/// Creates an automatic context-compaction policy. The adapter may use native
+/// provider compaction when preferred, otherwise it must return a portable
+/// compacted context.
+pub fn compaction({
+  trigger_tokens: i32,
+  keep_recent_items: i32 = 4,
+  instructions: String = "",
+  model: String = "",
+  prefer_native: bool = true
+}) -> CompactionConfig
+  CompactionConfig {
+    trigger_tokens: trigger_tokens,
+    keep_recent_items: keep_recent_items,
+    instructions: instructions,
+    model: model,
+    prefer_native: prefer_native
+  }
+
 /// Creates an agent. `max_turns` bounds model calls, including tool turns.
 pub fn agent({
   name: String,
   instructions: String,
   model: String,
   tools?: Array<ToolFactory>,
-  max_turns?: i32
+  max_turns?: i32,
+  compaction?: CompactionConfig
 }) -> Agent
   Agent {
     name: name,
     instructions: instructions,
     model: model,
     tools: materialize_tools(tools ?? Array<ToolFactory>::init()),
-    max_turns: max_turns ?? 8
+    max_turns: max_turns ?? 8,
+    compaction: compaction
   }
 
 /// Runs an agent until it produces a final text response or fails.
@@ -149,12 +210,15 @@ pub fn run_streamed(
   run_loop(agent, input, RunMode::Streaming { on_event: on_event })
 
 fn run_loop(agent: Agent, initial_input: Array<InputItem>, mode: RunMode): (Llm, open) -> RunResult
-  let ~history = copy_input(initial_input)
+  var ~history = copy_input(initial_input)
   let definitions = tool_definitions(agent.tools)
   var input_delta = copy_input(initial_input)
   var continuation_token: Option<String> = None {}
   var turns = 0
   var usage = empty_usage()
+  var context_tokens = estimate_request_tokens(agent.instructions, history, definitions)
+  var opaque_context_tokens = 0
+  var context_retry = false
 
   if agent.max_turns <= 0:
     return failed(
@@ -164,7 +228,95 @@ fn run_loop(agent: Agent, initial_input: Array<InputItem>, mode: RunMode): (Llm,
       usage
     )
 
+  match(agent.compaction)
+    Some<CompactionConfig> { value }:
+      if value.trigger_tokens <= 0:
+        return failed(
+          AgentError::InvalidConfig { message: "compaction trigger_tokens must be greater than zero" },
+          history,
+          turns,
+          usage
+        )
+      if value.keep_recent_items < 0:
+        return failed(
+          AgentError::InvalidConfig { message: "compaction keep_recent_items must not be negative" },
+          history,
+          turns,
+          usage
+        )
+    None:
+      void
+
+  if not valid_compacted_input(history):
+    return failed(
+      AgentError::InvalidHistory {
+        message: "initial input contains an orphaned, reversed, or duplicate tool call/output"
+      },
+      history,
+      turns,
+      usage
+    )
+
   while turns < agent.max_turns:
+    match(agent.compaction)
+      Some<CompactionConfig> { value }:
+        if not context_retry and should_compact(value, history, context_tokens):
+          let compacted = compact_context(CompactionRequest {
+            model: agent.model,
+            instructions: agent.instructions,
+            input: copy_input(history),
+            input_delta: input_delta,
+            tools: definitions,
+            continuation_token: continuation_token,
+            retain_continuation: true,
+            overflow_recovery: false,
+            compaction: value
+          })
+          match(compacted)
+            CompactionResult::CompactionFailed { error }:
+              return failed(
+                AgentError::CompactionFailure { error: error },
+                history,
+                turns,
+                usage
+              )
+            CompactionResult::CompactionSucceeded { response }:
+              usage = add_usage(usage, response.usage)
+              if not valid_compacted_input(response.input):
+                return failed(
+                  AgentError::CompactionFailure { error: invalid_compaction_error() },
+                  history,
+                  turns,
+                  usage
+                )
+              let baseline_estimate = estimate_request_tokens(agent.instructions, history, definitions)
+              let baseline_tokens = if context_tokens > baseline_estimate then: context_tokens else: baseline_estimate
+              let next_context_tokens = estimate_context_after_compaction(
+                agent.instructions,
+                response.input,
+                definitions,
+                response.usage.output_tokens
+              )
+              if not compaction_made_progress(
+                history,
+                response.input,
+                baseline_tokens,
+                next_context_tokens
+              ):
+                return failed(
+                  AgentError::CompactionFailure { error: compaction_no_progress_error() },
+                  history,
+                  turns,
+                  usage
+                )
+              history = copy_input(response.input)
+              input_delta = compacted_input_delta(response.input, response.continuation_token)
+              continuation_token = response.continuation_token
+              opaque_context_tokens = if has_provider_item(history) then: response.usage.output_tokens else: 0
+              context_tokens = next_context_tokens
+      None:
+        void
+
     turns = turns + 1
     let request = ModelRequest {
       model: agent.model,
@@ -172,7 +324,8 @@ fn run_loop(agent: Agent, initial_input: Array<InputItem>, mode: RunMode): (Llm,
       input: copy_input(history),
       input_delta: input_delta,
       tools: definitions,
-      continuation_token: continuation_token
+      continuation_token: continuation_token,
+      retain_continuation: true
     }
     let model_result = match(mode)
       RunMode::Regular:
@@ -182,8 +335,83 @@ fn run_loop(agent: Agent, initial_input: Array<InputItem>, mode: RunMode): (Llm,
 
     match(model_result)
       LlmResult::LlmFailed { error }:
+        if not context_retry and is_context_limit_error(error):
+          match(agent.compaction)
+            Some<CompactionConfig> { value }:
+              if history.len() > 0:
+                let recovery_config = CompactionConfig {
+                  trigger_tokens: value.trigger_tokens,
+                  keep_recent_items: 0,
+                  instructions: value.instructions,
+                  model: value.model,
+                  prefer_native: false
+                }
+                let compacted = compact_context(CompactionRequest {
+                  model: agent.model,
+                  instructions: agent.instructions,
+                  input: copy_input(history),
+                  input_delta: input_delta,
+                  tools: definitions,
+                  continuation_token: continuation_token,
+                  retain_continuation: true,
+                  overflow_recovery: true,
+                  compaction: recovery_config
+                })
+                match(compacted)
+                  CompactionResult::CompactionFailed { error: compaction_error }:
+                    return failed(
+                      AgentError::CompactionFailure { error: compaction_error },
+                      history,
+                      turns,
+                      usage
+                    )
+                  CompactionResult::CompactionSucceeded { response }:
+                    usage = add_usage(usage, response.usage)
+                    if not valid_compacted_input(response.input):
+                      return failed(
+                        AgentError::CompactionFailure { error: invalid_compaction_error() },
+                        history,
+                        turns,
+                        usage
+                      )
+                    let baseline_estimate = estimate_request_tokens(
+                      agent.instructions,
+                      history,
+                      definitions
+                    )
+                    let observed_baseline = if context_tokens > baseline_estimate then: context_tokens else: baseline_estimate
+                    let baseline_tokens = if value.trigger_tokens > observed_baseline then: value.trigger_tokens else: observed_baseline
+                    let next_context_tokens = estimate_context_after_compaction(
+                      agent.instructions,
+                      response.input,
+                      definitions,
+                      response.usage.output_tokens
+                    )
+                    if not compaction_made_progress(
+                      history,
+                      response.input,
+                      baseline_tokens,
+                      next_context_tokens
+                    ):
+                      return failed(
+                        AgentError::CompactionFailure { error: compaction_no_progress_error() },
+                        history,
+                        turns,
+                        usage
+                      )
+                    history = copy_input(response.input)
+                    input_delta = compacted_input_delta(response.input, response.continuation_token)
+                    continuation_token = response.continuation_token
+                    opaque_context_tokens = if has_provider_item(history) then: response.usage.output_tokens else: 0
+                    context_tokens = next_context_tokens
+                    context_retry = true
+                    turns = turns - 1
+                    continue
+            None:
+              void
         return failed(AgentError::LlmFailure { error: error }, history, turns, usage)
       LlmResult::LlmSucceeded { response }:
+        context_retry = false
         usage = add_usage(usage, response.usage)
         continuation_token = response.continuation_token
         let ~tool_calls = Array<ToolCall>::init()
@@ -235,6 +463,18 @@ fn run_loop(agent: Agent, initial_input: Array<InputItem>, mode: RunMode): (Llm,
               )
           call_index = call_index + 1
         input_delta = tool_outputs
+        let observed_tokens = response.usage.input_tokens + response.usage.output_tokens +
+          estimate_input_tokens(tool_outputs)
+        let estimated_tokens = estimate_context_after_compaction(
+          agent.instructions,
+          history,
+          definitions,
+          opaque_context_tokens
+        )
+        if has_provider_item(history) and response.usage.input_tokens > 0:
+          context_tokens = observed_tokens
+        else:
+          context_tokens = if observed_tokens > estimated_tokens then: observed_tokens else: estimated_tokens
 
   failed(AgentError::MaxTurns { max_turns: agent.max_turns }, history, turns, usage)
 
@@ -262,6 +502,11 @@ fn consume_stream_result(
 fn request_model(request: ModelRequest): Llm -> LlmResult
   msgpack::unpack_boundary_value<LlmResult>(
     Llm::respond(msgpack::pack_boundary_value<ModelRequest>(request))
+  )
+
+fn compact_context(request: CompactionRequest): Llm -> CompactionResult
+  msgpack::unpack_boundary_value<CompactionResult>(
+    Llm::compact(msgpack::pack_boundary_value<CompactionRequest>(request))
   )
 
 fn open_model_stream(request: ModelRequest): Llm -> StreamResult
@@ -313,6 +558,234 @@ fn copy_input(input: Array<InputItem>) -> Array<InputItem>
     copy.push(input.at(index))
     index = index + 1
   copy
+
+fn should_compact(
+  config: CompactionConfig,
+  input: Array<InputItem>,
+  context_tokens: i32
+) -> bool
+  input.len() > 0 and context_tokens >= config.trigger_tokens
+
+fn compacted_input_delta(
+  input: Array<InputItem>,
+  continuation_token: Option<String>
+) -> Array<InputItem>
+  match(continuation_token)
+    Some<String>:
+      Array<InputItem>::init()
+    None:
+      copy_input(input)
+
+fn valid_compacted_input(input: Array<InputItem>) -> bool
+  var index = 0
+  while index < input.len():
+    match(input.at(index))
+      InputItem::ToolCall { call_id }:
+        if not valid_tool_pair(input, call_id):
+          return false
+      InputItem::ToolOutput { call_id }:
+        if not valid_tool_pair(input, call_id):
+          return false
+      else:
+        void
+    index = index + 1
+  true
+
+fn compaction_made_progress(
+  previous: Array<InputItem>,
+  replacement: Array<InputItem>,
+  previous_tokens: i32,
+  replacement_tokens: i32
+) -> bool
+  replacement.len() > 0 and
+    replacement_tokens < previous_tokens and
+    not same_input(previous, replacement)
+
+fn same_input(left: Array<InputItem>, right: Array<InputItem>) -> bool
+  if left.len() != right.len():
+    return false
+  var index = 0
+  while index < left.len():
+    if not same_input_item(left.at(index), right.at(index)):
+      return false
+    index = index + 1
+  true
+
+fn same_input_item(left: InputItem, right: InputItem) -> bool
+  match(left)
+    InputItem::Message { role, content }:
+      match(right)
+        InputItem::Message { role: candidate_role, content: candidate_content }:
+          same_role(role, candidate_role) and content.equals(candidate_content)
+        else:
+          false
+    InputItem::ToolCall { call_id, name, arguments }:
+      match(right)
+        InputItem::ToolCall {
+          call_id: candidate_id,
+          name: candidate_name,
+          arguments: candidate_arguments
+        }:
+          call_id.equals(candidate_id) and name.equals(candidate_name) and
+            arguments.equals(candidate_arguments)
+        else:
+          false
+    InputItem::ToolOutput { call_id, output }:
+      match(right)
+        InputItem::ToolOutput { call_id: candidate_id, output: candidate_output }:
+          call_id.equals(candidate_id) and output.equals(candidate_output)
+        else:
+          false
+    InputItem::ProviderItem { provider, data }:
+      match(right)
+        InputItem::ProviderItem { provider: candidate_provider, data: candidate_data }:
+          provider.equals(candidate_provider) and data.equals(candidate_data)
+        else:
+          false
+
+fn same_role(left: Role, right: Role) -> bool
+  match(left)
+    Role::User:
+      match(right)
+        Role::User:
+          true
+        else:
+          false
+    Role::Assistant:
+      match(right)
+        Role::Assistant:
+          true
+        else:
+          false
+    Role::System:
+      match(right)
+        Role::System:
+          true
+        else:
+          false
+
+fn valid_tool_pair(input: Array<InputItem>, call_id: String) -> bool
+  var call_count = 0
+  var output_count = 0
+  var call_index = -1
+  var output_index = -1
+  var index = 0
+  while index < input.len():
+    match(input.at(index))
+      InputItem::ToolCall { call_id: candidate }:
+        if candidate.equals(call_id):
+          call_count = call_count + 1
+          call_index = index
+      InputItem::ToolOutput { call_id: candidate }:
+        if candidate.equals(call_id):
+          output_count = output_count + 1
+          output_index = index
+      else:
+        void
+    index = index + 1
+  call_count == 1 and output_count == 1 and call_index < output_index
+
+fn invalid_compaction_error() -> LlmError
+  LlmError {
+    code: "invalid_compaction_context",
+    message: "compacted context contains an unpaired tool call or output",
+    retryable: false
+  }
+
+fn compaction_no_progress_error() -> LlmError
+  LlmError {
+    code: "compaction_no_progress",
+    message: "compacted context must be non-empty, changed, and smaller than the context it replaces",
+    retryable: false
+  }
+
+fn is_context_limit_error(error: LlmError) -> bool
+  let known_code = error.code.equals("context_length_exceeded") or
+    error.code.equals("context_window_exceeded") or
+    error.code.equals("input_too_long") or
+    error.code.equals("prompt_too_long")
+  if known_code:
+    return true
+  let message = error.message.lowered()
+  message.contains("context length") or
+    message.contains("context window") or
+    message.contains("too many tokens") or
+    message.contains("prompt is too long") or
+    message.contains("input is too long")
+
+fn estimate_request_tokens(
+  instructions: String,
+  input: Array<InputItem>,
+  tools: Array<ToolDefinition>
+) -> i32
+  var bytes = instructions.byte_len()
+  var tool_index = 0
+  while tool_index < tools.len():
+    let tool = tools.at(tool_index)
+    bytes = bytes + tool.name.byte_len() + tool.description.byte_len() +
+      tool.parameters_shape.byte_len() + 24
+    tool_index = tool_index + 1
+  ((bytes + 3) / 4) + estimate_input_tokens(input)
+
+fn estimate_context_after_compaction(
+  instructions: String,
+  input: Array<InputItem>,
+  tools: Array<ToolDefinition>,
+  compacted_output_tokens: i32
+) -> i32
+  if compacted_output_tokens <= 0 or not has_provider_item(input):
+    return estimate_request_tokens(instructions, input, tools)
+
+  var bytes = instructions.byte_len()
+  var tool_index = 0
+  while tool_index < tools.len():
+    let tool = tools.at(tool_index)
+    bytes = bytes + tool.name.byte_len() + tool.description.byte_len() +
+      tool.parameters_shape.byte_len() + 24
+    tool_index = tool_index + 1
+  var tokens = ((bytes + 3) / 4) + compacted_output_tokens
+  var input_index = 0
+  while input_index < input.len():
+    let item_tokens = match(input.at(input_index))
+      InputItem::Message { content }:
+        ((content.byte_len() + 3) / 4) + 8
+      InputItem::ToolCall { call_id, name, arguments }:
+        ((call_id.byte_len() + name.byte_len() + arguments.byte_len() + 3) / 4) + 8
+      InputItem::ToolOutput { call_id, output }:
+        ((call_id.byte_len() + output.byte_len() + 3) / 4) + 8
+      InputItem::ProviderItem { data }:
+        8
+    tokens = tokens + item_tokens
+    input_index = input_index + 1
+  tokens
+
+fn has_provider_item(input: Array<InputItem>) -> bool
+  var index = 0
+  while index < input.len():
+    match(input.at(index))
+      InputItem::ProviderItem { data }:
+        return true
+      else:
+        void
+    index = index + 1
+  false
+
+fn estimate_input_tokens(input: Array<InputItem>) -> i32
+  var tokens = 0
+  var index = 0
+  while index < input.len():
+    let bytes = match(input.at(index))
+      InputItem::Message { content }:
+        content.byte_len()
+      InputItem::ToolCall { call_id, name, arguments }:
+        call_id.byte_len() + name.byte_len() + arguments.byte_len()
+      InputItem::ToolOutput { call_id, output }:
+        call_id.byte_len() + output.byte_len()
+      InputItem::ProviderItem { provider, data }:
+        provider.byte_len() + data.byte_len()
+    tokens = tokens + ((bytes + 3) / 4) + 8
+    index = index + 1
+  tokens
 
 fn empty_usage() -> Usage
   Usage { input_tokens: 0, output_tokens: 0, total_tokens: 0 }
