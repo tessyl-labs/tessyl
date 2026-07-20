@@ -45,7 +45,7 @@ The dialog adapter calls the native `showModal()` API, which provides modal focu
 
 `Alert` composes `AlertTitle` and `AlertDescription` with an optional `Icon`. Its `Default`, `Information`, `Success`, `Warning`, and `Destructive` variants use the same semantic color tokens as toasts and other status components.
 
-Icons are pure Voyd wrappers around Lucide-derived SVG path data stored in `IconName`. They render as inline CSS masks, inherit `currentColor`, and do not require React or a runtime icon dependency.
+Icons are pure Voyd wrappers around Lucide-derived SVG path data stored in `IconName`. They render as native inline SVG, inherit `currentColor`, and do not require React or a runtime icon dependency.
 
 Add `command_shortcut_trigger_attr()` to the existing button that opens `CommandDialog`; the adapter maps `Command+K`/`Ctrl+K` to that same typed trigger. `CommandInput` includes an `aria-keyshortcuts` contract and a visible `⌘ K` keycap hint; override `shortcut_label` when an application needs a different display label.
 

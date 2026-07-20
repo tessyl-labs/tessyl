@@ -26,8 +26,8 @@ pub fn Dialog<Msg>({ open: bool, on_close: Msg, children: Array<Child<Msg>>, tit
 pub fn DialogTrigger<Msg>({ children: Array<Child<Msg>>, on_open: Msg, disabled: bool = false, loading: bool = false, loading_label: String = "Loading", class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
   Button<Msg>(children: children, on_press: on_open, disabled: disabled, loading: loading, loading_label: loading_label, class: class, extra_attrs: extra_attrs)
 
-pub fn DialogClose<Msg>({ children: Array<Child<Msg>>, on_close: Msg, variant: ButtonVariant = ButtonVariant::Ghost {}, size: ButtonSize = ButtonSize::Default {}, disabled: bool = false, loading: bool = false, loading_label: String = "Loading", class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
-  Button<Msg>(children: children, on_press: on_close, variant: variant, size: size, disabled: disabled, loading: loading, loading_label: loading_label, class: class, extra_attrs: extra_attrs)
+pub fn DialogClose<Msg>({ children: Array<Child<Msg>>, on_close: Msg, variant: ButtonVariant = ButtonVariant::Ghost {}, size: ButtonSize = ButtonSize::Default {}, disabled: bool = false, loading: bool = false, loading_label: String = "Loading", aria_label?: String, class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
+  Button<Msg>(children: children, on_press: on_close, variant: variant, size: size, disabled: disabled, loading: loading, loading_label: loading_label, aria_label: aria_label, class: class, extra_attrs: extra_attrs)
 
 pub fn DialogContent({ children: Array<MsgPack>, title_id: String, description_id?: String, padded: bool = true, class?: String, replace_class?: String }) -> MsgPack
   let padding = if padded then: " p-4" else: ""
@@ -50,7 +50,7 @@ pub fn DialogDescription({ children: Array<MsgPack>, id?: String, class?: String
   vx::html_element(tag: "p", attrs: attrs, children: normalize_children(children))
 
 pub fn DialogCloseIcon<Msg>({ on_close: Msg, class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
-  Button<Msg>(children: [Icon(name: IconName::x())], on_press: on_close, variant: ButtonVariant::Ghost {}, size: ButtonSize::IconSmall {}, aria_label: "Close", class: class, extra_attrs: extra_attrs)
+  DialogClose<Msg>(children: [Icon(name: IconName::x())], on_close: on_close, variant: ButtonVariant::Ghost {}, size: ButtonSize::IconSmall {}, aria_label: "Close", class: class, extra_attrs: extra_attrs)
 
 /// Routes global keydown events while a dialog is open. The application decides
 /// how Escape and any non-Escape keys map into its message union.

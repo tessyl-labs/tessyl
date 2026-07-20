@@ -170,8 +170,10 @@ test "outline dialog close renders alone":
 test "primary dialog close renders alone":
   assert(render(DialogClose<TestMsg>(variant: ButtonVariant::Default {}, on_close: TestMsg::Clicked {}, children: [Icon(name: IconName::sparkles()), "Confirm"])).contains("Confirm".as_slice()), eq: true)
 
-test "icon dialog close renders alone":
-  assert(render(DialogCloseIcon<TestMsg>(on_close: TestMsg::Clicked {})).contains("Close".as_slice()), eq: true)
+test "icon dialog close forwards optional props through its generic wrapper":
+  let html = render(DialogCloseIcon<TestMsg>(on_close: TestMsg::Clicked {}))
+  assert(html.contains("data-size=\"icon-small\"".as_slice()), eq: true)
+  assert(html.contains("aria-label=\"Close\"".as_slice()), eq: true)
 
 test "textarea exposes its controlled value":
   let textarea = render(Textarea<TestMsg>(value: "Draft", on_change: (value) => TestMsg::Changed { value }))
@@ -196,16 +198,20 @@ test "input, label, and input group preserve form semantics":
 
 test "icon descriptor keeps its path":
   let icon = render(Icon(name: IconName::search()))
-  assert(icon.contains("m21%2021".as_slice()), eq: true)
+  assert(icon.contains("d=\"m21 21".as_slice()), eq: true)
+  assert(icon.contains("viewBox=\"0 0 24 24\"".as_slice()), eq: true)
 
 test "icon emits its accessibility contract":
   let icon = render(Icon(name: IconName::search(), label: Some<String> { value: "Search" }))
-  assert(icon.contains("mask-image".as_slice()), eq: true)
+  assert(icon.contains("<svg".as_slice()), eq: true)
+  assert(icon.contains("<path".as_slice()), eq: true)
+  assert(icon.contains("role=\"img\"".as_slice()), eq: true)
+  assert(icon.contains("aria-label=\"Search\"".as_slice()), eq: true)
 
 test "icon supports the prototype filled bookmark state":
   let icon = render(Icon(name: IconName::bookmark(), filled: true))
   assert(icon.contains("data-filled=\"true\"".as_slice()), eq: true)
-  assert(icon.contains("fill='black'".as_slice()), eq: true)
+  assert(icon.contains("fill=\"currentColor\"".as_slice()), eq: true)
 
 test "tooltip connects trigger and content":
   let tooltip = render(Tooltip(children: [TooltipTrigger<TestMsg>(described_by: "tip", on_press: TestMsg::Clicked {}, children: ["Help"]), TooltipContent(id: "tip", children: ["More context"])]))

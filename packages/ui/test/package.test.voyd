@@ -20,4 +20,5 @@ test "public package API composes across a package boundary":
   assert(html.contains("data-ui=\"alert\"".as_slice()), eq: true)
   assert(html.contains("data-ui=\"button\"".as_slice()), eq: true)
   assert(html.contains("data-ui=\"loading-indicator\"".as_slice()), eq: true)
-  assert(html.contains("mask-image".as_slice()), eq: true)
+  assert(html.contains("<svg".as_slice()), eq: true)
+  assert(html.contains("<path".as_slice()), eq: true)
