@@ -1,52 +1,111 @@
-:root {
-  --ui-background: var(--ts-color-canvas);
-  --ui-foreground: var(--ts-color-text);
-  --ui-card: var(--ts-color-surface);
-  --ui-card-foreground: var(--ts-color-text);
-  --ui-popover: var(--ts-color-surface);
-  --ui-popover-foreground: var(--ts-color-text);
-  --ui-primary: var(--ts-color-accent);
-  --ui-primary-foreground: var(--ts-color-text-inverse);
-  --ui-secondary: var(--ts-color-canvas-subtle);
-  --ui-secondary-foreground: var(--ts-color-text-body);
-  --ui-muted: var(--ts-color-surface-muted);
-  --ui-muted-foreground: var(--ts-color-text-muted);
-  --ui-accent: var(--ts-color-accent-soft);
-  --ui-accent-foreground: var(--ts-color-accent-strong);
-  --ui-destructive: var(--ts-color-critical);
-  --ui-destructive-foreground: var(--ts-color-text-inverse);
-  --ui-warning: var(--ts-color-caution);
-  --ui-border: var(--ts-color-border);
-  --ui-input: var(--ts-color-border-strong);
-  --ui-ring: var(--ts-color-focus);
-  --ui-radius-control: var(--ts-radius-control);
-  --ui-radius-card: var(--ts-radius-card);
-  --ui-radius-panel: var(--ts-radius-panel);
-  --ui-shadow-control: var(--ts-shadow-control);
-  --ui-shadow-card: var(--ts-shadow-card);
-  --ui-shadow-panel: var(--ts-shadow-panel);
-  --ui-motion-fast: var(--ts-motion-fast);
-  --ui-overlay: rgb(15 23 42 / 35%);
+:root,
+[data-ui-theme="library"] {
+  color-scheme: light;
+
+  /* Palette primitives: update these roles to retheme the component system. */
+  --ui-palette-background: #f7f8fa;
+  --ui-palette-surface: #ffffff;
+  --ui-palette-surface-subtle: #eef0f3;
+  --ui-palette-surface-elevated: #fbfcfe;
+  --ui-palette-border: #d9dde3;
+  --ui-palette-text: #1d2026;
+  --ui-palette-text-secondary: #6b7280;
+  --ui-palette-text-tertiary: #9298a3;
+  --ui-palette-gold: #a47b18;
+  --ui-palette-gold-hover: #8d6814;
+  --ui-palette-gold-highlight: #caa347;
+  --ui-palette-gold-surface: #f3ecd6;
+  --ui-palette-gold-border: #d5c18a;
+  --ui-palette-on-gold: #ffffff;
+  --ui-palette-success: #2f7855;
+  --ui-palette-warning: #a55d0a;
+  --ui-palette-error: #b6453c;
+  --ui-palette-information: #3d6993;
+  --ui-focus-color: rgb(154 107 8 / 18%);
+  --ui-overlay: rgb(13 15 19 / 38%);
+
+  /* Component semantics remain stable when the palette above changes. */
+  --ui-background: var(--ui-palette-background);
+  --ui-foreground: var(--ui-palette-text);
+  --ui-card: var(--ui-palette-surface);
+  --ui-card-foreground: var(--ui-palette-text);
+  --ui-popover: var(--ui-palette-surface-elevated);
+  --ui-popover-foreground: var(--ui-palette-text);
+  --ui-primary: var(--ui-palette-gold);
+  --ui-primary-hover: var(--ui-palette-gold-hover);
+  --ui-primary-highlight: var(--ui-palette-gold-highlight);
+  --ui-primary-foreground: var(--ui-palette-on-gold);
+  --ui-secondary: var(--ui-palette-surface-subtle);
+  --ui-secondary-foreground: var(--ui-palette-text);
+  --ui-muted: var(--ui-palette-surface-subtle);
+  --ui-muted-foreground: var(--ui-palette-text-secondary);
+  --ui-tertiary-foreground: var(--ui-palette-text-tertiary);
+  --ui-accent: var(--ui-palette-gold-surface);
+  --ui-accent-foreground: var(--ui-palette-gold);
+  --ui-accent-border: var(--ui-palette-gold-border);
+  --ui-destructive: var(--ui-palette-error);
+  --ui-destructive-foreground: #ffffff;
+  --ui-success: var(--ui-palette-success);
+  --ui-warning: var(--ui-palette-warning);
+  --ui-information: var(--ui-palette-information);
+  --ui-border: var(--ui-palette-border);
+  --ui-input: var(--ui-palette-border);
+  --ui-ring: var(--ui-palette-gold-highlight);
+
+  --ui-radius-control: 0.75rem;
+  --ui-radius-card: 1rem;
+  --ui-radius-panel: 1.5rem;
+  --ui-shadow-control: 0 1px 2px rgb(20 24 32 / 5%);
+  --ui-shadow-card: 0 6px 20px rgb(20 24 32 / 7%);
+  --ui-shadow-panel: 0 18px 50px rgb(20 24 32 / 10%);
+  --ui-shadow-primary:
+    inset 0 1px 0 rgb(255 255 255 / 25%),
+    inset 0 -1px 0 rgb(0 0 0 / 18%),
+    0 6px 16px color-mix(in srgb, var(--ui-primary) 17%, transparent);
+  --ui-shadow-accent: inset 0 1px 0 rgb(255 255 255 / 16%);
+  --ui-motion-fast: 150ms;
+
+  --ui-primary-metallic: linear-gradient(
+    110deg,
+    color-mix(in srgb, var(--ui-primary) 86%, #000) 0%,
+    var(--ui-primary) 36%,
+    color-mix(in srgb, var(--ui-primary) 82%, #fff) 52%,
+    var(--ui-primary) 68%,
+    color-mix(in srgb, var(--ui-primary) 90%, #000) 100%
+  );
+  --ui-accent-surface: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--ui-accent) 94%, #fff),
+    var(--ui-accent)
+  );
 }
 
-/* Applications can swap themes by overriding this small semantic surface. */
-[data-ui-theme="library"] {
-  --ui-background: #f7f6f2;
-  --ui-foreground: #292a27;
-  --ui-card: #fbfaf7;
-  --ui-card-foreground: #292a27;
-  --ui-popover: #fbfaf7;
-  --ui-popover-foreground: #292a27;
-  --ui-primary: #315f4e;
-  --ui-primary-foreground: #f7faf8;
-  --ui-secondary: #eeede8;
-  --ui-secondary-foreground: #3f4e47;
-  --ui-muted: #eeede8;
-  --ui-muted-foreground: #777871;
-  --ui-accent: #e5eee9;
-  --ui-accent-foreground: #315f4e;
-  --ui-border: #deddd6;
-  --ui-input: #cbc9c0;
-  --ui-ring: #638d7d;
-  --ui-warning: #8a5a00;
+html[data-theme="dark"],
+html[data-theme="dark"] [data-ui-theme="library"],
+[data-ui-theme="library"][data-theme="dark"] {
+  color-scheme: dark;
+  --ui-palette-background: #0d0f13;
+  --ui-palette-surface: #15181d;
+  --ui-palette-surface-subtle: #1d2128;
+  --ui-palette-surface-elevated: #1a1e24;
+  --ui-palette-border: #323844;
+  --ui-palette-text: #f2f4f7;
+  --ui-palette-text-secondary: #a6adb8;
+  --ui-palette-text-tertiary: #767e8a;
+  --ui-palette-gold: #d0aa45;
+  --ui-palette-gold-hover: #dfba55;
+  --ui-palette-gold-highlight: #e3c56e;
+  --ui-palette-gold-surface: #29251a;
+  --ui-palette-gold-border: #594d2b;
+  --ui-palette-on-gold: #17130a;
+  --ui-palette-success: #68bd8d;
+  --ui-palette-warning: #e5a348;
+  --ui-palette-error: #e87870;
+  --ui-palette-information: #76a8d5;
+  --ui-destructive-foreground: #17130a;
+  --ui-focus-color: rgb(215 169 40 / 19%);
+  --ui-overlay: rgb(0 0 0 / 58%);
+  --ui-shadow-control: 0 1px 2px rgb(0 0 0 / 20%);
+  --ui-shadow-card: 0 8px 28px rgb(0 0 0 / 22%);
+  --ui-shadow-panel: 0 22px 65px rgb(0 0 0 / 32%);
 }

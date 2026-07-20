@@ -7,7 +7,7 @@ use src::shared::{ Child, View, data_attr, normalize_children, resolve_class, wi
 use src::card_size::CardSize
 
 pub fn Card({ children: Array<MsgPack>, size: CardSize = CardSize::Default {}, class?: String, replace_class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> MsgPack
-  let spacing = if size is CardSize::Small then: "0.75rem" else: "1rem"
+  let spacing = if size is CardSize::Small then: "1rem" else: "1.25rem"
   let ~attrs = [data_attr("card"), vx::attr(name: "data-size", value: card_size_name(size)), vx::style(name: "--ui-card-spacing", value: spacing), vx::class(resolve_class("flex flex-col gap-[var(--ui-card-spacing)] overflow-hidden rounded-[var(--ui-radius-card)] bg-card py-[var(--ui-card-spacing)] text-card-foreground shadow-[var(--ui-shadow-card)] ring-1 ring-foreground/10 has-[[data-ui=card-footer]]:pb-0", class, replace_class))]
   var index = 0
   while index < extra_attrs.len():
@@ -17,8 +17,8 @@ pub fn Card({ children: Array<MsgPack>, size: CardSize = CardSize::Default {}, c
 
 /// Semantic interactive card for navigation or dashboard actions.
 pub fn CardButton<Msg>({ children: Array<Child<Msg>>, on_press: Msg, size: CardSize = CardSize::Default {}, disabled: bool = false, aria_label?: String, class?: String, replace_class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
-  let spacing = if size is CardSize::Small then: "0.75rem" else: "1rem"
-  let ~attrs = [data_attr("card-button"), vx::attr(name: "data-size", value: card_size_name(size)), vx::style(name: "--ui-card-spacing", value: spacing), vx::attr(name: "type", value: "button"), vx::disabled(disabled), vx::class(resolve_class("flex w-full flex-col gap-[var(--ui-card-spacing)] overflow-hidden rounded-[var(--ui-radius-card)] bg-card py-[var(--ui-card-spacing)] text-left text-card-foreground shadow-[var(--ui-shadow-card)] ring-1 ring-foreground/10 transition-colors duration-[var(--ui-motion-fast)] has-[[data-ui=card-footer]]:pb-0 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50", class, replace_class)), vx::html_event_message(name: "click", message: on_press)]
+  let spacing = if size is CardSize::Small then: "1rem" else: "1.25rem"
+  let ~attrs = [data_attr("card-button"), vx::attr(name: "data-size", value: card_size_name(size)), vx::style(name: "--ui-card-spacing", value: spacing), vx::attr(name: "type", value: "button"), vx::disabled(disabled), vx::class(resolve_class("flex w-full flex-col gap-[var(--ui-card-spacing)] overflow-hidden rounded-[var(--ui-radius-card)] bg-card py-[var(--ui-card-spacing)] text-left text-card-foreground shadow-[var(--ui-shadow-card)] ring-1 ring-foreground/10 transition-colors duration-[var(--ui-motion-fast)] has-[[data-ui=card-footer]]:pb-0 hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[color:var(--ui-focus-color)] disabled:pointer-events-none disabled:opacity-50", class, replace_class)), vx::html_event_message(name: "click", message: on_press)]
   if aria_label is Some: attrs.push(vx::attr(name: "aria-label", value: aria_label.value))
   var index = 0
   while index < extra_attrs.len():

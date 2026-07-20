@@ -11,7 +11,9 @@ Import the package Tailwind entry once from an application stylesheet:
 @source "./**/*.voyd";
 ```
 
-The component layer maps semantic variables such as `--ui-primary`, `--ui-card`, and `--ui-ring` to `@tessyl/design-tokens`. Change those mappings in `theme.css`, override them in an application scope, or set `data-ui-theme="library"` on an ancestor to use the included editorial theme. Component source never depends on palette-specific Tailwind utilities.
+The component layer maps palette roles such as `--ui-palette-background`, `--ui-palette-surface`, and `--ui-palette-gold` onto stable component semantics such as `--ui-primary`, `--ui-card`, and `--ui-ring`. Change the palette roles in `theme.css` or override them in an application scope; component source never depends on palette-specific Tailwind utilities.
+
+The included theme uses cool porcelain and graphite neutrals with restrained metallic-gold actions. Set `data-theme="dark"` on `html` to activate its obsidian dark palette. `data-ui-theme="library"` remains available as an explicit application scope and follows the same light/dark switch.
 
 Shape, elevation, and motion are semantic too: override `--ui-radius-control`, `--ui-radius-card`, `--ui-radius-panel`, the matching `--ui-shadow-*` tokens, and `--ui-motion-fast` without editing component code.
 

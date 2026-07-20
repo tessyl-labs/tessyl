@@ -8,11 +8,12 @@ use src::showcase::update::Msg
 
 pub fn view(model: Model) -> Html<Msg>
   <TooltipProvider>
-    <main class="min-h-screen bg-background text-foreground" data-ui-theme="library">
+    <main class="min-h-screen bg-background text-foreground" data-ui-theme="library" data-theme={if model.dark_mode then: "dark" else: "light"}>
       <header class="sticky top-0 z-30 border-b bg-background/90 px-6 py-4 backdrop-blur">
-        <div class="mx-auto flex max-w-7xl items-center justify-between gap-4">
+        <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
           <div class="flex items-center gap-3"><span class="grid size-9 place-items-center rounded-xl bg-primary font-bold text-primary-foreground">T</span><div><h1 class="text-lg font-semibold">Tessyl UI</h1><p class="text-xs text-muted-foreground">Pure Voyd · Tailwind · semantic tokens</p></div></div>
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center justify-end gap-2">
+            <Button variant={ButtonVariant::Ghost {}} on_press={Msg::ToggleTheme {}}>{if model.dark_mode then: "Light theme" else: "Dark theme"}</Button>
             <Button variant={ButtonVariant::Outline {}} on_press={Msg::OpenCommand {}}><Icon name={IconName::search()} />Command palette</Button>
             <Button on_press={Msg::OpenDialog {}}><Icon name={IconName::plus()} />Open dialog</Button>
           </div>

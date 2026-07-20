@@ -27,7 +27,7 @@ pub fn Input<Msg>({
     vx::attr(name: "aria-invalid", value: if invalid then: "true" else: "false"),
     vx::prop(name: "value", value: value),
     vx::disabled(disabled),
-    vx::class(resolve_class("h-8 w-full min-w-0 rounded-[var(--ui-radius-control)] border border-input bg-transparent px-2.5 py-1 text-sm transition-colors duration-[var(--ui-motion-fast)] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20", class, replace_class)),
+    vx::class(resolve_class("min-h-10 w-full min-w-0 rounded-[var(--ui-radius-control)] border border-input bg-transparent px-3 py-2.5 text-sm transition-colors duration-[var(--ui-motion-fast)] outline-none placeholder:text-tertiary-foreground focus-visible:border-ring focus-visible:ring-4 focus-visible:ring-[color:var(--ui-focus-color)] disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-4 aria-invalid:ring-destructive/20", class, replace_class)),
     vx::html_event_payload_handler<InputEvent, Msg>(name: "input", handler: (event: InputEvent) -> Msg => on_change(event.value))
   ]
   if id is Some: attrs.push(vx::id(id.value))

@@ -77,8 +77,8 @@ fn toast_icon(tone: ToastTone) -> MsgPack
 
 fn toast_icon_class(tone: ToastTone) -> String
   match(tone)
-    ToastTone::Success: "text-primary"
-    ToastTone::Information: "text-primary"
+    ToastTone::Success: "text-success"
+    ToastTone::Information: "text-information"
     ToastTone::Warning: "text-warning"
     ToastTone::Error: "text-destructive"
     ToastTone::Default: "text-muted-foreground"

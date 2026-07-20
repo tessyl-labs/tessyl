@@ -3,6 +3,7 @@ use std::array::Array
 use std::string::type::String
 
 pub obj Model {
+  dark_mode: bool,
   dialog_open: bool,
   command_open: bool,
   active_tab: String,
@@ -15,6 +16,7 @@ pub obj Model {
 
 pub fn initial_model() -> Model
   Model {
+    dark_mode: false,
     dialog_open: false,
     command_open: false,
     active_tab: "brief",
@@ -26,6 +28,7 @@ pub fn initial_model() -> Model
   }
 
 pub fn copy(model: Model, {
+  dark_mode?: bool,
   dialog_open?: bool,
   command_open?: bool,
   active_tab?: String,
@@ -36,6 +39,7 @@ pub fn copy(model: Model, {
   toasts?: Array<ToastItem>
 }) -> Model
   Model {
+    dark_mode: dark_mode ?? model.dark_mode,
     dialog_open: dialog_open ?? model.dialog_open,
     command_open: command_open ?? model.command_open,
     active_tab: active_tab ?? model.active_tab,

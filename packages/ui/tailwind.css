@@ -23,7 +23,10 @@
   --color-accent-foreground: var(--ui-accent-foreground);
   --color-destructive: var(--ui-destructive);
   --color-destructive-foreground: var(--ui-destructive-foreground);
+  --color-success: var(--ui-success);
   --color-warning: var(--ui-warning);
+  --color-information: var(--ui-information);
+  --color-tertiary-foreground: var(--ui-tertiary-foreground);
   --color-border: var(--ui-border);
   --color-input: var(--ui-input);
   --color-ring: var(--ui-ring);
@@ -36,6 +39,9 @@
 @layer base {
   * { @apply border-border outline-ring/50; }
   body { @apply bg-background text-foreground font-sans; }
+  ::selection { color: var(--ui-foreground); background: var(--ui-accent); }
+  a { color: var(--ui-primary); }
+  a:hover { color: var(--ui-primary-hover); }
 }
 
 @layer components {

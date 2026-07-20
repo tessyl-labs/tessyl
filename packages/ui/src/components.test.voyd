@@ -32,6 +32,7 @@ test "complete showcase renders without a runtime cast trap":
   assert(html.contains("Tessyl UI".as_slice()), eq: true)
 
 test "showcase update accepts every interactive message":
+  let _ = showcase_step(initial_model(), ShowcaseMsg::ToggleTheme {})
   let _ = showcase_step(initial_model(), ShowcaseMsg::OpenDialog {})
   let _ = showcase_step(initial_model(), ShowcaseMsg::CloseDialog {})
   let _ = showcase_step(initial_model(), ShowcaseMsg::OpenCommand {})
@@ -71,6 +72,9 @@ test "showcase command dialog renders":
 test "button renders semantic slots and a typed event":
   let html = render(Button<TestMsg>(children: ["Save"], on_press: TestMsg::Clicked {}))
   assert(html.contains("data-ui=\"button\"".as_slice()), eq: true)
+  assert(html.contains("data-variant=\"default\"".as_slice()), eq: true)
+  assert(html.contains("data-size=\"default\"".as_slice()), eq: true)
+  assert(html.contains("px-[15px]".as_slice()), eq: true)
   assert(html.contains(">Save</button>".as_slice()), eq: true)
 
 test "card composition preserves its named slots":
@@ -81,7 +85,7 @@ test "card composition preserves its named slots":
 test "small cards propagate compact spacing":
   let html = render(Card(size: CardSize::Small {}, children: [CardHeader(children: [CardTitle(children: ["Compact"])]), CardContent(children: ["Body"])]))
   assert(html.contains("data-size=\"small\"".as_slice()), eq: true)
-  assert(html.contains("--ui-card-spacing: 0.75rem".as_slice()), eq: true)
+  assert(html.contains("--ui-card-spacing: 1rem".as_slice()), eq: true)
 
 test "interactive card retains native button semantics":
   let html = render(CardButton<TestMsg>(on_press: TestMsg::Clicked {}, aria_label: "Open article", children: [CardContent(children: ["Article"])]))

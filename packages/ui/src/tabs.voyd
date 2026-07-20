@@ -13,7 +13,7 @@ pub fn TabsList({ children: Array<MsgPack>, variant: TabsListVariant = TabsListV
   vx::html_element(tag: "div", attrs: [data_attr("tabs-list"), vx::attr(name: "data-variant", value: tabs_list_variant_name(variant)), vx::attr(name: "role", value: "tablist"), vx::attr(name: "aria-orientation", value: "horizontal"), vx::class(with_class(tabs_list_class(variant), class))], children: normalize_children(children))
 
 pub fn TabsTrigger<Msg>({ children: Array<Child<Msg>>, value: String, active: bool, on_select: fn(String) -> Msg, id?: String, controls?: String, disabled: bool = false, class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
-  let ~attrs = [data_attr("tabs-trigger"), vx::attr(name: "type", value: "button"), vx::attr(name: "role", value: "tab"), vx::attr(name: "aria-selected", value: bool_text(active)), vx::attr(name: "data-active", value: bool_text(active)), vx::attr(name: "tabindex", value: if active then: 0 else: -1), vx::disabled(disabled), vx::class(with_class("relative inline-flex h-full flex-1 items-center justify-center gap-1.5 rounded-[calc(var(--ui-radius-control)*0.75)] border border-transparent px-2 py-0.5 text-sm font-medium text-muted-foreground transition-all duration-[var(--ui-motion-fast)] hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 data-[active=true]:bg-background data-[active=true]:text-foreground data-[active=true]:shadow-[var(--ui-shadow-control)] disabled:pointer-events-none disabled:opacity-50", class)), vx::html_event_handler<Msg>(name: "click", handler: () -> Msg => on_select(value))]
+  let ~attrs = [data_attr("tabs-trigger"), vx::attr(name: "type", value: "button"), vx::attr(name: "role", value: "tab"), vx::attr(name: "aria-selected", value: bool_text(active)), vx::attr(name: "data-active", value: bool_text(active)), vx::attr(name: "tabindex", value: if active then: 0 else: -1), vx::disabled(disabled), vx::class(with_class("relative inline-flex h-full flex-1 items-center justify-center gap-2 rounded-[calc(var(--ui-radius-control)*0.75)] border border-transparent px-3 py-1.5 text-sm font-medium text-muted-foreground transition-all duration-[var(--ui-motion-fast)] hover:text-foreground focus-visible:border-ring focus-visible:ring-4 focus-visible:ring-[color:var(--ui-focus-color)] data-[active=true]:bg-background data-[active=true]:text-foreground data-[active=true]:shadow-[var(--ui-shadow-control)] disabled:pointer-events-none disabled:opacity-50", class)), vx::html_event_handler<Msg>(name: "click", handler: () -> Msg => on_select(value))]
   if id is Some: attrs.push(vx::id(id.value))
   if controls is Some: attrs.push(vx::attr(name: "aria-controls", value: controls.value))
   var index = 0
@@ -33,8 +33,8 @@ pub fn TabsContent({ children: Array<MsgPack>, active: bool, value: String, id?:
 
 fn tabs_list_class(variant: TabsListVariant) -> String
   match(variant)
-    TabsListVariant::Default: "inline-flex h-8 w-fit items-center justify-center rounded-[var(--ui-radius-control)] bg-muted p-[3px] text-muted-foreground"
-    TabsListVariant::Line: "inline-flex h-8 w-fit items-center justify-center gap-1 border-b border-border bg-transparent text-muted-foreground"
+    TabsListVariant::Default: "inline-flex min-h-10 w-fit items-center justify-center rounded-[var(--ui-radius-control)] bg-muted p-[3px] text-muted-foreground"
+    TabsListVariant::Line: "inline-flex min-h-10 w-fit items-center justify-center gap-1 border-b border-border bg-transparent text-muted-foreground"
 
 fn tabs_list_variant_name(variant: TabsListVariant) -> String
   match(variant)

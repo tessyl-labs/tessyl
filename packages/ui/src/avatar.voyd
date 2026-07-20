@@ -10,7 +10,7 @@ pub fn Avatar({ children: Array<MsgPack>, size: AvatarSize = AvatarSize::Default
   vx::html_element(tag: "span", attrs: [data_attr("avatar"), vx::attr(name: "data-size", value: avatar_size_name(size)), vx::class(with_class("relative flex shrink-0 select-none rounded-full ring-1 ring-border ".concat(avatar_size_class(size)), class))], children: normalize_children(children))
 
 pub fn AvatarFallback({ children: Array<MsgPack>, class?: String }) -> MsgPack
-  vx::html_element(tag: "span", attrs: [data_attr("avatar-fallback"), vx::class(with_class("flex size-full items-center justify-center rounded-full bg-muted text-xs text-muted-foreground", class))], children: normalize_children(children))
+  vx::html_element(tag: "span", attrs: [data_attr("avatar-fallback"), vx::class(with_class("flex size-full items-center justify-center rounded-full bg-accent bg-[image:var(--ui-accent-surface)] text-xs font-semibold text-accent-foreground shadow-[var(--ui-shadow-accent)]", class))], children: normalize_children(children))
 
 pub fn AvatarBadge({ children: Array<MsgPack> = Array<MsgPack>::init(), class?: String }) -> MsgPack
   vx::html_element(tag: "span", attrs: [data_attr("avatar-badge"), vx::attr(name: "aria-hidden", value: "true"), vx::class(with_class("absolute right-0 bottom-0 size-2.5 rounded-full bg-primary ring-2 ring-background", class))], children: normalize_children(children))
@@ -19,7 +19,7 @@ pub fn AvatarGroup({ children: Array<MsgPack>, class?: String }) -> MsgPack
   vx::html_element(tag: "div", attrs: [data_attr("avatar-group"), vx::class(with_class("flex -space-x-2 [&_[data-ui=avatar]]:ring-2 [&_[data-ui=avatar]]:ring-background", class))], children: normalize_children(children))
 
 pub fn AvatarGroupCount({ children: Array<MsgPack>, class?: String }) -> MsgPack
-  vx::html_element(tag: "span", attrs: [data_attr("avatar-group-count"), vx::class(with_class("relative flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-xs text-muted-foreground ring-2 ring-background", class))], children: normalize_children(children))
+  vx::html_element(tag: "span", attrs: [data_attr("avatar-group-count"), vx::class(with_class("relative flex size-8 shrink-0 items-center justify-center rounded-full bg-accent bg-[image:var(--ui-accent-surface)] text-xs font-semibold text-accent-foreground shadow-[var(--ui-shadow-accent)] ring-2 ring-background", class))], children: normalize_children(children))
 
 fn avatar_size_class(size: AvatarSize) -> String
   match(size)
