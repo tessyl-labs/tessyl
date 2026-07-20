@@ -3,7 +3,8 @@ use std::msgpack::MsgPack
 use std::optional::types::all
 use std::string::type::String
 use std::vx::self as vx
-use src::shared::{ Child, View, data_attr, normalize_children, resolve_class }
+use src::loading::LoadingIndicator
+use src::shared::{ Child, View, bool_text, data_attr, normalize_children, resolve_class }
 use src::button_size::ButtonSize
 use src::button_variant::ButtonVariant
 
@@ -14,6 +15,8 @@ pub fn Button<Msg>({
   variant: ButtonVariant = ButtonVariant::Default {},
   size: ButtonSize = ButtonSize::Default {},
   disabled: bool = false,
+  loading: bool = false,
+  loading_label: String = "Loading",
   class?: String,
   replace_class?: String,
   aria_label?: String,
@@ -25,23 +28,29 @@ pub fn Button<Msg>({
     data_attr("button"),
     vx::attr(name: "data-variant", value: button_variant_name(variant)),
     vx::attr(name: "data-size", value: button_size_name(size)),
+    vx::attr(name: "data-loading", value: bool_text(loading)),
+    vx::attr(name: "aria-busy", value: bool_text(loading)),
     vx::class(resolve_class(button_class(variant, size), class, replace_class)),
     vx::attr(name: "type", value: button_type),
-    vx::disabled(disabled),
+    vx::disabled(disabled or loading),
     vx::html_event_message(name: "click", message: on_press)
   ]
-  if aria_label is Some:
-    attrs.push(vx::attr(name: "aria-label", value: aria_label.value))
+  if loading:
+    attrs.push(vx::attr(name: "aria-label", value: loading_label))
+  else:
+    if aria_label is Some:
+      attrs.push(vx::attr(name: "aria-label", value: aria_label.value))
   if aria_described_by is Some:
     attrs.push(vx::attr(name: "aria-describedby", value: aria_described_by.value))
   var index = 0
   while index < extra_attrs.len():
     attrs.push(extra_attrs.at(index))
     index = index + 1
-  vx::html_element(tag: "button", attrs: attrs, children: normalize_children(children))
+  let rendered_children = if loading then: [LoadingIndicator(label: loading_label, show_label: not is_icon_size(size))] else: normalize_children(children)
+  vx::html_element(tag: "button", attrs: attrs, children: rendered_children)
 
 pub fn button_class(variant: ButtonVariant, size: ButtonSize) -> String
-  "inline-flex shrink-0 select-none items-center justify-center gap-2 whitespace-nowrap rounded-[var(--ui-radius-control)] border bg-clip-padding text-sm font-[650] transition-all duration-[var(--ui-motion-fast)] outline-none focus-visible:border-ring focus-visible:ring-4 focus-visible:ring-[color:var(--ui-focus-color)] active:translate-y-px disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_[data-ui=icon]]:pointer-events-none [&_[data-ui=icon]]:shrink-0 ".concat(button_variant_class(variant)).concat(" ").concat(button_size_class(size))
+  "inline-flex shrink-0 select-none items-center justify-center gap-2 whitespace-nowrap rounded-[var(--ui-radius-control)] border bg-clip-padding text-sm font-[650] transition-all duration-[var(--ui-motion-fast)] outline-none focus-visible:border-ring focus-visible:ring-4 focus-visible:ring-[color:var(--ui-focus-color)] active:translate-y-px disabled:pointer-events-none disabled:data-[loading=false]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_[data-ui=icon]]:pointer-events-none [&_[data-ui=icon]]:shrink-0 ".concat(button_variant_class(variant)).concat(" ").concat(button_size_class(size))
 
 fn button_variant_class(variant: ButtonVariant) -> String
   match(variant)
@@ -93,3 +102,13 @@ fn button_size_name(size: ButtonSize) -> String
     ButtonSize::Icon: "icon"
     ButtonSize::IconExtraSmall: "icon-extra-small"
     ButtonSize::IconSmall: "icon-small"
+
+fn is_icon_size(size: ButtonSize) -> bool
+  match(size)
+    ButtonSize::Icon: true
+    ButtonSize::IconExtraSmall: true
+    ButtonSize::IconSmall: true
+    ButtonSize::Default: false
+    ButtonSize::ExtraSmall: false
+    ButtonSize::Small: false
+    ButtonSize::Large: false

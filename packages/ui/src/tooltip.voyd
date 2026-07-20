@@ -15,13 +15,13 @@ pub fn TooltipProvider({ children: Array<MsgPack>, class?: String }) -> MsgPack
 pub fn Tooltip({ children: Array<MsgPack>, class?: String }) -> MsgPack
   vx::html_element(tag: "span", attrs: [data_attr("tooltip"), vx::class(with_class("relative inline-flex", class))], children: normalize_children(children))
 
-pub fn TooltipTrigger<Msg>({ children: Array<Child<Msg>>, described_by: String, on_press: Msg, variant: ButtonVariant = ButtonVariant::Outline {}, size: ButtonSize = ButtonSize::Default {}, disabled: bool = false, aria_label?: String, class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
+pub fn TooltipTrigger<Msg>({ children: Array<Child<Msg>>, described_by: String, on_press: Msg, variant: ButtonVariant = ButtonVariant::Outline {}, size: ButtonSize = ButtonSize::Default {}, disabled: bool = false, loading: bool = false, loading_label: String = "Loading", aria_label?: String, class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
   let ~attrs = [data_attr("tooltip-trigger")]
   var index = 0
   while index < extra_attrs.len():
     attrs.push(extra_attrs.at(index))
     index = index + 1
-  Button<Msg>(children: children, on_press: on_press, variant: variant, size: size, disabled: disabled, aria_label: aria_label, aria_described_by: described_by, extra_attrs: attrs, class: Some<String> { value: with_class("inline-flex", class) })
+  Button<Msg>(children: children, on_press: on_press, variant: variant, size: size, disabled: disabled, loading: loading, loading_label: loading_label, aria_label: aria_label, aria_described_by: described_by, extra_attrs: attrs, class: Some<String> { value: with_class("inline-flex", class) })
 
 pub fn TooltipContent({ children: Array<MsgPack>, id: String, side: TooltipSide = TooltipSide::Top {}, class?: String }) -> MsgPack
   vx::html_element(tag: "span", attrs: [data_attr("tooltip-content"), vx::id(id), vx::attr(name: "data-side", value: tooltip_side_name(side)), vx::attr(name: "role", value: "tooltip"), vx::class(with_class("absolute bottom-[calc(100%+0.4rem)] left-1/2 z-50 w-max max-w-xs -translate-x-1/2 rounded-[var(--ui-radius-control)] bg-foreground px-3 py-1.5 text-xs text-background shadow-[var(--ui-shadow-control)] transition-opacity duration-[var(--ui-motion-fast)]", class))], children: normalize_children(children))

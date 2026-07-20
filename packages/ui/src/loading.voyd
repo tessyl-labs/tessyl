@@ -1,0 +1,24 @@
+use std::array::Array
+use std::msgpack::MsgPack
+use std::optional::types::all
+use std::string::type::String
+use std::vx::self as vx
+use src::shared::{ data_attr, with_class }
+
+/// Reusable, CSS-only loading status. The label is always available to
+/// assistive technology and can optionally be shown alongside the spinner.
+pub fn LoadingIndicator({ label: String = "Loading", show_label: bool = false, class?: String }) -> MsgPack
+  let label_class = if show_label then: "text-sm font-medium" else: "sr-only"
+  vx::html_element(
+    tag: "span",
+    attrs: [
+      data_attr("loading-indicator"),
+      vx::attr(name: "role", value: "status"),
+      vx::attr(name: "aria-live", value: "polite"),
+      vx::class(with_class("inline-flex items-center justify-center gap-2", class))
+    ],
+    children: [
+      vx::html_element(tag: "span", attrs: [data_attr("loading-spinner"), vx::attr(name: "aria-hidden", value: "true"), vx::class("size-4 shrink-0 animate-spin rounded-full border-2 border-current border-r-transparent")], children: Array<MsgPack>::init()),
+      vx::html_element(tag: "span", attrs: [vx::class(label_class)], children: [vx::text(label)])
+    ]
+  )

@@ -44,6 +44,24 @@ test("adapter wires command navigation and selection", () => {
   dispose()
 })
 
+test("adapter opens the command palette with platform shortcuts", () => {
+  document.body.innerHTML = '<main id="app"><button data-command-shortcut-trigger="true">Open</button><dialog data-ui="dialog" data-command-dialog="true" data-open="false"><input data-ui="command-input"></dialog></main>'
+  const app = document.querySelector("#app")
+  const trigger = document.querySelector("button")
+  let opened = 0
+  trigger.addEventListener("click", () => { opened += 1 })
+  const dispose = installUiAdapters(app)
+  const metaEvent = new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true, cancelable: true })
+  document.body.dispatchEvent(metaEvent)
+  assert.equal(metaEvent.defaultPrevented, true)
+  assert.equal(opened, 1)
+  const controlEvent = new KeyboardEvent("keydown", { key: "K", ctrlKey: true, bubbles: true, cancelable: true })
+  document.body.dispatchEvent(controlEvent)
+  assert.equal(controlEvent.defaultPrevented, true)
+  assert.equal(opened, 2)
+  dispose()
+})
+
 test("adapter reconciles a controlled command selection", async () => {
   document.body.innerHTML = '<div data-ui="command"><input data-ui="command-input"><div data-ui="command-list"><button data-ui="command-item" data-selected="true">First</button><button data-ui="command-item" data-selected="false">Second</button></div></div>'
   const input = document.querySelector("input")

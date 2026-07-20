@@ -85,8 +85,8 @@ pub fn InputGroupInput<Msg>({ value: String, on_change: fn(String) -> Msg, id?: 
 pub fn InputGroupText({ children: Array<MsgPack>, class?: String }) -> MsgPack
   vx::html_element(tag: "span", attrs: [data_attr("input-group-text"), vx::class(with_class("flex items-center gap-2 text-sm text-muted-foreground", class))], children: normalize_children(children))
 
-pub fn InputGroupButton<Msg>({ children: Array<Child<Msg>>, on_press: Msg, aria_label: String, variant: ButtonVariant = ButtonVariant::Ghost {}, size: ButtonSize = ButtonSize::ExtraSmall {}, disabled: bool = false, button_type: String = "button", class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
-  Button<Msg>(children: children, on_press: on_press, variant: variant, size: size, disabled: disabled, aria_label: aria_label, button_type: button_type, class: class, extra_attrs: extra_attrs)
+pub fn InputGroupButton<Msg>({ children: Array<Child<Msg>>, on_press: Msg, aria_label: String, variant: ButtonVariant = ButtonVariant::Ghost {}, size: ButtonSize = ButtonSize::ExtraSmall {}, disabled: bool = false, loading: bool = false, loading_label: String = "Loading", button_type: String = "button", class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
+  Button<Msg>(children: children, on_press: on_press, variant: variant, size: size, disabled: disabled, loading: loading, loading_label: loading_label, aria_label: aria_label, button_type: button_type, class: class, extra_attrs: extra_attrs)
 
 fn addon_align_name(align: InputAddonAlign) -> String
   match(align)

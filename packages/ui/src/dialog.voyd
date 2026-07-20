@@ -23,11 +23,11 @@ pub fn Dialog<Msg>({ open: bool, on_close: Msg, children: Array<Child<Msg>>, tit
     index = index + 1
   vx::html_element(tag: "dialog", attrs: attrs, children: normalize_children(children))
 
-pub fn DialogTrigger<Msg>({ children: Array<Child<Msg>>, on_open: Msg, disabled: bool = false, class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
-  Button<Msg>(children: children, on_press: on_open, disabled: disabled, class: class, extra_attrs: extra_attrs)
+pub fn DialogTrigger<Msg>({ children: Array<Child<Msg>>, on_open: Msg, disabled: bool = false, loading: bool = false, loading_label: String = "Loading", class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
+  Button<Msg>(children: children, on_press: on_open, disabled: disabled, loading: loading, loading_label: loading_label, class: class, extra_attrs: extra_attrs)
 
-pub fn DialogClose<Msg>({ children: Array<Child<Msg>>, on_close: Msg, variant: ButtonVariant = ButtonVariant::Ghost {}, size: ButtonSize = ButtonSize::Default {}, disabled: bool = false, class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
-  Button<Msg>(children: children, on_press: on_close, variant: variant, size: size, disabled: disabled, class: class, extra_attrs: extra_attrs)
+pub fn DialogClose<Msg>({ children: Array<Child<Msg>>, on_close: Msg, variant: ButtonVariant = ButtonVariant::Ghost {}, size: ButtonSize = ButtonSize::Default {}, disabled: bool = false, loading: bool = false, loading_label: String = "Loading", class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
+  Button<Msg>(children: children, on_press: on_close, variant: variant, size: size, disabled: disabled, loading: loading, loading_label: loading_label, class: class, extra_attrs: extra_attrs)
 
 pub fn DialogContent({ children: Array<MsgPack>, title_id: String, description_id?: String, padded: bool = true, class?: String, replace_class?: String }) -> MsgPack
   let padding = if padded then: " p-4" else: ""

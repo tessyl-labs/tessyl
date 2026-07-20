@@ -151,6 +151,19 @@ export function installUiAdapters(root: Document | HTMLElement | ShadowRoot = do
     item.scrollIntoView({ block: "nearest" })
   }
 
+  const onCommandShortcut = (event: KeyboardEvent) => {
+    if (!event.repeat && event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey) && !event.altKey) {
+      const commandDialog = root.querySelector<HTMLElement>('[data-command-dialog="true"]')
+      const commandTrigger = root.querySelector<HTMLElement>('[data-command-shortcut-trigger="true"]')
+      if (commandDialog || commandTrigger) {
+        event.preventDefault()
+        if (commandDialog?.dataset.open === "true") commandDialog.querySelector<HTMLInputElement>('[data-ui="command-input"]')?.focus()
+        else commandTrigger?.click()
+        return
+      }
+    }
+  }
+
   const onKeyDown = (event: KeyboardEvent) => {
     const target = event.target
     if (!(target instanceof HTMLElement)) return
@@ -223,6 +236,7 @@ export function installUiAdapters(root: Document | HTMLElement | ShadowRoot = do
   }
 
   root.addEventListener("keydown", onKeyDown as EventListener)
+  ownerDocument?.addEventListener("keydown", onCommandShortcut)
   root.addEventListener("focusin", onTooltipOpen)
   root.addEventListener("pointerover", onTooltipOpen)
   root.addEventListener("click", onInputGroupAddonClick)
@@ -233,6 +247,7 @@ export function installUiAdapters(root: Document | HTMLElement | ShadowRoot = do
 
   return () => {
     root.removeEventListener("keydown", onKeyDown as EventListener)
+    ownerDocument?.removeEventListener("keydown", onCommandShortcut)
     root.removeEventListener("focusin", onTooltipOpen)
     root.removeEventListener("pointerover", onTooltipOpen)
     root.removeEventListener("click", onInputGroupAddonClick)
