@@ -43,6 +43,10 @@ const disposeUiAdapters = installUiAdapters()
 
 The dialog adapter calls the native `showModal()` API, which provides modal focus containment, background inertness, Escape handling, and focus restoration. It also provides tabs and command keyboard behavior, collision-aware fixed tooltip positioning and Escape dismissal, and toast timeout lifecycle. Without the adapter, the components still render semantic, controlled markup; `dialog_subscription(open:, on_key_down:)` is available as a Voyd-only Escape fallback.
 
+`Alert` composes `AlertTitle` and `AlertDescription` with an optional `Icon`. Its `Default`, `Information`, `Success`, `Warning`, and `Destructive` variants use the same semantic color tokens as toasts and other status components.
+
+Icons are pure Voyd wrappers around Lucide-derived SVG path data stored in `IconName`. They render as inline CSS masks, inherit `currentColor`, and do not require React or a runtime icon dependency.
+
 Add `command_shortcut_trigger_attr()` to the existing button that opens `CommandDialog`; the adapter maps `Command+K`/`Ctrl+K` to that same typed trigger. `CommandInput` includes an `aria-keyshortcuts` contract and a visible `⌘ K` keycap hint; override `shortcut_label` when an application needs a different display label.
 
 `Button`, `Card`, and `CardButton` accept `loading` and `loading_label`. Busy buttons and interactive cards are disabled automatically, while static cards receive the same accessible busy metadata and a stable loading overlay. `LoadingIndicator` is exported for custom compositions, and button-based wrappers forward the same loading options.

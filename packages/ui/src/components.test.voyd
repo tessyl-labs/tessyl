@@ -1,5 +1,7 @@
 use pkg::web::{ render }
 use std::test::assertions::all
+use src::alert::{ Alert, AlertDescription, AlertTitle }
+use src::alert_variant::AlertVariant
 use src::avatar::{ Avatar, AvatarFallback }
 use src::badge::Badge
 use src::button::Button
@@ -20,7 +22,7 @@ use src::tooltip::{ Tooltip, TooltipContent, TooltipTrigger }
 use src::badge_variant::BadgeVariant
 use src::card_size::CardSize
 use src::showcase::model::initial_model
-use src::showcase::ui::{ actions_section, article_dialog, cards_section, command_dialog, forms_section, navigation_section, overlays_section, typography_section, view }
+use src::showcase::ui::{ actions_section, alerts_section, article_dialog, cards_section, command_dialog, forms_section, navigation_section, overlays_section, typography_section, view }
 use src::showcase::update::{ Msg as ShowcaseMsg, step as showcase_step }
 
 pub enum TestMsg
@@ -51,6 +53,9 @@ test "showcase update accepts every interactive message":
 
 test "showcase actions section renders":
   assert(render(actions_section()).contains("Actions".as_slice()), eq: true)
+
+test "showcase alerts section renders":
+  assert(render(alerts_section()).contains("Conflicting claims detected".as_slice()), eq: true)
 
 test "showcase typography section renders an article hierarchy":
   let html = render(typography_section())
@@ -98,6 +103,23 @@ test "button loading state is busy, disabled, and labelled":
   assert(html.contains("aria-busy=\"true\"".as_slice()), eq: true)
   assert(html.contains("data-ui=\"loading-indicator\"".as_slice()), eq: true)
   assert(html.contains("Saving".as_slice()), eq: true)
+
+test "alert composes semantic slots and tone metadata":
+  let html = render(Alert(variant: AlertVariant::Information {}, children: [Icon(name: IconName::circle_info()), AlertTitle(children: ["Sources found"]), AlertDescription(children: ["Review the new references."])]))
+  assert(html.contains("role=\"alert\"".as_slice()), eq: true)
+  assert(html.contains("data-variant=\"information\"".as_slice()), eq: true)
+  assert(html.contains("data-ui=\"alert-title\"".as_slice()), eq: true)
+  assert(html.contains("data-ui=\"alert-description\"".as_slice()), eq: true)
+
+test "alert exposes every visual variant":
+  let default_alert = render(Alert(children: ["Default"]))
+  let success_alert = render(Alert(variant: AlertVariant::Success {}, children: ["Success"]))
+  let warning_alert = render(Alert(variant: AlertVariant::Warning {}, children: ["Warning"]))
+  let destructive_alert = render(Alert(variant: AlertVariant::Destructive {}, children: ["Destructive"]))
+  assert(default_alert.contains("data-variant=\"default\"".as_slice()), eq: true)
+  assert(success_alert.contains("data-variant=\"success\"".as_slice()), eq: true)
+  assert(warning_alert.contains("data-variant=\"warning\"".as_slice()), eq: true)
+  assert(destructive_alert.contains("data-variant=\"destructive\"".as_slice()), eq: true)
 
 test "card composition preserves its named slots":
   let html = render(Card(children: [CardHeader(children: [CardTitle(children: ["Title"])]), CardContent(children: ["Body"])]))

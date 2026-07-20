@@ -1,0 +1,6 @@
+pub enum AlertVariant
+  Default
+  Information
+  Success
+  Warning
+  Destructive

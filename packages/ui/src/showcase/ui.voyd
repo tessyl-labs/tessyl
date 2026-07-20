@@ -23,11 +23,12 @@ pub fn view(model: Model) -> Html<Msg>
         <aside class="h-fit rounded-xl border bg-card p-3 lg:sticky lg:top-24">
           <p class="px-2 pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Components</p>
           <nav class="flex flex-col gap-1">
-            <a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#actions">Actions</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#typography">Typography</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#cards">Cards & data</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#forms">Forms</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#navigation">Navigation</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#overlays">Overlays</a>
+            <a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#actions">Actions</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#alerts">Alerts</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#typography">Typography</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#cards">Cards & data</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#forms">Forms</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#navigation">Navigation</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#overlays">Overlays</a>
           </nav>
         </aside>
         <div class="flex min-w-0 flex-col gap-10">
           {actions_section()}
+          {alerts_section()}
           {typography_section()}
           {cards_section()}
           {forms_section(model)}
@@ -54,6 +55,17 @@ pub fn actions_section() -> Html<Msg>
     <div><p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Button sizes</p><div class="flex flex-wrap items-center gap-3"><Button size={ButtonSize::ExtraSmall {}} on_press={Msg::NoOp {}}>Extra small</Button><Button size={ButtonSize::Small {}} on_press={Msg::NoOp {}}>Small</Button><Button size={ButtonSize::Default {}} on_press={Msg::NoOp {}}>Default</Button><Button size={ButtonSize::Large {}} on_press={Msg::NoOp {}}>Large</Button><Button size={ButtonSize::IconExtraSmall {}} aria_label="Extra-small icon button" variant={ButtonVariant::Outline {}} on_press={Msg::NoOp {}}><Icon name={IconName::plus()} /></Button><Button size={ButtonSize::IconSmall {}} aria_label="Small icon button" variant={ButtonVariant::Outline {}} on_press={Msg::NoOp {}}><Icon name={IconName::plus()} /></Button><Button size={ButtonSize::Icon {}} aria_label="Default icon button" variant={ButtonVariant::Outline {}} on_press={Msg::NoOp {}}><Icon name={IconName::plus()} /></Button></div></div>
     <div class="flex flex-wrap items-center gap-2"><Badge>Default</Badge><Badge variant={BadgeVariant::Secondary {}}>Secondary</Badge><Badge variant={BadgeVariant::Outline {}}>Outline</Badge><Badge variant={BadgeVariant::Destructive {}}>Needs review</Badge></div>
     <div class="flex items-center gap-6"><AvatarGroup><Avatar size={AvatarSize::Small {}}><AvatarFallback>ML</AvatarFallback>{AvatarBadge()}</Avatar><Avatar size={AvatarSize::Small {}}><AvatarFallback>AK</AvatarFallback></Avatar><AvatarGroupCount>+4</AvatarGroupCount></AvatarGroup><Avatar size={AvatarSize::Large {}}><AvatarFallback>ML</AvatarFallback>{AvatarBadge()}</Avatar><Tooltip><TooltipTrigger described_by="save-tip" on_press={Msg::NoOp {}}><Icon name={IconName::bookmark()} />Hover or focus</TooltipTrigger><TooltipContent id="save-tip">Save to your reading list</TooltipContent></Tooltip><Button variant={ButtonVariant::Ghost {}} size={ButtonSize::Icon {}} aria_label="Saved bookmark" on_press={Msg::NoOp {}}><Icon name={IconName::bookmark()} filled={true} /></Button></div>
+  </ShowcaseSection>
+
+pub fn alerts_section() -> Html<Msg>
+  <ShowcaseSection id="alerts" title="Alerts" description="Persistent status and guidance with semantic color treatments.">
+    <div class="grid gap-3">
+      <Alert><Icon name={IconName::message_question()} /><AlertTitle>Default alert</AlertTitle><AlertDescription>Use the neutral treatment for contextual guidance that does not require urgency.</AlertDescription></Alert>
+      <Alert variant={AlertVariant::Information {}}><Icon name={IconName::circle_info()} /><AlertTitle>New sources are available</AlertTitle><AlertDescription>Mira found three related references that may strengthen this article.</AlertDescription></Alert>
+      <Alert variant={AlertVariant::Success {}}><Icon name={IconName::circle_check()} /><AlertTitle>Article is healthy</AlertTitle><AlertDescription>Every material claim has a current source and a recent review.</AlertDescription></Alert>
+      <Alert variant={AlertVariant::Warning {}}><Icon name={IconName::triangle_alert()} /><AlertTitle>Review recommended</AlertTitle><AlertDescription>Two sources will be more than twelve months old next week.</AlertDescription></Alert>
+      <Alert variant={AlertVariant::Destructive {}}><Icon name={IconName::circle_alert()} /><AlertTitle>Conflicting claims detected</AlertTitle><AlertDescription>Resolve the disagreement before publishing this revision.</AlertDescription></Alert>
+    </div>
   </ShowcaseSection>
 
 pub fn typography_section() -> Html<Msg>

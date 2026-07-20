@@ -1,3 +1,4 @@
+pub use src::alert::{ Alert, AlertDescription, AlertTitle }
 pub use src::avatar::{ Avatar, AvatarBadge, AvatarFallback, AvatarGroup, AvatarGroupCount }
 pub use src::badge::Badge
 pub use src::button::Button
@@ -15,6 +16,7 @@ pub use src::shared::{ Child, View }
 pub use src::tabs::{ Tabs, TabsContent, TabsList, TabsTrigger }
 pub use src::toast::{ Toast, Toaster, toast, toast_error, toast_information, toast_loading, toast_success, toast_warning }
 pub use src::tooltip::{ Tooltip, TooltipContent, TooltipProvider, TooltipTrigger }
+pub use src::alert_variant::AlertVariant
 pub use src::avatar_size::AvatarSize
 pub use src::badge_variant::BadgeVariant
 pub use src::button_size::ButtonSize

@@ -1,0 +1,48 @@
+use std::array::Array
+use std::msgpack::MsgPack
+use std::optional::types::all
+use std::string::type::String
+use std::vx::self as vx
+use src::alert_variant::AlertVariant
+use src::shared::{ data_attr, normalize_children, resolve_class, with_class }
+
+/// A static, semantic message that composes an optional icon, title, and body.
+pub fn Alert({ children: Array<MsgPack>, variant: AlertVariant = AlertVariant::Default {}, class?: String, replace_class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> MsgPack
+  let ~attrs = [
+    data_attr("alert"),
+    vx::attr(name: "data-variant", value: alert_variant_name(variant)),
+    vx::attr(name: "role", value: "alert"),
+    vx::class(resolve_class(alert_class(variant), class, replace_class))
+  ]
+  var index = 0
+  while index < extra_attrs.len():
+    attrs.push(extra_attrs.at(index))
+    index = index + 1
+  vx::html_element(tag: "section", attrs: attrs, children: normalize_children(children))
+
+pub fn AlertTitle({ children: Array<MsgPack>, class?: String }) -> MsgPack
+  vx::html_element(tag: "div", attrs: [data_attr("alert-title"), vx::class(with_class("col-start-2 font-semibold leading-5", class))], children: normalize_children(children))
+
+pub fn AlertDescription({ children: Array<MsgPack>, class?: String }) -> MsgPack
+  vx::html_element(tag: "div", attrs: [data_attr("alert-description"), vx::class(with_class("col-start-2 text-sm leading-6 text-current/80 [&_p]:m-0", class))], children: normalize_children(children))
+
+fn alert_class(variant: AlertVariant) -> String
+  "grid w-full grid-cols-[0_1fr] items-start gap-x-0 gap-y-1 rounded-[var(--ui-radius-control)] border p-4 text-sm has-[[data-ui=icon]]:grid-cols-[auto_1fr] has-[[data-ui=icon]]:gap-x-3 [&_[data-ui=icon]]:mt-0.5 [&_[data-ui=icon]]:size-4 ".concat(match(variant)
+    AlertVariant::Default:
+      "border-border bg-card text-card-foreground [&_[data-ui=icon]]:text-muted-foreground"
+    AlertVariant::Information:
+      "border-information/30 bg-information/10 text-foreground [&_[data-ui=icon]]:text-information"
+    AlertVariant::Success:
+      "border-success/30 bg-success/10 text-foreground [&_[data-ui=icon]]:text-success"
+    AlertVariant::Warning:
+      "border-warning/30 bg-warning/10 text-foreground [&_[data-ui=icon]]:text-warning"
+    AlertVariant::Destructive:
+      "border-destructive/30 bg-destructive/10 text-foreground [&_[data-ui=icon]]:text-destructive")
+
+fn alert_variant_name(variant: AlertVariant) -> String
+  match(variant)
+    AlertVariant::Default: "default"
+    AlertVariant::Information: "information"
+    AlertVariant::Success: "success"
+    AlertVariant::Warning: "warning"
+    AlertVariant::Destructive: "destructive"
