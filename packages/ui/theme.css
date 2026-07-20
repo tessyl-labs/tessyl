@@ -16,7 +16,10 @@
   --ui-palette-gold-highlight: #caa347;
   --ui-palette-gold-surface: #f3ecd6;
   --ui-palette-gold-border: #d5c18a;
-  --ui-palette-on-gold: #ffffff;
+  --ui-palette-on-gold: #17130a;
+  --ui-palette-button-gold: #947018;
+  --ui-palette-button-gold-hover: #8d6814;
+  --ui-palette-on-button-gold: #ffffff;
   --ui-palette-success: #2f7855;
   --ui-palette-warning: #a55d0a;
   --ui-palette-error: #b6453c;
@@ -33,6 +36,9 @@
   --ui-popover-foreground: var(--ui-palette-text);
   --ui-primary: var(--ui-palette-gold);
   --ui-primary-hover: var(--ui-palette-gold-hover);
+  --ui-primary-button: var(--ui-palette-button-gold);
+  --ui-primary-button-hover: var(--ui-palette-button-gold-hover);
+  --ui-primary-button-foreground: var(--ui-palette-on-button-gold);
   --ui-primary-highlight: var(--ui-palette-gold-highlight);
   --ui-primary-foreground: var(--ui-palette-on-gold);
   --ui-secondary: var(--ui-palette-surface-subtle);
@@ -58,43 +64,9 @@
   --ui-shadow-control: 0 1px 2px rgb(20 24 32 / 5%);
   --ui-shadow-card: 0 6px 20px rgb(20 24 32 / 7%);
   --ui-shadow-panel: 0 18px 50px rgb(20 24 32 / 10%);
-  --ui-shadow-primary:
-    inset 0 1px 0 rgb(255 255 255 / 25%),
-    inset 0 -1px 0 rgb(0 0 0 / 18%),
-    0 6px 16px color-mix(in srgb, var(--ui-primary) 17%, transparent);
   --ui-shadow-accent: inset 0 1px 0 rgb(255 255 255 / 16%);
-  --ui-primary-text-shadow: 0 1px 1px rgb(49 31 0 / 32%);
   --ui-motion-fast: 150ms;
 
-  --ui-primary-metallic: linear-gradient(
-      103deg,
-      color-mix(in srgb, var(--ui-primary) 72%, #000) 0%,
-      var(--ui-primary-highlight) 34%,
-      color-mix(in srgb, var(--ui-primary-highlight) 58%, #fff) 52%,
-      var(--ui-primary) 72%,
-      color-mix(in srgb, var(--ui-primary) 80%, #000) 100%
-    );
-  --ui-primary-metallic-texture:
-    radial-gradient(
-      ellipse 95% 150% at 78% -28%,
-      rgb(255 249 207 / 78%) 0%,
-      rgb(255 238 150 / 24%) 38%,
-      transparent 64%
-    ),
-    radial-gradient(
-      ellipse 120% 100% at 18% 125%,
-      rgb(74 43 0 / 48%) 0%,
-      transparent 58%
-    ),
-    repeating-linear-gradient(
-      0deg,
-      rgb(255 255 255 / 7%) 0,
-      rgb(255 255 255 / 7%) 0.6px,
-      rgb(44 25 0 / 5%) 1.2px,
-      transparent 2.2px,
-      transparent 4px
-    ),
-    var(--ui-primary-metallic);
   --ui-accent-surface: linear-gradient(
     145deg,
     color-mix(in srgb, var(--ui-accent) 94%, #fff),
@@ -130,5 +102,4 @@ html[data-theme="dark"] [data-ui-theme="library"],
   --ui-shadow-control: 0 1px 2px rgb(0 0 0 / 20%);
   --ui-shadow-card: 0 8px 28px rgb(0 0 0 / 22%);
   --ui-shadow-panel: 0 22px 65px rgb(0 0 0 / 32%);
-  --ui-primary-text-shadow: none;
 }

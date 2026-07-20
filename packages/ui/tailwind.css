@@ -45,14 +45,6 @@
 }
 
 @layer components {
-  [data-ui="button"][data-variant="default"] {
-    background-color: var(--ui-primary);
-    background-size: 100% 100%, 100% 100%, 100% 4px, 100% 100%;
-    background-position: center;
-    background-blend-mode: screen, multiply, soft-light, normal;
-    text-shadow: var(--ui-primary-text-shadow);
-  }
-
   [data-ui="tooltip"] [data-ui="tooltip-content"] { @apply pointer-events-none invisible opacity-0; }
   [data-ui="tooltip"]:not([data-dismissed="true"]):hover [data-ui="tooltip-content"],
   [data-ui="tooltip"]:not([data-dismissed="true"]):focus-within [data-ui="tooltip-content"] { @apply visible opacity-100; }
