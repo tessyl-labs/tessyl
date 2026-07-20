@@ -63,16 +63,38 @@
     inset 0 -1px 0 rgb(0 0 0 / 18%),
     0 6px 16px color-mix(in srgb, var(--ui-primary) 17%, transparent);
   --ui-shadow-accent: inset 0 1px 0 rgb(255 255 255 / 16%);
+  --ui-primary-text-shadow: 0 1px 1px rgb(49 31 0 / 32%);
   --ui-motion-fast: 150ms;
 
   --ui-primary-metallic: linear-gradient(
-    110deg,
-    color-mix(in srgb, var(--ui-primary) 86%, #000) 0%,
-    var(--ui-primary) 36%,
-    color-mix(in srgb, var(--ui-primary) 82%, #fff) 52%,
-    var(--ui-primary) 68%,
-    color-mix(in srgb, var(--ui-primary) 90%, #000) 100%
-  );
+      103deg,
+      color-mix(in srgb, var(--ui-primary) 72%, #000) 0%,
+      var(--ui-primary-highlight) 34%,
+      color-mix(in srgb, var(--ui-primary-highlight) 58%, #fff) 52%,
+      var(--ui-primary) 72%,
+      color-mix(in srgb, var(--ui-primary) 80%, #000) 100%
+    );
+  --ui-primary-metallic-texture:
+    radial-gradient(
+      ellipse 95% 150% at 78% -28%,
+      rgb(255 249 207 / 78%) 0%,
+      rgb(255 238 150 / 24%) 38%,
+      transparent 64%
+    ),
+    radial-gradient(
+      ellipse 120% 100% at 18% 125%,
+      rgb(74 43 0 / 48%) 0%,
+      transparent 58%
+    ),
+    repeating-linear-gradient(
+      0deg,
+      rgb(255 255 255 / 7%) 0,
+      rgb(255 255 255 / 7%) 0.6px,
+      rgb(44 25 0 / 5%) 1.2px,
+      transparent 2.2px,
+      transparent 4px
+    ),
+    var(--ui-primary-metallic);
   --ui-accent-surface: linear-gradient(
     145deg,
     color-mix(in srgb, var(--ui-accent) 94%, #fff),
@@ -108,4 +130,5 @@ html[data-theme="dark"] [data-ui-theme="library"],
   --ui-shadow-control: 0 1px 2px rgb(0 0 0 / 20%);
   --ui-shadow-card: 0 8px 28px rgb(0 0 0 / 22%);
   --ui-shadow-panel: 0 22px 65px rgb(0 0 0 / 32%);
+  --ui-primary-text-shadow: none;
 }

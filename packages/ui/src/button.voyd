@@ -46,7 +46,7 @@ pub fn button_class(variant: ButtonVariant, size: ButtonSize) -> String
 fn button_variant_class(variant: ButtonVariant) -> String
   match(variant)
     ButtonVariant::Default:
-      "border-primary bg-primary bg-[image:var(--ui-primary-metallic)] text-primary-foreground shadow-[var(--ui-shadow-primary)] hover:-translate-y-px hover:brightness-[1.035] active:translate-y-0"
+      "border-primary bg-primary bg-[image:var(--ui-primary-metallic-texture)] text-primary-foreground shadow-[var(--ui-shadow-primary)] hover:-translate-y-px hover:brightness-[1.025] active:translate-y-0"
     ButtonVariant::Outline:
       "border-border bg-background text-foreground shadow-[var(--ui-shadow-control)] hover:bg-muted"
     ButtonVariant::Secondary:
