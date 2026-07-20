@@ -1,0 +1,31 @@
+use std::array::Array
+use std::msgpack::MsgPack
+use std::optional::types::all
+use std::string::type::String
+use std::vx::self as vx
+use src::shared::{ bool_text, data_attr, with_class }
+use src::icon_name::{ IconName, icon_path }
+
+/// Renders the icon set used by the knowledge-base prototype as pure VX SVG.
+pub fn Icon({ name: IconName, filled: bool = false, class?: String, label?: String }) -> MsgPack
+  let ~attrs = [
+    data_attr("icon"),
+    vx::attr(name: "data-filled", value: bool_text(filled)),
+    vx::style(name: "mask-image", value: icon_mask(name, filled)),
+    vx::style(name: "-webkit-mask-image", value: icon_mask(name, filled)),
+    vx::style(name: "mask-position", value: "center"),
+    vx::style(name: "mask-repeat", value: "no-repeat"),
+    vx::style(name: "mask-size", value: "contain"),
+    vx::class(with_class("inline-block size-4 shrink-0 bg-current", class))
+  ]
+  if label is Some:
+    attrs.push(vx::attr(name: "role", value: "img"))
+    attrs.push(vx::attr(name: "aria-label", value: label.value))
+  else:
+    attrs.push(vx::attr(name: "aria-hidden", value: "true"))
+  vx::html_element(tag: "span", attrs: attrs, children: Array<MsgPack>::init())
+
+fn icon_mask(name: IconName, filled: bool) -> String
+  let path = icon_path(name).replaced(old: " ", with: "%20")
+  let fill = if filled then: "black" else: "none"
+  "url(\"data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='".concat(fill).concat("'%20stroke='black'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Cpath%20d='").concat(path).concat("'/%3E%3C/svg%3E\")")

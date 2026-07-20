@@ -1,0 +1,60 @@
+use std::string::type::String
+
+/// A typed, payload-only icon descriptor. Static constructors avoid runtime
+/// union casts while keeping icon paths inside the pure Voyd package.
+pub obj IconName { path: String }
+
+pub fn icon_path(name: IconName) -> String
+  name.path
+
+impl IconName
+  api fn arrow_right() -> IconName
+    IconName { path: "M5 12h14m-6-6 6 6-6 6" }
+  api fn arrow_up() -> IconName
+    IconName { path: "m5 12 7-7 7 7M12 19V5" }
+  api fn book_open() -> IconName
+    IconName { path: "M2 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2zm20 0h-6a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h7z" }
+  api fn bookmark() -> IconName
+    IconName { path: "M6 3h12v18l-6-4-6 4z" }
+  api fn bot() -> IconName
+    IconName { path: "M12 2v4m-7 4h14a2 2 0 0 1 2 2v7H3v-7a2 2 0 0 1 2-2zm3 4h.01M16 14h.01M8 18h8" }
+  api fn check() -> IconName
+    IconName { path: "m5 12 4 4L19 6" }
+  api fn chevron_right() -> IconName
+    IconName { path: "m9 18 6-6-6-6" }
+  api fn circle_alert() -> IconName
+    IconName { path: "M12 8v4m0 4h.01M22 12A10 10 0 1 1 2 12a10 10 0 0 1 20 0" }
+  api fn clock() -> IconName
+    IconName { path: "M12 6v6l4 2M22 12A10 10 0 1 1 2 12a10 10 0 0 1 20 0" }
+  api fn copy() -> IconName
+    IconName { path: "M8 8h12v12H8zM4 16V4h12" }
+  api fn ellipsis() -> IconName
+    IconName { path: "M5 12h.01M12 12h.01M19 12h.01" }
+  api fn file_plus() -> IconName
+    IconName { path: "M14 2H6a2 2 0 0 0-2 2v16h16V8zm0 0v6h6M12 11v6m-3-3h6" }
+  api fn folder_open() -> IconName
+    IconName { path: "M3 6h7l2 2h9l-3 10H3z" }
+  api fn history() -> IconName
+    IconName { path: "M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5M12 7v5l3 2" }
+  api fn home() -> IconName
+    IconName { path: "m3 11 9-8 9 8v10h-6v-6H9v6H3z" }
+  api fn library() -> IconName
+    IconName { path: "M4 19V5m4 14V5m4 14V5m5 14-3-14m-12 14h20" }
+  api fn link() -> IconName
+    IconName { path: "M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.2 1.2m2.7 5.3a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.2-1.2" }
+  api fn menu() -> IconName
+    IconName { path: "M4 6h16M4 12h16M4 18h16" }
+  api fn message_question() -> IconName
+    IconName { path: "M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4zM9.5 9a2.5 2.5 0 1 1 4.2 1.8c-.8.7-1.7 1.1-1.7 2.2m0 2h.01" }
+  api fn network() -> IconName
+    IconName { path: "M12 3v6m0 0H5v5m7-5h7v5M5 14v6m14-6v6m-10 0h6" }
+  api fn plus() -> IconName
+    IconName { path: "M12 5v14M5 12h14" }
+  api fn search() -> IconName
+    IconName { path: "m21 21-4.3-4.3M19 11a8 8 0 1 1-16 0 8 8 0 0 1 16 0" }
+  api fn sparkles() -> IconName
+    IconName { path: "m12 3-1.2 3.8L7 8l3.8 1.2L12 13l1.2-3.8L17 8l-3.8-1.2zM5 15l-.7 2.3L2 18l2.3.7L5 21l.7-2.3L8 18l-2.3-.7zM19 14l-.7 2.3L16 17l2.3.7L19 20l.7-2.3L22 17l-2.3-.7z" }
+  api fn star() -> IconName
+    IconName { path: "m12 2 3.1 6.3 6.9 1-5 4.9 1.2 6.8-6.2-3.2L5.8 21 7 14.2 2 9.3l6.9-1z" }
+  api fn x() -> IconName
+    IconName { path: "M18 6 6 18M6 6l12 12" }

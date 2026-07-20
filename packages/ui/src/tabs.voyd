@@ -1,0 +1,42 @@
+use std::array::Array
+use std::msgpack::MsgPack
+use std::optional::types::all
+use std::string::type::String
+use std::vx::self as vx
+use src::shared::{ Child, View, bool_text, data_attr, empty, normalize_children, with_class }
+use src::tabs_list_variant::TabsListVariant
+
+pub fn Tabs({ children: Array<MsgPack>, class?: String }) -> MsgPack
+  vx::html_element(tag: "div", attrs: [data_attr("tabs"), vx::class(with_class("flex flex-col gap-2", class))], children: normalize_children(children))
+
+pub fn TabsList({ children: Array<MsgPack>, variant: TabsListVariant = TabsListVariant::Default {}, class?: String }) -> MsgPack
+  vx::html_element(tag: "div", attrs: [data_attr("tabs-list"), vx::attr(name: "data-variant", value: tabs_list_variant_name(variant)), vx::attr(name: "role", value: "tablist"), vx::attr(name: "aria-orientation", value: "horizontal"), vx::class(with_class(tabs_list_class(variant), class))], children: normalize_children(children))
+
+pub fn TabsTrigger<Msg>({ children: Array<Child<Msg>>, value: String, active: bool, on_select: fn(String) -> Msg, id?: String, controls?: String, disabled: bool = false, class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
+  let ~attrs = [data_attr("tabs-trigger"), vx::attr(name: "type", value: "button"), vx::attr(name: "role", value: "tab"), vx::attr(name: "aria-selected", value: bool_text(active)), vx::attr(name: "data-active", value: bool_text(active)), vx::attr(name: "tabindex", value: if active then: 0 else: -1), vx::disabled(disabled), vx::class(with_class("relative inline-flex h-full flex-1 items-center justify-center gap-1.5 rounded-[calc(var(--ui-radius-control)*0.75)] border border-transparent px-2 py-0.5 text-sm font-medium text-muted-foreground transition-all duration-[var(--ui-motion-fast)] hover:text-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 data-[active=true]:bg-background data-[active=true]:text-foreground data-[active=true]:shadow-[var(--ui-shadow-control)] disabled:pointer-events-none disabled:opacity-50", class)), vx::html_event_handler<Msg>(name: "click", handler: () -> Msg => on_select(value))]
+  if id is Some: attrs.push(vx::id(id.value))
+  if controls is Some: attrs.push(vx::attr(name: "aria-controls", value: controls.value))
+  var index = 0
+  while index < extra_attrs.len():
+    attrs.push(extra_attrs.at(index))
+    index = index + 1
+  vx::html_element(tag: "button", attrs: attrs, children: normalize_children(children))
+
+pub fn TabsContent({ children: Array<MsgPack>, active: bool, value: String, id?: String, labelled_by?: String, class?: String }) -> MsgPack
+  if active then:
+    let ~attrs = [data_attr("tabs-content"), vx::attr(name: "role", value: "tabpanel"), vx::attr(name: "data-value", value: value), vx::attr(name: "tabindex", value: 0), vx::class(with_class("flex-1 outline-none", class))]
+    if id is Some: attrs.push(vx::id(id.value))
+    if labelled_by is Some: attrs.push(vx::attr(name: "aria-labelledby", value: labelled_by.value))
+    vx::html_element(tag: "div", attrs: attrs, children: normalize_children(children))
+  else:
+    empty()
+
+fn tabs_list_class(variant: TabsListVariant) -> String
+  match(variant)
+    TabsListVariant::Default: "inline-flex h-8 w-fit items-center justify-center rounded-[var(--ui-radius-control)] bg-muted p-[3px] text-muted-foreground"
+    TabsListVariant::Line: "inline-flex h-8 w-fit items-center justify-center gap-1 border-b border-border bg-transparent text-muted-foreground"
+
+fn tabs_list_variant_name(variant: TabsListVariant) -> String
+  match(variant)
+    TabsListVariant::Default: "default"
+    TabsListVariant::Line: "line"

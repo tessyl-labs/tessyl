@@ -1,0 +1,61 @@
+use std::array::Array
+use std::msgpack::MsgPack
+use std::optional::types::all
+use std::string::type::String
+use std::vx::self as vx
+use std::vx::KeyboardEvent
+use src::button::Button
+use src::icon::Icon
+use src::shared::{ Child, View, bool_text, data_attr, empty, normalize_children, resolve_class, with_class }
+use src::button_size::ButtonSize
+use src::button_variant::ButtonVariant
+use src::icon_name::IconName
+
+/// Controlled native modal root. Install `@tessyl/ui/ui-adapters` so the
+/// element enters the browser top layer through `showModal()`.
+pub fn Dialog<Msg>({ open: bool, on_close: Msg, children: Array<Child<Msg>>, title_id?: String, description_id?: String, class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
+  let ~attrs = [data_attr("dialog"), vx::attr(name: "data-open", value: bool_text(open)), vx::class(with_class("m-auto max-h-[calc(100vh-2rem)] w-[calc(100%-2rem)] max-w-lg overflow-y-auto border-0 bg-transparent p-0 text-foreground outline-none backdrop:bg-[var(--ui-overlay)] backdrop:backdrop-blur-xs", class)), vx::html_event_message(name: "click", message: on_close), vx::html_event_message(name: "cancel", message: on_close)]
+  if title_id is Some: attrs.push(vx::attr(name: "aria-labelledby", value: title_id.value))
+  if description_id is Some: attrs.push(vx::attr(name: "aria-describedby", value: description_id.value))
+  var index = 0
+  while index < extra_attrs.len():
+    attrs.push(extra_attrs.at(index))
+    index = index + 1
+  vx::html_element(tag: "dialog", attrs: attrs, children: normalize_children(children))
+
+pub fn DialogTrigger<Msg>({ children: Array<Child<Msg>>, on_open: Msg, disabled: bool = false, class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
+  Button<Msg>(children: children, on_press: on_open, disabled: disabled, class: class, extra_attrs: extra_attrs)
+
+pub fn DialogClose<Msg>({ children: Array<Child<Msg>>, on_close: Msg, variant: ButtonVariant = ButtonVariant::Ghost {}, size: ButtonSize = ButtonSize::Default {}, disabled: bool = false, class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
+  Button<Msg>(children: children, on_press: on_close, variant: variant, size: size, disabled: disabled, class: class, extra_attrs: extra_attrs)
+
+pub fn DialogContent({ children: Array<MsgPack>, title_id: String, description_id?: String, padded: bool = true, class?: String, replace_class?: String }) -> MsgPack
+  let padding = if padded then: " p-4" else: ""
+  let base = "relative grid w-full gap-4 rounded-[var(--ui-radius-panel)] bg-popover text-popover-foreground shadow-[var(--ui-shadow-panel)] ring-1 ring-foreground/10".concat(padding)
+  let ~attrs = [data_attr("dialog-content"), vx::attr(name: "data-title-id", value: title_id), vx::attr(name: "tabindex", value: -1), vx::class(resolve_class(base, class, replace_class)), vx::on_click_with(options: vx::EventOptions { prevent_default: false, stop_propagation: true, capture: false, passive: false }, handler: () -> void => void)]
+  vx::html_element(tag: "section", attrs: attrs, children: normalize_children(children))
+
+pub fn DialogHeader({ children: Array<MsgPack>, class?: String }) -> MsgPack
+  vx::html_element(tag: "div", attrs: [data_attr("dialog-header"), vx::class(with_class("flex flex-col gap-2", class))], children: normalize_children(children))
+
+pub fn DialogFooter({ children: Array<MsgPack>, class?: String }) -> MsgPack
+  vx::html_element(tag: "div", attrs: [data_attr("dialog-footer"), vx::class(with_class("-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-[var(--ui-radius-panel)] border-t bg-muted/50 p-4 sm:flex-row sm:justify-end", class))], children: normalize_children(children))
+
+pub fn DialogTitle({ children: Array<MsgPack>, id: String, class?: String }) -> MsgPack
+  vx::html_element(tag: "h2", attrs: [data_attr("dialog-title"), vx::id(id), vx::class(with_class("text-base leading-none font-medium", class))], children: normalize_children(children))
+
+pub fn DialogDescription({ children: Array<MsgPack>, id?: String, class?: String }) -> MsgPack
+  let ~attrs = [data_attr("dialog-description"), vx::class(with_class("text-sm text-muted-foreground", class))]
+  if id is Some: attrs.push(vx::id(id.value))
+  vx::html_element(tag: "p", attrs: attrs, children: normalize_children(children))
+
+pub fn DialogCloseIcon<Msg>({ on_close: Msg, class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
+  Button<Msg>(children: [Icon(name: IconName::x())], on_press: on_close, variant: ButtonVariant::Ghost {}, size: ButtonSize::IconSmall {}, aria_label: "Close", class: class, extra_attrs: extra_attrs)
+
+/// Routes global keydown events while a dialog is open. The application decides
+/// how Escape and any non-Escape keys map into its message union.
+pub fn dialog_subscription<Msg>({ open: bool, on_key_down: fn(KeyboardEvent) -> Msg, key: String = "ui-dialog-keydown" }) -> vx::Sub<Msg>
+  if open then: vx::keyboard_on_key_down<Msg>(key: key, handler: on_key_down) else: vx::Sub<Msg>::none()
+
+pub fn is_escape(event: KeyboardEvent) -> bool
+  event.key == "Escape"

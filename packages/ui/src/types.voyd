@@ -1,0 +1,11 @@
+use std::string::type::String
+use src::toast_tone::ToastTone
+
+pub obj ToastItem {
+  api id: String,
+  api title: String,
+  api description?: String,
+  api duration_ms?: i32,
+  api revision?: i32,
+  api tone: ToastTone
+}

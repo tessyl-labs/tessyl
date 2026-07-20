@@ -1,0 +1,74 @@
+use std::array::Array
+use std::msgpack::MsgPack
+use std::optional::types::all
+use std::string::type::String
+use std::vx::self as vx
+use src::shared::{ Child, View, data_attr, normalize_children, resolve_class }
+use src::button_size::ButtonSize
+use src::button_variant::ButtonVariant
+
+/// Renders a typed button that emits `on_press` through the owning VX program.
+pub fn Button<Msg>({
+  children: Array<Child<Msg>>,
+  on_press: Msg,
+  variant: ButtonVariant = ButtonVariant::Default {},
+  size: ButtonSize = ButtonSize::Default {},
+  disabled: bool = false,
+  class?: String,
+  replace_class?: String,
+  aria_label?: String,
+  aria_described_by?: String,
+  extra_attrs: Array<MsgPack> = Array<MsgPack>::init(),
+  button_type: String = "button"
+}) -> View<Msg>
+  let ~attrs = [
+    data_attr("button"),
+    vx::class(resolve_class(button_class(variant, size), class, replace_class)),
+    vx::attr(name: "type", value: button_type),
+    vx::disabled(disabled),
+    vx::html_event_message(name: "click", message: on_press)
+  ]
+  if aria_label is Some:
+    attrs.push(vx::attr(name: "aria-label", value: aria_label.value))
+  if aria_described_by is Some:
+    attrs.push(vx::attr(name: "aria-describedby", value: aria_described_by.value))
+  var index = 0
+  while index < extra_attrs.len():
+    attrs.push(extra_attrs.at(index))
+    index = index + 1
+  vx::html_element(tag: "button", attrs: attrs, children: normalize_children(children))
+
+pub fn button_class(variant: ButtonVariant, size: ButtonSize) -> String
+  "inline-flex shrink-0 select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-[var(--ui-radius-control)] border border-transparent bg-clip-padding text-sm font-medium transition-all duration-[var(--ui-motion-fast)] outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:translate-y-px disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_[data-ui=icon]]:pointer-events-none [&_[data-ui=icon]]:shrink-0 ".concat(button_variant_class(variant)).concat(" ").concat(button_size_class(size))
+
+fn button_variant_class(variant: ButtonVariant) -> String
+  match(variant)
+    ButtonVariant::Default:
+      "bg-primary text-primary-foreground hover:bg-primary/85"
+    ButtonVariant::Outline:
+      "border-border bg-background text-foreground shadow-[var(--ui-shadow-control)] hover:bg-muted"
+    ButtonVariant::Secondary:
+      "bg-secondary text-secondary-foreground hover:bg-secondary/75"
+    ButtonVariant::Ghost:
+      "text-foreground hover:bg-muted"
+    ButtonVariant::Destructive:
+      "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:ring-destructive/20"
+    ButtonVariant::Link:
+      "text-primary underline-offset-4 hover:underline"
+
+fn button_size_class(size: ButtonSize) -> String
+  match(size)
+    ButtonSize::Default:
+      "h-8 px-2.5"
+    ButtonSize::ExtraSmall:
+      "h-6 rounded-md px-2 text-xs"
+    ButtonSize::Small:
+      "h-7 px-2.5 text-xs"
+    ButtonSize::Large:
+      "h-9 px-3"
+    ButtonSize::Icon:
+      "size-8 p-0 [&_svg]:size-4 [&_[data-ui=icon]]:size-4"
+    ButtonSize::IconExtraSmall:
+      "size-6 p-0 [&_svg]:size-3.5 [&_[data-ui=icon]]:size-3.5"
+    ButtonSize::IconSmall:
+      "size-7 p-0 [&_svg]:size-3.5 [&_[data-ui=icon]]:size-3.5"

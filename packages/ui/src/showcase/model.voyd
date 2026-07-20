@@ -1,0 +1,47 @@
+use src::types::{ ToastItem }
+use std::array::Array
+use std::string::type::String
+
+pub obj Model {
+  dialog_open: bool,
+  command_open: bool,
+  active_tab: String,
+  query: String,
+  draft: String,
+  selected: String,
+  toast_revision: i32,
+  toasts: Array<ToastItem>
+}
+
+pub fn initial_model() -> Model
+  Model {
+    dialog_open: false,
+    command_open: false,
+    active_tab: "brief",
+    query: String::init(),
+    draft: "Knowledge becomes durable when its revisions remain visible.",
+    selected: "Nothing selected",
+    toast_revision: 0,
+    toasts: Array<ToastItem>::init()
+  }
+
+pub fn copy(model: Model, {
+  dialog_open?: bool,
+  command_open?: bool,
+  active_tab?: String,
+  query?: String,
+  draft?: String,
+  selected?: String,
+  toast_revision?: i32,
+  toasts?: Array<ToastItem>
+}) -> Model
+  Model {
+    dialog_open: dialog_open ?? model.dialog_open,
+    command_open: command_open ?? model.command_open,
+    active_tab: active_tab ?? model.active_tab,
+    query: query ?? model.query,
+    draft: draft ?? model.draft,
+    selected: selected ?? model.selected,
+    toast_revision: toast_revision ?? model.toast_revision,
+    toasts: toasts ?? model.toasts
+  }

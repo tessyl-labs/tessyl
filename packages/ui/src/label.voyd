@@ -1,0 +1,11 @@
+use std::array::Array
+use std::msgpack::MsgPack
+use std::optional::types::all
+use std::string::type::String
+use std::vx::self as vx
+use src::shared::{ data_attr, normalize_children, with_class }
+
+pub fn Label({ children: Array<MsgPack>, for_id?: String, class?: String }) -> MsgPack
+  let ~attrs = [data_attr("label"), vx::class(with_class("flex w-fit select-none items-center gap-2 text-sm font-medium leading-none", class))]
+  if for_id is Some: attrs.push(vx::attr(name: "for", value: for_id.value))
+  vx::html_element(tag: "label", attrs: attrs, children: normalize_children(children))

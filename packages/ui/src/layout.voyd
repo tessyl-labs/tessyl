@@ -1,0 +1,32 @@
+use std::array::Array
+use std::msgpack::MsgPack
+use std::optional::types::all
+use std::string::type::String
+use std::vx::self as vx
+use src::shared::{ data_attr, normalize_children, with_class }
+use src::orientation::Orientation
+
+pub fn Separator({ orientation: Orientation = Orientation::Horizontal {}, decorative: bool = true, class?: String }) -> MsgPack
+  vx::html_element(tag: "div", attrs: [data_attr("separator"), vx::attr(name: "role", value: if decorative then: "none" else: "separator"), vx::attr(name: "aria-orientation", value: orientation_name(orientation)), vx::class(with_class(separator_class(orientation), class))], children: Array<MsgPack>::init())
+
+pub fn ScrollArea({ children: Array<MsgPack>, id?: String, aria_label?: String, class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> MsgPack
+  let ~attrs = [data_attr("scroll-area"), vx::attr(name: "tabindex", value: 0), vx::class(with_class("relative overflow-auto overscroll-contain rounded-[inherit] focus-visible:ring-3 focus-visible:ring-ring/50", class))]
+  if id is Some: attrs.push(vx::id(id.value))
+  if aria_label is Some:
+    attrs.push(vx::attr(name: "role", value: "region"))
+    attrs.push(vx::attr(name: "aria-label", value: aria_label.value))
+  var index = 0
+  while index < extra_attrs.len():
+    attrs.push(extra_attrs.at(index))
+    index = index + 1
+  vx::html_element(tag: "div", attrs: attrs, children: normalize_children(children))
+
+fn separator_class(orientation: Orientation) -> String
+  match(orientation)
+    Orientation::Horizontal: "h-px w-full shrink-0 bg-border"
+    Orientation::Vertical: "h-full w-px shrink-0 bg-border"
+
+fn orientation_name(orientation: Orientation) -> String
+  match(orientation)
+    Orientation::Horizontal: "horizontal"
+    Orientation::Vertical: "vertical"

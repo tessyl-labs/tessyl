@@ -1,0 +1,27 @@
+use std::array::Array
+use std::msgpack::MsgPack
+use std::optional::types::all
+use std::string::type::String
+use std::vx::self as vx
+use src::shared::{ data_attr, normalize_children, with_class }
+use src::badge_variant::BadgeVariant
+
+pub fn Badge({ children: Array<MsgPack>, variant: BadgeVariant = BadgeVariant::Default {}, class?: String }) -> MsgPack
+  vx::html_element(
+    tag: "span",
+    attrs: [data_attr("badge"), vx::class(with_class(badge_class(variant), class))],
+    children: normalize_children(children)
+  )
+
+fn badge_class(variant: BadgeVariant) -> String
+  "inline-flex h-5 w-fit shrink-0 items-center justify-center gap-1 overflow-hidden rounded-full border px-2 py-0.5 text-xs font-medium whitespace-nowrap ".concat(match(variant)
+    BadgeVariant::Default:
+      "border-transparent bg-primary text-primary-foreground"
+    BadgeVariant::Secondary:
+      "border-transparent bg-secondary text-secondary-foreground"
+    BadgeVariant::Destructive:
+      "border-transparent bg-destructive/10 text-destructive"
+    BadgeVariant::Outline:
+      "border-border text-foreground"
+    BadgeVariant::Ghost:
+      "border-transparent text-muted-foreground")

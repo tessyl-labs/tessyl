@@ -1,0 +1,19 @@
+use pkg::ui::{ Badge, BadgeVariant, Button, ButtonVariant, Card, CardContent, Icon, IconName }
+use pkg::web::render
+use std::enums::{ enum }
+use std::string::type::String
+use std::test::assertions::all
+
+pub enum ConsumerMsg
+  Clicked
+
+test "public package API composes across a package boundary":
+  let html = render(Card(children: [
+    CardContent(children: [
+      Badge(variant: BadgeVariant::Outline {}, children: ["Voyd"]),
+      Button<ConsumerMsg>(variant: ButtonVariant::Secondary {}, on_press: ConsumerMsg::Clicked {}, children: [Icon(name: IconName::check()), "Ready"])
+    ])
+  ]))
+  assert(html.contains("data-ui=\"card\"".as_slice()), eq: true)
+  assert(html.contains("data-ui=\"button\"".as_slice()), eq: true)
+  assert(html.contains("mask-image".as_slice()), eq: true)

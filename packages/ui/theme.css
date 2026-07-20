@@ -1,0 +1,52 @@
+:root {
+  --ui-background: var(--ts-color-canvas);
+  --ui-foreground: var(--ts-color-text);
+  --ui-card: var(--ts-color-surface);
+  --ui-card-foreground: var(--ts-color-text);
+  --ui-popover: var(--ts-color-surface);
+  --ui-popover-foreground: var(--ts-color-text);
+  --ui-primary: var(--ts-color-accent);
+  --ui-primary-foreground: var(--ts-color-text-inverse);
+  --ui-secondary: var(--ts-color-canvas-subtle);
+  --ui-secondary-foreground: var(--ts-color-text-body);
+  --ui-muted: var(--ts-color-surface-muted);
+  --ui-muted-foreground: var(--ts-color-text-muted);
+  --ui-accent: var(--ts-color-accent-soft);
+  --ui-accent-foreground: var(--ts-color-accent-strong);
+  --ui-destructive: var(--ts-color-critical);
+  --ui-destructive-foreground: var(--ts-color-text-inverse);
+  --ui-warning: var(--ts-color-caution);
+  --ui-border: var(--ts-color-border);
+  --ui-input: var(--ts-color-border-strong);
+  --ui-ring: var(--ts-color-focus);
+  --ui-radius-control: var(--ts-radius-control);
+  --ui-radius-card: var(--ts-radius-card);
+  --ui-radius-panel: var(--ts-radius-panel);
+  --ui-shadow-control: var(--ts-shadow-control);
+  --ui-shadow-card: var(--ts-shadow-card);
+  --ui-shadow-panel: var(--ts-shadow-panel);
+  --ui-motion-fast: var(--ts-motion-fast);
+  --ui-overlay: rgb(15 23 42 / 35%);
+}
+
+/* Applications can swap themes by overriding this small semantic surface. */
+[data-ui-theme="library"] {
+  --ui-background: #f7f6f2;
+  --ui-foreground: #292a27;
+  --ui-card: #fbfaf7;
+  --ui-card-foreground: #292a27;
+  --ui-popover: #fbfaf7;
+  --ui-popover-foreground: #292a27;
+  --ui-primary: #315f4e;
+  --ui-primary-foreground: #f7faf8;
+  --ui-secondary: #eeede8;
+  --ui-secondary-foreground: #3f4e47;
+  --ui-muted: #eeede8;
+  --ui-muted-foreground: #777871;
+  --ui-accent: #e5eee9;
+  --ui-accent-foreground: #315f4e;
+  --ui-border: #deddd6;
+  --ui-input: #cbc9c0;
+  --ui-ring: #638d7d;
+  --ui-warning: #8a5a00;
+}

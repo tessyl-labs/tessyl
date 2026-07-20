@@ -1,0 +1,72 @@
+use src::types::{ ToastItem }
+use src::toast::{ toast_information, toast_loading, toast_success }
+use std::array::Array
+use std::enums::{ enum }
+use std::string::type::String
+use std::vx::{ Program, next }
+use src::showcase::model::{ Model, copy }
+
+pub enum Msg
+  OpenDialog
+  CloseDialog
+  OpenCommand
+  CloseCommand
+  SelectTab { value: String }
+  QueryChanged { value: String }
+  DraftChanged { value: String }
+  CommandSelected { value: String }
+  ShowToast
+  ShowLoadingToast
+  DraftArticle
+  DismissToast { id: String }
+  NoOp
+
+pub fn step(model: Model, message: Msg) -> Program<Model, Msg>
+  match(message)
+    Msg::OpenDialog:
+      next(copy(model, dialog_open: true))
+    Msg::CloseDialog:
+      next(copy(model, dialog_open: false))
+    Msg::OpenCommand:
+      next(copy(model, command_open: true, query: String::init()))
+    Msg::CloseCommand:
+      next(copy(model, command_open: false))
+    Msg::SelectTab { value }:
+      next(copy(model, active_tab: value))
+    Msg::QueryChanged { value }:
+      next(copy(model, query: value))
+    Msg::DraftChanged { value }:
+      next(copy(model, draft: value))
+    Msg::CommandSelected { value }:
+      next(copy(model, command_open: false, selected: value, toasts: append_toast(model.toasts, toast_information(id: "command", title: "Command selected", description: value))))
+    Msg::ShowToast:
+      let revision = model.toast_revision + 1
+      next(copy(model, toast_revision: revision, toasts: append_toast(model.toasts, toast_success(id: "saved", title: "Article saved", description: "The revision is now visible to collaborators.", duration_ms: 4000, revision: revision))))
+    Msg::ShowLoadingToast:
+      next(copy(model, toasts: append_toast(model.toasts, toast_loading(id: "working", title: "Mira is checking sources", description: "This notification remains until dismissed."))))
+    Msg::DraftArticle:
+      let revision = model.toast_revision + 1
+      next(copy(model, dialog_open: false, toast_revision: revision, toasts: append_toast(model.toasts, toast_success(id: "drafting", title: "Mira is preparing your first draft", duration_ms: 4000, revision: revision))))
+    Msg::DismissToast { id }:
+      next(copy(model, toasts: without_toast(model.toasts, id)))
+    Msg::NoOp:
+      next(model)
+
+fn append_toast(items: Array<ToastItem>, item: ToastItem) -> Array<ToastItem>
+  let ~next_items = items.copied()
+  var index = 0
+  while index < next_items.len():
+    if next_items.at(index).id == item.id:
+      let _ = next_items.remove(index)
+    else:
+      index = index + 1
+  next_items.push(item)
+  next_items
+
+fn without_toast(items: Array<ToastItem>, id: String) -> Array<ToastItem>
+  let ~next_items = Array<ToastItem>::init()
+  var index = 0
+  while index < items.len():
+    if not (items.at(index).id == id): next_items.push(items.at(index))
+    index = index + 1
+  next_items

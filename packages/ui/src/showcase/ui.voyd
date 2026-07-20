@@ -1,0 +1,114 @@
+use src::api::all
+use std::array::Array
+use std::msgpack::MsgPack
+use std::string::type::String
+use std::vx::all
+use src::showcase::model::Model
+use src::showcase::update::Msg
+
+pub fn view(model: Model) -> Html<Msg>
+  <TooltipProvider>
+    <main class="min-h-screen bg-background text-foreground" data-ui-theme="library">
+      <header class="sticky top-0 z-30 border-b bg-background/90 px-6 py-4 backdrop-blur">
+        <div class="mx-auto flex max-w-7xl items-center justify-between gap-4">
+          <div class="flex items-center gap-3"><span class="grid size-9 place-items-center rounded-xl bg-primary font-bold text-primary-foreground">T</span><div><h1 class="text-lg font-semibold">Tessyl UI</h1><p class="text-xs text-muted-foreground">Pure Voyd · Tailwind · semantic tokens</p></div></div>
+          <div class="flex items-center gap-2">
+            <Button variant={ButtonVariant::Outline {}} on_press={Msg::OpenCommand {}}><Icon name={IconName::search()} />Command palette</Button>
+            <Button on_press={Msg::OpenDialog {}}><Icon name={IconName::plus()} />Open dialog</Button>
+          </div>
+        </div>
+      </header>
+      <div class="mx-auto grid max-w-7xl gap-8 px-6 py-8 lg:grid-cols-[14rem_1fr]">
+        <aside class="h-fit rounded-xl border bg-card p-3 lg:sticky lg:top-24">
+          <p class="px-2 pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Components</p>
+          <nav class="flex flex-col gap-1">
+            <a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#actions">Actions</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#cards">Cards & data</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#forms">Forms</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#navigation">Navigation</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#overlays">Overlays</a>
+          </nav>
+        </aside>
+        <div class="flex min-w-0 flex-col gap-10">
+          {actions_section()}
+          {cards_section()}
+          {forms_section(model)}
+          {navigation_section(model)}
+          {overlays_section()}
+        </div>
+      </div>
+
+      {article_dialog(model)}
+      {command_dialog(model)}
+      <Toaster items={model.toasts} on_dismiss={(id) => Msg::DismissToast { id }} />
+    </main>
+  </TooltipProvider>
+
+fn ShowcaseSection({ id: String, title: String, description: String, children: Array<MsgPack> }) -> Html<Msg>
+  <section id={id} class="scroll-mt-24">
+    <div class="mb-4"><h2 class="text-xl font-semibold tracking-tight">{title}</h2><p class="mt-1 text-sm text-muted-foreground">{description}</p></div>
+    <Card><CardContent class="flex flex-col gap-5 pt-4">{children}</CardContent></Card>
+  </section>
+
+pub fn actions_section() -> Html<Msg>
+  <ShowcaseSection id="actions" title="Actions & status" description="Buttons, badges, icons, avatars, tooltips, and notifications.">
+    <div class="flex flex-wrap items-center gap-2"><Button on_press={Msg::ShowToast {}}><Icon name={IconName::check()} />Default</Button><Button variant={ButtonVariant::Outline {}} on_press={Msg::ShowLoadingToast {}}><Icon name={IconName::clock()} />Loading toast</Button><Button variant={ButtonVariant::Secondary {}} on_press={Msg::NoOp {}}>Secondary</Button><Button variant={ButtonVariant::Outline {}} on_press={Msg::NoOp {}}>Outline</Button><Button variant={ButtonVariant::Ghost {}} on_press={Msg::NoOp {}}>Ghost</Button><Button variant={ButtonVariant::Destructive {}} on_press={Msg::NoOp {}}>Destructive</Button><Button variant={ButtonVariant::Link {}} on_press={Msg::NoOp {}}>Link</Button><Button size={ButtonSize::Icon {}} aria_label="Add" on_press={Msg::NoOp {}}><Icon name={IconName::plus()} /></Button></div>
+    <div class="flex flex-wrap items-center gap-2"><Badge>Default</Badge><Badge variant={BadgeVariant::Secondary {}}>Secondary</Badge><Badge variant={BadgeVariant::Outline {}}>Outline</Badge><Badge variant={BadgeVariant::Destructive {}}>Needs review</Badge></div>
+    <div class="flex items-center gap-6"><AvatarGroup><Avatar size={AvatarSize::Small {}}><AvatarFallback>ML</AvatarFallback>{AvatarBadge()}</Avatar><Avatar size={AvatarSize::Small {}}><AvatarFallback>AK</AvatarFallback></Avatar><AvatarGroupCount>+4</AvatarGroupCount></AvatarGroup><Avatar size={AvatarSize::Large {}}><AvatarFallback>ML</AvatarFallback>{AvatarBadge()}</Avatar><Tooltip><TooltipTrigger described_by="save-tip" on_press={Msg::NoOp {}}><Icon name={IconName::bookmark()} />Hover or focus</TooltipTrigger><TooltipContent id="save-tip">Save to your reading list</TooltipContent></Tooltip><Button variant={ButtonVariant::Ghost {}} size={ButtonSize::Icon {}} aria_label="Saved bookmark" on_press={Msg::NoOp {}}><Icon name={IconName::bookmark()} filled={true} /></Button></div>
+  </ShowcaseSection>
+
+pub fn cards_section() -> Html<Msg>
+  <ShowcaseSection id="cards" title="Cards & data" description="Full card composition, separators, progress, and scroll areas.">
+    <div class="grid gap-4 sm:grid-cols-2"><Card><CardHeader><Badge variant={BadgeVariant::Outline {}}>Article brief</Badge><CardTitle>Here’s what matters</CardTitle><CardDescription>A composed card with title, description, action, content, and footer.</CardDescription><CardAction><Button size={ButtonSize::IconSmall {}} variant={ButtonVariant::Ghost {}} aria_label="More" on_press={Msg::NoOp {}}><Icon name={IconName::ellipsis()} /></Button></CardAction></CardHeader><CardContent><Progress value={84.0} label="Library health" show_value={true} /></CardContent><CardFooter><span class="text-xs text-muted-foreground">Reviewed this quarter</span></CardFooter></Card><Card size={CardSize::Small {}}><CardHeader><CardTitle>Recent activity</CardTitle><CardDescription>A native scroll area with stable browser behavior.</CardDescription></CardHeader><CardContent><ScrollArea class="h-32" aria_label="Recent library activity"><div class="flex flex-col gap-3">{activity_items()}</div></ScrollArea></CardContent></Card><CardButton on_press={Msg::OpenDialog {}} aria_label="Start a new article"><CardHeader><CardTitle>Interactive card</CardTitle><CardDescription>Keyboard and pointer users can invoke this semantic card button.</CardDescription></CardHeader><CardContent><span class="text-sm font-medium text-primary">Start an article →</span></CardContent></CardButton></div>
+    {Separator()}
+    <div class="grid gap-4 sm:grid-cols-3"><Progress value={24.0} label="Draft" /><Progress value={64.0} label="Reviewed" /><Progress value={94.0} label="Trusted" show_value={true} /></div>
+  </ShowcaseSection>
+
+pub fn forms_section(model: Model) -> Html<Msg>
+  <ShowcaseSection id="forms" title="Forms & input groups" description="Controlled fields emit typed Voyd messages into the parent model.">
+    <FieldGroup><Field><Label for_id="article-title">Standalone label & input</Label><Input id="article-title" name="article-title" value={model.query} placeholder="An article title" on_change={(value) => Msg::QueryChanged { value }} /><FieldDescription>The base input and label can be composed without Field helpers.</FieldDescription></Field><Field><FieldLabel for_id="knowledge-draft">Knowledge draft</FieldLabel><Textarea id="knowledge-draft" value={model.draft} rows={4} on_change={(value) => Msg::DraftChanged { value }} /><FieldDescription>Content remains in the VX model and can be validated by the application.</FieldDescription></Field><Field><FieldLabel for_id="librarian-question">Ask the librarian</FieldLabel><InputGroup><InputGroupTextarea id="librarian-question" name="librarian-question" value={model.query} on_change={(value) => Msg::QueryChanged { value }} placeholder="Ask about this collection…" /><InputGroupAddon align={InputAddonAlign::InlineEnd {}}><InputGroupButton variant={ButtonVariant::Default {}} size={ButtonSize::IconExtraSmall {}} aria_label="Send" on_press={Msg::ShowToast {}}><Icon name={IconName::arrow_up()} /></InputGroupButton></InputGroupAddon></InputGroup></Field><Field><FieldLabel for_id="article-slug">Article slug</FieldLabel><InputGroup><InputGroupAddon><InputGroupText>/wiki/</InputGroupText></InputGroupAddon><InputGroupInput id="article-slug" name="article-slug" value={model.query} on_change={(value) => Msg::QueryChanged { value }} placeholder="agentic-librarians" /></InputGroup></Field><Field><FieldLabel for_id="source-query">Block-aligned input group</FieldLabel><InputGroup><InputGroupAddon align={InputAddonAlign::BlockStart {}}><InputGroupText>Search scope: verified sources</InputGroupText></InputGroupAddon><InputGroupInput id="source-query" value={model.query} on_change={(value) => Msg::QueryChanged { value }} placeholder="Search sources…" /></InputGroup></Field><Field invalid={true}><FieldLabel>Invalid example</FieldLabel><Textarea value="A claim without provenance" invalid={true} on_change={(_value) => Msg::NoOp {}} /><FieldDescription>Add at least one source before publishing.</FieldDescription></Field></FieldGroup>
+  </ShowcaseSection>
+
+pub fn navigation_section(model: Model) -> Html<Msg>
+  <ShowcaseSection id="navigation" title="Tabs & command" description="Controlled navigation makes state and keyboard behavior explicit.">
+    <Tabs><TabsList><TabsTrigger id="brief-tab" controls="brief-panel" value="brief" active={model.active_tab == "brief"} on_select={(value) => Msg::SelectTab { value }}>Brief</TabsTrigger><TabsTrigger id="activity-tab" controls="activity-panel" value="activity" active={model.active_tab == "activity"} on_select={(value) => Msg::SelectTab { value }}>Activity <Badge variant={BadgeVariant::Secondary {}}>3</Badge></TabsTrigger></TabsList><TabsContent id="brief-panel" labelled_by="brief-tab" value="brief" active={model.active_tab == "brief"}><Card><CardContent class="pt-4">The brief tab is active. Selection is owned by Voyd.</CardContent></Card></TabsContent><TabsContent id="activity-panel" labelled_by="activity-tab" value="activity" active={model.active_tab == "activity"}><Card><CardContent class="pt-4">Three maintenance actions were completed today.</CardContent></Card></TabsContent></Tabs>
+    <Tabs><TabsList variant={TabsListVariant::Line {}}><TabsTrigger value="brief" active={model.active_tab == "brief"} on_select={(value) => Msg::SelectTab { value }}>Line brief</TabsTrigger><TabsTrigger value="activity" active={model.active_tab == "activity"} on_select={(value) => Msg::SelectTab { value }}>Line activity</TabsTrigger></TabsList></Tabs>
+    <p class="text-sm text-muted-foreground">Last command: {model.selected}</p>
+  </ShowcaseSection>
+
+pub fn overlays_section() -> Html<Msg>
+  <ShowcaseSection id="overlays" title="Dialogs, command palette & toasts" description="Accessible overlays with controlled state and native dialog behavior.">
+    <div class="flex flex-wrap gap-2"><DialogTrigger on_open={Msg::OpenDialog {}}>Open composed dialog</DialogTrigger><Button variant={ButtonVariant::Outline {}} on_press={Msg::OpenCommand {}}><Icon name={IconName::search()} />Search commands</Button><Button variant={ButtonVariant::Secondary {}} on_press={Msg::ShowToast {}}>Show toast</Button></div>
+  </ShowcaseSection>
+
+pub fn article_dialog(model: Model) -> Html<Msg>
+  <Dialog open={model.dialog_open} on_close={Msg::CloseDialog {}} title_id="new-article-title" description_id="new-article-description">
+    <DialogContent title_id="new-article-title" description_id="new-article-description">
+      <DialogCloseIcon on_close={Msg::CloseDialog {}} class="absolute top-2 right-2" />
+      <DialogHeader><DialogTitle id="new-article-title">Start with a question</DialogTitle><DialogDescription id="new-article-description">Mira will find related work and prepare a first draft.</DialogDescription></DialogHeader>
+      <FieldGroup><Field><FieldLabel for_id="dialog-prompt">Topic or question</FieldLabel><Textarea id="dialog-prompt" value={model.draft} on_change={(value) => Msg::DraftChanged { value }} /></Field></FieldGroup>
+      <DialogFooter><DialogClose variant={ButtonVariant::Outline {}} on_close={Msg::CloseDialog {}}>Cancel</DialogClose><DialogClose variant={ButtonVariant::Default {}} on_close={Msg::DraftArticle {}}><Icon name={IconName::sparkles()} />Draft with Mira</DialogClose></DialogFooter>
+    </DialogContent>
+  </Dialog>
+
+pub fn command_dialog(model: Model) -> Html<Msg>
+  <CommandDialog id_prefix="showcase-command" open={model.command_open} on_close={Msg::CloseCommand {}} title="Search the knowledge commons" description="Find a component or run a showcase command.">
+    <CommandInput controls="showcase-command-list" value={model.query} on_change={(value) => Msg::QueryChanged { value }} placeholder="Search components…" />
+    <CommandList id="showcase-command-list"><CommandEmpty visible={not has_command_results(model.query)}>No matching component.</CommandEmpty><CommandGroup heading="Components">{maybe_command_item(model.query, "Button", "button")}{maybe_command_item(model.query, "Dialog", "dialog")}{maybe_command_item(model.query, "Command palette", "command")}{maybe_command_item(model.query, "Toast", "toast")}</CommandGroup><CommandGroup heading="Actions"><CommandItem value="Create a new article" on_select={(value) => Msg::CommandSelected { value }}><Icon name={IconName::file_plus()} />Create a new article<CommandShortcut>⌘N</CommandShortcut></CommandItem></CommandGroup></CommandList>
+  </CommandDialog>
+
+fn maybe_command_item(query: String, label: String, value: String) -> Html<Msg>
+  if query.is_empty() or label.contains(query):
+    <CommandItem value={value} on_select={(selected) => Msg::CommandSelected { value: selected }}><Icon name={IconName::library()} />{label}<CommandShortcut>↵</CommandShortcut></CommandItem>
+  else:
+    fragment(Array<MsgPack>::init())
+
+fn has_command_results(query: String) -> bool
+  query.is_empty() or "Button".contains(query) or "Dialog".contains(query) or "Command palette".contains(query) or "Toast".contains(query)
+
+fn activity_items() -> Array<MsgPack>
+  [
+    activity_item(IconName::link(), "Connected two articles"),
+    activity_item(IconName::file_plus(), "Clarified a definition"),
+    activity_item(IconName::check(), "Checked seven sources"),
+    activity_item(IconName::history(), "Recorded revision history")
+  ]
+
+fn activity_item(icon: IconName, label: String) -> MsgPack
+  <div class="flex gap-2"><Icon name={icon} /><span class="text-sm">{label}</span></div>

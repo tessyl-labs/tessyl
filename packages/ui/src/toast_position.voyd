@@ -1,0 +1,4 @@
+pub enum ToastPosition
+  BottomRight
+  BottomCenter
+  TopRight

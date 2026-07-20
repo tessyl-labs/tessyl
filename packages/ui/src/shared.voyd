@@ -1,0 +1,48 @@
+use std::array::Array
+use std::msgpack::self as msgpack
+use std::msgpack::MsgPack
+use std::optional::types::all
+use std::string::type::String
+use std::vx::self as vx
+
+pub type Child<Msg> = MsgPack
+pub type View<Msg> = vx::Html<Msg>
+
+pub fn normalize_children(children: Array<MsgPack>) -> Array<MsgPack>
+  let ~result = Array<MsgPack>::with_capacity(children.len())
+  var index = 0
+  while index < children.len():
+    let child = children.at(index)
+    match(msgpack::unpack_string(child))
+      Ok<String> { value }:
+        result.push(vx::text(value))
+      Err:
+        result.push(child)
+    index = index + 1
+  result
+
+pub fn with_class(base: String, custom: Option<String>) -> String
+  match(custom)
+    Some<String> { value }:
+      if value.trimmed().is_empty() then: base else: base.concat(" ").concat(value)
+    None:
+      base
+
+/// Extends a component class by default, or replaces it completely when
+/// `replace` is supplied. Replacement is the reliable escape hatch when a
+/// consumer needs utilities that conflict with component defaults.
+pub fn resolve_class(base: String, custom: Option<String>, replace: Option<String>) -> String
+  match(replace)
+    Some<String> { value }:
+      value
+    None:
+      with_class(base, custom)
+
+pub fn empty() -> MsgPack
+  vx::fragment(Array<MsgPack>::init())
+
+pub fn data_attr(value: String) -> MsgPack
+  vx::attr(name: "data-ui", value: value)
+
+pub fn bool_text(value: bool) -> String
+  if value then: "true" else: "false"
