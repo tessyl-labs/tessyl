@@ -70,13 +70,13 @@ fn button_variant_class(variant: ButtonVariant) -> String
 fn button_size_class(size: ButtonSize) -> String
   match(size)
     ButtonSize::Default:
-      "min-h-10 px-[15px] py-2.5"
+      "h-10 px-[15px]"
     ButtonSize::ExtraSmall:
-      "min-h-7 rounded-md px-2.5 py-1.5 text-xs"
+      "h-7 rounded-md px-2.5 text-xs"
     ButtonSize::Small:
-      "min-h-9 px-3.5 py-2 text-xs"
+      "h-9 px-3.5 text-xs"
     ButtonSize::Large:
-      "min-h-11 px-5 py-3"
+      "h-11 px-5 text-base"
     ButtonSize::Icon:
       "size-10 p-0 [&_svg]:size-4 [&_[data-ui=icon]]:size-4"
     ButtonSize::IconExtraSmall:

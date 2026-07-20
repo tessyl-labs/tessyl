@@ -3,6 +3,7 @@ use std::test::assertions::all
 use src::avatar::{ Avatar, AvatarFallback }
 use src::badge::Badge
 use src::button::Button
+use src::button_size::ButtonSize
 use src::card::{ Card, CardButton, CardContent, CardHeader, CardTitle }
 use src::dialog::{ Dialog, DialogClose, DialogCloseIcon, DialogContent, DialogFooter, DialogTitle }
 use src::button_variant::ButtonVariant
@@ -19,7 +20,7 @@ use src::tooltip::{ Tooltip, TooltipContent, TooltipTrigger }
 use src::badge_variant::BadgeVariant
 use src::card_size::CardSize
 use src::showcase::model::initial_model
-use src::showcase::ui::{ actions_section, article_dialog, cards_section, command_dialog, forms_section, navigation_section, overlays_section, view }
+use src::showcase::ui::{ actions_section, article_dialog, cards_section, command_dialog, forms_section, navigation_section, overlays_section, typography_section, view }
 use src::showcase::update::{ Msg as ShowcaseMsg, step as showcase_step }
 
 pub enum TestMsg
@@ -51,6 +52,11 @@ test "showcase update accepts every interactive message":
 test "showcase actions section renders":
   assert(render(actions_section()).contains("Actions".as_slice()), eq: true)
 
+test "showcase typography section renders an article hierarchy":
+  let html = render(typography_section())
+  assert(html.contains("A library that learns alongside its readers".as_slice()), eq: true)
+  assert(html.contains("<article".as_slice()), eq: true)
+
 test "showcase cards section renders":
   assert(render(cards_section()).contains("Cards".as_slice()), eq: true)
 
@@ -74,8 +80,17 @@ test "button renders semantic slots and a typed event":
   assert(html.contains("data-ui=\"button\"".as_slice()), eq: true)
   assert(html.contains("data-variant=\"default\"".as_slice()), eq: true)
   assert(html.contains("data-size=\"default\"".as_slice()), eq: true)
+  assert(html.contains("h-10".as_slice()), eq: true)
   assert(html.contains("px-[15px]".as_slice()), eq: true)
   assert(html.contains(">Save</button>".as_slice()), eq: true)
+
+test "button sizes use exact matching heights":
+  let extra_small = render(Button<TestMsg>(children: ["XS"], size: ButtonSize::ExtraSmall {}, on_press: TestMsg::Clicked {}))
+  let small = render(Button<TestMsg>(children: ["Small"], size: ButtonSize::Small {}, on_press: TestMsg::Clicked {}))
+  let large = render(Button<TestMsg>(children: ["Large"], size: ButtonSize::Large {}, on_press: TestMsg::Clicked {}))
+  assert(extra_small.contains("h-7".as_slice()), eq: true)
+  assert(small.contains("h-9".as_slice()), eq: true)
+  assert(large.contains("h-11".as_slice()), eq: true)
 
 test "button loading state is busy, disabled, and labelled":
   let html = render(Button<TestMsg>(children: ["Save"], on_press: TestMsg::Clicked {}, loading: true, loading_label: "Saving"))

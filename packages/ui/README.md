@@ -15,7 +15,9 @@ The component layer maps palette roles such as `--ui-palette-background`, `--ui-
 
 The included theme uses cool porcelain and graphite neutrals with restrained metallic-gold actions. Set `data-theme="dark"` on `html` to activate its obsidian dark palette. `data-ui-theme="library"` remains available as an explicit application scope and follows the same light/dark switch.
 
-Shape, elevation, and motion are semantic too: override `--ui-radius-control`, `--ui-radius-card`, `--ui-radius-panel`, the matching `--ui-shadow-*` tokens, and `--ui-motion-fast` without editing component code.
+Noto Sans is bundled through `@fontsource/noto-sans` and selected by the semantic `--ui-font-sans` token. Override that token in an application scope to change the typeface without editing the Tailwind mapping or component source.
+
+Shape, elevation, and motion are semantic too: override `--ui-radius-control`, `--ui-radius-card`, `--ui-radius-panel`, the matching `--ui-shadow-*` tokens, and `--ui-motion-fast` without editing component code. The defaults use restrained radii for a more compact, editorial appearance.
 
 ## Voyd usage
 
@@ -44,6 +46,8 @@ The dialog adapter calls the native `showModal()` API, which provides modal focu
 Add `command_shortcut_trigger_attr()` to the existing button that opens `CommandDialog`; the adapter maps `Command+K`/`Ctrl+K` to that same typed trigger. `CommandInput` includes an `aria-keyshortcuts` contract and a visible `⌘ K` keycap hint; override `shortcut_label` when an application needs a different display label.
 
 `Button`, `Card`, and `CardButton` accept `loading` and `loading_label`. Busy buttons and interactive cards are disabled automatically, while static cards receive the same accessible busy metadata and a stable loading overlay. `LoadingIndicator` is exported for custom compositions, and button-based wrappers forward the same loading options.
+
+Button sizes use exact shared heights so variants, icons, and loading states align predictably: `ExtraSmall` is 28px, `Small` is 36px, `Default` is 40px, and `Large` is 44px. The matching icon sizes are 28px, 36px, and 40px squares.
 
 For a timed toast that reuses an existing `id`, increment its optional `revision`; the adapter treats that as a new presentation and restarts the timeout.
 

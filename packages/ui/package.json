@@ -27,6 +27,7 @@
     "typecheck": "node scripts/compile-voyd.mjs --check && tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@fontsource/noto-sans": "^5.3.0",
     "@tessyl/design-tokens": "*",
     "@voyd-lang/sdk": "file:../../.voyd-source/packages/sdk",
     "@voyd-lang/std": "file:../../.voyd-source/packages/std",

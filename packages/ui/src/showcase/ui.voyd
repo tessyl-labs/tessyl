@@ -23,11 +23,12 @@ pub fn view(model: Model) -> Html<Msg>
         <aside class="h-fit rounded-xl border bg-card p-3 lg:sticky lg:top-24">
           <p class="px-2 pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Components</p>
           <nav class="flex flex-col gap-1">
-            <a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#actions">Actions</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#cards">Cards & data</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#forms">Forms</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#navigation">Navigation</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#overlays">Overlays</a>
+            <a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#actions">Actions</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#typography">Typography</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#cards">Cards & data</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#forms">Forms</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#navigation">Navigation</a><a class="rounded-lg px-2 py-1.5 text-sm hover:bg-muted" href="#overlays">Overlays</a>
           </nav>
         </aside>
         <div class="flex min-w-0 flex-col gap-10">
           {actions_section()}
+          {typography_section()}
           {cards_section()}
           {forms_section(model)}
           {navigation_section(model)}
@@ -50,8 +51,26 @@ fn ShowcaseSection({ id: String, title: String, description: String, children: A
 pub fn actions_section() -> Html<Msg>
   <ShowcaseSection id="actions" title="Actions & status" description="Buttons, badges, icons, avatars, tooltips, and notifications.">
     <div class="flex flex-wrap items-center gap-2"><Button on_press={Msg::ShowToast {}}><Icon name={IconName::check()} />Default</Button><Button loading={true} loading_label="Saving" on_press={Msg::NoOp {}}>Save article</Button><Button variant={ButtonVariant::Outline {}} on_press={Msg::ShowLoadingToast {}}><Icon name={IconName::clock()} />Loading toast</Button><Button variant={ButtonVariant::Secondary {}} on_press={Msg::NoOp {}}>Secondary</Button><Button variant={ButtonVariant::Outline {}} on_press={Msg::NoOp {}}>Outline</Button><Button variant={ButtonVariant::Ghost {}} on_press={Msg::NoOp {}}>Ghost</Button><Button variant={ButtonVariant::Destructive {}} on_press={Msg::NoOp {}}>Destructive</Button><Button variant={ButtonVariant::Link {}} on_press={Msg::NoOp {}}>Link</Button><Button size={ButtonSize::Icon {}} aria_label="Add" on_press={Msg::NoOp {}}><Icon name={IconName::plus()} /></Button></div>
+    <div><p class="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Button sizes</p><div class="flex flex-wrap items-center gap-3"><Button size={ButtonSize::ExtraSmall {}} on_press={Msg::NoOp {}}>Extra small</Button><Button size={ButtonSize::Small {}} on_press={Msg::NoOp {}}>Small</Button><Button size={ButtonSize::Default {}} on_press={Msg::NoOp {}}>Default</Button><Button size={ButtonSize::Large {}} on_press={Msg::NoOp {}}>Large</Button><Button size={ButtonSize::IconExtraSmall {}} aria_label="Extra-small icon button" variant={ButtonVariant::Outline {}} on_press={Msg::NoOp {}}><Icon name={IconName::plus()} /></Button><Button size={ButtonSize::IconSmall {}} aria_label="Small icon button" variant={ButtonVariant::Outline {}} on_press={Msg::NoOp {}}><Icon name={IconName::plus()} /></Button><Button size={ButtonSize::Icon {}} aria_label="Default icon button" variant={ButtonVariant::Outline {}} on_press={Msg::NoOp {}}><Icon name={IconName::plus()} /></Button></div></div>
     <div class="flex flex-wrap items-center gap-2"><Badge>Default</Badge><Badge variant={BadgeVariant::Secondary {}}>Secondary</Badge><Badge variant={BadgeVariant::Outline {}}>Outline</Badge><Badge variant={BadgeVariant::Destructive {}}>Needs review</Badge></div>
     <div class="flex items-center gap-6"><AvatarGroup><Avatar size={AvatarSize::Small {}}><AvatarFallback>ML</AvatarFallback>{AvatarBadge()}</Avatar><Avatar size={AvatarSize::Small {}}><AvatarFallback>AK</AvatarFallback></Avatar><AvatarGroupCount>+4</AvatarGroupCount></AvatarGroup><Avatar size={AvatarSize::Large {}}><AvatarFallback>ML</AvatarFallback>{AvatarBadge()}</Avatar><Tooltip><TooltipTrigger described_by="save-tip" on_press={Msg::NoOp {}}><Icon name={IconName::bookmark()} />Hover or focus</TooltipTrigger><TooltipContent id="save-tip">Save to your reading list</TooltipContent></Tooltip><Button variant={ButtonVariant::Ghost {}} size={ButtonSize::Icon {}} aria_label="Saved bookmark" on_press={Msg::NoOp {}}><Icon name={IconName::bookmark()} filled={true} /></Button></div>
+  </ShowcaseSection>
+
+pub fn typography_section() -> Html<Msg>
+  <ShowcaseSection id="typography" title="Typography & article" description="Noto Sans across an editorial hierarchy, metadata, and long-form body copy.">
+    <article class="mx-auto w-full max-w-3xl py-3">
+      <header class="border-b pb-7">
+        <p class="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Field note · Knowledge operations</p>
+        <h3 class="mt-3 max-w-2xl text-3xl font-bold leading-tight tracking-tight sm:text-4xl">A library that learns alongside its readers</h3>
+        <p class="mt-4 max-w-2xl text-lg leading-8 text-muted-foreground">An agentic librarian can keep a knowledge base useful by treating every article as a living record—not a page that quietly falls out of date.</p>
+        <div class="mt-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-tertiary-foreground"><span>By Mira, agentic librarian</span><span aria-hidden="true">·</span><time datetime="2026-07-19">July 19, 2026</time><span aria-hidden="true">·</span><span>6 min read</span></div>
+      </header>
+      <div class="mt-7 max-w-[68ch] space-y-5 text-base leading-7 text-foreground">
+        <p>A healthy knowledge base does more than collect answers. It notices when two articles disagree, remembers which source supported a claim, and brings neglected pages back to an editor before their guidance becomes misleading.</p>
+        <p>The librarian works in that quiet space between research and maintenance. It can propose a structure, connect related ideas, and explain why a revision is needed. People remain responsible for judgment; the agent makes the state of the library easier to understand and act upon.</p>
+        <p>Over time, this creates a commons with visible provenance and a dependable rhythm of care. Readers find concise answers, authors see where their attention matters, and each edit leaves the collection a little more coherent than before.</p>
+      </div>
+    </article>
   </ShowcaseSection>
 
 pub fn cards_section() -> Html<Msg>

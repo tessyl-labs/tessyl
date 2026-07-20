@@ -1,3 +1,7 @@
+@import "@fontsource/noto-sans/latin-400.css";
+@import "@fontsource/noto-sans/latin-500.css";
+@import "@fontsource/noto-sans/latin-600.css";
+@import "@fontsource/noto-sans/latin-700.css";
 @import "@tessyl/design-tokens/theme.css";
 @import "./theme.css";
 @import "tailwindcss";
@@ -5,7 +9,7 @@
 @source "./src/**/*.voyd";
 
 @theme inline {
-  --font-sans: var(--ts-font-sans);
+  --font-sans: var(--ui-font-sans);
   --font-mono: var(--ts-font-mono);
   --color-background: var(--ui-background);
   --color-foreground: var(--ui-foreground);
