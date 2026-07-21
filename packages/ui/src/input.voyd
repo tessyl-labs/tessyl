@@ -1,0 +1,41 @@
+use std::array::Array
+use std::msgpack::MsgPack
+use std::optional::types::all
+use std::string::type::String
+use std::vx::self as vx
+use std::vx::InputEvent
+use src::shared::{ View, data_attr, resolve_class }
+
+/// Controlled text-compatible input. The owning VX model remains the source of truth.
+pub fn Input<Msg>({
+  value: String,
+  on_change: fn(String) -> Msg,
+  id?: String,
+  name?: String,
+  input_type: String = "text",
+  placeholder?: String,
+  autocomplete?: String,
+  disabled: bool = false,
+  invalid: bool = false,
+  class?: String,
+  replace_class?: String,
+  extra_attrs: Array<MsgPack> = Array<MsgPack>::init()
+}) -> View<Msg>
+  let ~attrs = [
+    data_attr("input"),
+    vx::attr(name: "type", value: input_type),
+    vx::attr(name: "aria-invalid", value: if invalid then: "true" else: "false"),
+    vx::prop(name: "value", value: value),
+    vx::disabled(disabled),
+    vx::class(resolve_class("min-h-10 w-full min-w-0 rounded-[var(--ui-radius-control)] border border-input bg-transparent px-3 py-2.5 text-sm transition-colors duration-[var(--ui-motion-fast)] outline-none placeholder:text-tertiary-foreground focus-visible:border-ring focus-visible:ring-4 focus-visible:ring-[color:var(--ui-focus-color)] disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-4 aria-invalid:ring-destructive/20", class, replace_class)),
+    vx::html_event_payload_handler<InputEvent, Msg>(name: "input", handler: (event: InputEvent) -> Msg => on_change(event.value))
+  ]
+  if id is Some: attrs.push(vx::id(id.value))
+  if name is Some: attrs.push(vx::attr(name: "name", value: name.value))
+  if placeholder is Some: attrs.push(vx::attr(name: "placeholder", value: placeholder.value))
+  if autocomplete is Some: attrs.push(vx::attr(name: "autocomplete", value: autocomplete.value))
+  var index = 0
+  while index < extra_attrs.len():
+    attrs.push(extra_attrs.at(index))
+    index = index + 1
+  vx::html_element(tag: "input", attrs: attrs, children: Array<MsgPack>::init())

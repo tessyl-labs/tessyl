@@ -1,0 +1,96 @@
+use std::array::Array
+use std::msgpack::MsgPack
+use std::optional::types::all
+use std::string::type::String
+use std::vx::self as vx
+use std::vx::{ InputEvent }
+use src::button::Button
+use src::input::Input
+use src::shared::{ Child, View, bool_text, data_attr, normalize_children, resolve_class, with_class }
+use src::button_size::ButtonSize
+use src::button_variant::ButtonVariant
+use src::input_addon_align::InputAddonAlign
+
+pub fn FieldGroup({ children: Array<MsgPack>, class?: String }) -> MsgPack
+  vx::html_element(tag: "div", attrs: [data_attr("field-group"), vx::class(with_class("flex w-full flex-col gap-5", class))], children: normalize_children(children))
+
+pub fn Field({ children: Array<MsgPack>, invalid: bool = false, disabled: bool = false, class?: String }) -> MsgPack
+  vx::html_element(tag: "div", attrs: [data_attr("field"), vx::attr(name: "data-invalid", value: bool_text(invalid)), vx::attr(name: "data-disabled", value: bool_text(disabled)), vx::class(with_class("group/field flex w-full flex-col gap-2 data-[invalid=true]:text-destructive data-[disabled=true]:opacity-50", class))], children: normalize_children(children))
+
+pub fn FieldLabel({ children: Array<MsgPack>, for_id?: String, class?: String }) -> MsgPack
+  let ~attrs = [data_attr("field-label"), vx::class(with_class("flex w-fit items-center gap-2 text-sm font-medium leading-none group-data-[invalid=true]/field:text-destructive", class))]
+  if for_id is Some: attrs.push(vx::attr(name: "for", value: for_id.value))
+  vx::html_element(tag: "label", attrs: attrs, children: normalize_children(children))
+
+pub fn FieldDescription({ children: Array<MsgPack>, id?: String, class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> MsgPack
+  let ~attrs = [data_attr("field-description"), vx::class(with_class("text-sm leading-normal text-muted-foreground group-data-[invalid=true]/field:text-destructive", class))]
+  if id is Some: attrs.push(vx::id(id.value))
+  var index = 0
+  while index < extra_attrs.len():
+    attrs.push(extra_attrs.at(index))
+    index = index + 1
+  vx::html_element(tag: "p", attrs: attrs, children: normalize_children(children))
+
+pub fn Textarea<Msg>({
+  value: String,
+  on_change: fn(String) -> Msg,
+  id?: String,
+  name?: String,
+  placeholder?: String,
+  rows: i32 = 3,
+  disabled: bool = false,
+  invalid: bool = false,
+  class?: String,
+  replace_class?: String,
+  extra_attrs: Array<MsgPack> = Array<MsgPack>::init()
+}) -> View<Msg>
+  let ~attrs = [
+    data_attr("textarea"),
+    vx::class(resolve_class("flex min-h-20 w-full resize-y rounded-[var(--ui-radius-control)] border border-input bg-transparent px-3 py-2.5 text-sm transition-colors duration-[var(--ui-motion-fast)] outline-none placeholder:text-tertiary-foreground focus-visible:border-ring focus-visible:ring-4 focus-visible:ring-[color:var(--ui-focus-color)] disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive", class, replace_class)),
+    vx::attr(name: "rows", value: rows),
+    vx::attr(name: "aria-invalid", value: bool_text(invalid)),
+    vx::prop(name: "value", value: value),
+    vx::disabled(disabled),
+    vx::html_event_payload_handler<InputEvent, Msg>(name: "input", handler: (event: InputEvent) -> Msg => on_change(event.value))
+  ]
+  if id is Some: attrs.push(vx::id(id.value))
+  if name is Some: attrs.push(vx::attr(name: "name", value: name.value))
+  if placeholder is Some: attrs.push(vx::attr(name: "placeholder", value: placeholder.value))
+  var index = 0
+  while index < extra_attrs.len():
+    attrs.push(extra_attrs.at(index))
+    index = index + 1
+  vx::html_element(tag: "textarea", attrs: attrs, children: [vx::text(value)])
+
+pub fn InputGroup({ children: Array<MsgPack>, id?: String, aria_label?: String, aria_labelled_by?: String, class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> MsgPack
+  let ~attrs = [data_attr("input-group"), vx::attr(name: "role", value: "group"), vx::class(with_class("relative flex min-h-10 w-full min-w-0 items-center rounded-[var(--ui-radius-control)] border border-input bg-background transition-colors duration-[var(--ui-motion-fast)] outline-none focus-within:border-ring focus-within:ring-4 focus-within:ring-[color:var(--ui-focus-color)]", class))]
+  if id is Some: attrs.push(vx::id(id.value))
+  if aria_label is Some: attrs.push(vx::attr(name: "aria-label", value: aria_label.value))
+  if aria_labelled_by is Some: attrs.push(vx::attr(name: "aria-labelledby", value: aria_labelled_by.value))
+  var index = 0
+  while index < extra_attrs.len():
+    attrs.push(extra_attrs.at(index))
+    index = index + 1
+  vx::html_element(tag: "div", attrs: attrs, children: normalize_children(children))
+
+pub fn InputGroupAddon({ children: Array<MsgPack>, align: InputAddonAlign = InputAddonAlign::InlineStart {}, class?: String }) -> MsgPack
+  vx::html_element(tag: "div", attrs: [data_attr("input-group-addon"), vx::attr(name: "data-align", value: addon_align_name(align)), vx::class(with_class("flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-muted-foreground", class))], children: normalize_children(children))
+
+pub fn InputGroupTextarea<Msg>({ value: String, on_change: fn(String) -> Msg, id?: String, name?: String, placeholder?: String, rows: i32 = 1, disabled: bool = false, invalid: bool = false, class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
+  Textarea<Msg>(value: value, on_change: on_change, id: id, name: name, placeholder: placeholder, rows: rows, disabled: disabled, invalid: invalid, class: Some<String> { value: with_class("min-h-10 flex-1 resize-none rounded-none border-0 bg-transparent shadow-none focus-visible:ring-0", class) }, extra_attrs: extra_attrs)
+
+pub fn InputGroupInput<Msg>({ value: String, on_change: fn(String) -> Msg, id?: String, name?: String, input_type: String = "text", placeholder?: String, autocomplete?: String, disabled: bool = false, invalid: bool = false, class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
+  Input<Msg>(value: value, on_change: on_change, id: id, name: name, input_type: input_type, placeholder: placeholder, autocomplete: autocomplete, disabled: disabled, invalid: invalid, class: Some<String> { value: with_class("min-w-0 flex-1 rounded-none border-0 bg-transparent shadow-none focus-visible:ring-0", class) }, extra_attrs: extra_attrs)
+
+pub fn InputGroupText({ children: Array<MsgPack>, class?: String }) -> MsgPack
+  vx::html_element(tag: "span", attrs: [data_attr("input-group-text"), vx::class(with_class("flex items-center gap-2 text-sm text-muted-foreground", class))], children: normalize_children(children))
+
+pub fn InputGroupButton<Msg>({ children: Array<Child<Msg>>, on_press: Msg, aria_label: String, variant: ButtonVariant = ButtonVariant::Ghost {}, size: ButtonSize = ButtonSize::ExtraSmall {}, disabled: bool = false, loading: bool = false, loading_label: String = "Loading", button_type: String = "button", class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
+  Button<Msg>(children: children, on_press: on_press, variant: variant, size: size, disabled: disabled, loading: loading, loading_label: loading_label, aria_label: aria_label, button_type: button_type, class: class, extra_attrs: extra_attrs)
+
+fn addon_align_name(align: InputAddonAlign) -> String
+  match(align)
+    InputAddonAlign::InlineStart: "inline-start"
+    InputAddonAlign::InlineEnd: "inline-end"
+    InputAddonAlign::BlockStart: "block-start"
+    InputAddonAlign::BlockEnd: "block-end"

@@ -1,0 +1,7 @@
+pub enum ToastTone
+  Default
+  Success
+  Information
+  Warning
+  Error
+  Loading

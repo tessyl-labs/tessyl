@@ -1,0 +1,24 @@
+use pkg::ui::{ Alert, AlertDescription, AlertTitle, AlertVariant, Badge, BadgeVariant, Button, ButtonVariant, Card, CardContent, Icon, IconName, LoadingIndicator }
+use pkg::web::render
+use std::enums::{ enum }
+use std::string::type::String
+use std::test::assertions::all
+
+pub enum ConsumerMsg
+  Clicked
+
+test "public package API composes across a package boundary":
+  let html = render(Card(children: [
+    CardContent(children: [
+      Alert(variant: AlertVariant::Success {}, children: [Icon(name: IconName::circle_check()), AlertTitle(children: ["Healthy"]), AlertDescription(children: ["Public API is available."])]),
+      Badge(variant: BadgeVariant::Outline {}, children: ["Voyd"]),
+      LoadingIndicator(label: "Loading package", show_label: true),
+      Button<ConsumerMsg>(variant: ButtonVariant::Secondary {}, on_press: ConsumerMsg::Clicked {}, children: [Icon(name: IconName::check()), "Ready"])
+    ])
+  ]))
+  assert(html.contains("data-ui=\"card\"".as_slice()), eq: true)
+  assert(html.contains("data-ui=\"alert\"".as_slice()), eq: true)
+  assert(html.contains("data-ui=\"button\"".as_slice()), eq: true)
+  assert(html.contains("data-ui=\"loading-indicator\"".as_slice()), eq: true)
+  assert(html.contains("<svg".as_slice()), eq: true)
+  assert(html.contains("<path".as_slice()), eq: true)

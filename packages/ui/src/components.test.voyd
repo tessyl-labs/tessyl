@@ -1,0 +1,223 @@
+use pkg::web::{ render }
+use std::test::assertions::all
+use src::alert::{ Alert, AlertDescription, AlertTitle }
+use src::alert_variant::AlertVariant
+use src::avatar::{ Avatar, AvatarFallback }
+use src::badge::Badge
+use src::button::Button
+use src::button_size::ButtonSize
+use src::card::{ Card, CardButton, CardContent, CardHeader, CardTitle }
+use src::dialog::{ Dialog, DialogClose, DialogCloseIcon, DialogContent, DialogFooter, DialogTitle }
+use src::button_variant::ButtonVariant
+use src::form::{ InputGroup, InputGroupInput, InputGroupText, Textarea }
+use src::icon::Icon
+use src::icon_name::IconName
+use src::input::Input
+use src::label::Label
+use src::progress::Progress
+use src::tabs::{ TabsContent, TabsList, TabsTrigger }
+use src::tabs_list_variant::TabsListVariant
+use src::toast::{ Toast, toast_success }
+use src::tooltip::{ Tooltip, TooltipContent, TooltipTrigger }
+use src::badge_variant::BadgeVariant
+use src::card_size::CardSize
+use src::showcase::model::initial_model
+use src::showcase::ui::{ actions_section, alerts_section, article_dialog, cards_section, command_dialog, forms_section, navigation_section, overlays_section, typography_section, view }
+use src::showcase::update::{ Msg as ShowcaseMsg, step as showcase_step }
+
+pub enum TestMsg
+  Clicked
+  Changed { value: String }
+  Selected { value: String }
+
+test "complete showcase renders without a runtime cast trap":
+  let html = render(view(initial_model()))
+  assert(html.contains("Tessyl UI".as_slice()), eq: true)
+
+test "showcase update accepts every interactive message":
+  let _ = showcase_step(initial_model(), ShowcaseMsg::ToggleTheme {})
+  let _ = showcase_step(initial_model(), ShowcaseMsg::OpenDialog {})
+  let _ = showcase_step(initial_model(), ShowcaseMsg::CloseDialog {})
+  let _ = showcase_step(initial_model(), ShowcaseMsg::OpenCommand {})
+  let _ = showcase_step(initial_model(), ShowcaseMsg::CloseCommand {})
+  let _ = showcase_step(initial_model(), ShowcaseMsg::SelectTab { value: "activity" })
+  let _ = showcase_step(initial_model(), ShowcaseMsg::QueryChanged { value: "query" })
+  let _ = showcase_step(initial_model(), ShowcaseMsg::DraftChanged { value: "draft" })
+  let _ = showcase_step(initial_model(), ShowcaseMsg::CommandSelected { value: "button" })
+  let _ = showcase_step(initial_model(), ShowcaseMsg::ShowToast {})
+  let _ = showcase_step(initial_model(), ShowcaseMsg::ShowLoadingToast {})
+  let _ = showcase_step(initial_model(), ShowcaseMsg::DraftArticle {})
+  let _ = showcase_step(initial_model(), ShowcaseMsg::DismissToast { id: "saved" })
+  let _ = showcase_step(initial_model(), ShowcaseMsg::NoOp {})
+  assert(true, eq: true)
+
+test "showcase actions section renders":
+  assert(render(actions_section()).contains("Actions".as_slice()), eq: true)
+
+test "showcase alerts section renders":
+  assert(render(alerts_section()).contains("Conflicting claims detected".as_slice()), eq: true)
+
+test "showcase typography section renders an article hierarchy":
+  let html = render(typography_section())
+  assert(html.contains("A library that learns alongside its readers".as_slice()), eq: true)
+  assert(html.contains("<article".as_slice()), eq: true)
+
+test "showcase cards section renders":
+  assert(render(cards_section()).contains("Cards".as_slice()), eq: true)
+
+test "showcase forms section renders":
+  assert(render(forms_section(initial_model())).contains("Forms".as_slice()), eq: true)
+
+test "showcase navigation section renders":
+  assert(render(navigation_section(initial_model())).contains("Tabs".as_slice()), eq: true)
+
+test "showcase overlays section renders":
+  assert(render(overlays_section()).contains("Dialogs".as_slice()), eq: true)
+
+test "showcase article dialog renders":
+  assert(render(article_dialog(initial_model())).contains("new-article-title".as_slice()), eq: true)
+
+test "showcase command dialog renders":
+  assert(render(command_dialog(initial_model())).contains("Search the knowledge commons".as_slice()), eq: true)
+
+test "button renders semantic slots and a typed event":
+  let html = render(Button<TestMsg>(children: ["Save"], on_press: TestMsg::Clicked {}))
+  assert(html.contains("data-ui=\"button\"".as_slice()), eq: true)
+  assert(html.contains("data-variant=\"default\"".as_slice()), eq: true)
+  assert(html.contains("data-size=\"default\"".as_slice()), eq: true)
+  assert(html.contains("h-10".as_slice()), eq: true)
+  assert(html.contains("px-[15px]".as_slice()), eq: true)
+  assert(html.contains(">Save</button>".as_slice()), eq: true)
+
+test "button sizes use exact matching heights":
+  let extra_small = render(Button<TestMsg>(children: ["XS"], size: ButtonSize::ExtraSmall {}, on_press: TestMsg::Clicked {}))
+  let small = render(Button<TestMsg>(children: ["Small"], size: ButtonSize::Small {}, on_press: TestMsg::Clicked {}))
+  let large = render(Button<TestMsg>(children: ["Large"], size: ButtonSize::Large {}, on_press: TestMsg::Clicked {}))
+  assert(extra_small.contains("h-7".as_slice()), eq: true)
+  assert(small.contains("h-9".as_slice()), eq: true)
+  assert(large.contains("h-11".as_slice()), eq: true)
+
+test "button loading state is busy, disabled, and labelled":
+  let html = render(Button<TestMsg>(children: ["Save"], on_press: TestMsg::Clicked {}, loading: true, loading_label: "Saving"))
+  assert(html.contains("data-loading=\"true\"".as_slice()), eq: true)
+  assert(html.contains("aria-busy=\"true\"".as_slice()), eq: true)
+  assert(html.contains("data-ui=\"loading-indicator\"".as_slice()), eq: true)
+  assert(html.contains("Saving".as_slice()), eq: true)
+
+test "alert composes semantic slots and tone metadata":
+  let html = render(Alert(variant: AlertVariant::Information {}, children: [Icon(name: IconName::circle_info()), AlertTitle(children: ["Sources found"]), AlertDescription(children: ["Review the new references."])]))
+  assert(html.contains("role=\"alert\"".as_slice()), eq: true)
+  assert(html.contains("data-variant=\"information\"".as_slice()), eq: true)
+  assert(html.contains("data-ui=\"alert-title\"".as_slice()), eq: true)
+  assert(html.contains("data-ui=\"alert-description\"".as_slice()), eq: true)
+
+test "alert exposes every visual variant":
+  let default_alert = render(Alert(children: ["Default"]))
+  let success_alert = render(Alert(variant: AlertVariant::Success {}, children: ["Success"]))
+  let warning_alert = render(Alert(variant: AlertVariant::Warning {}, children: ["Warning"]))
+  let destructive_alert = render(Alert(variant: AlertVariant::Destructive {}, children: ["Destructive"]))
+  assert(default_alert.contains("data-variant=\"default\"".as_slice()), eq: true)
+  assert(success_alert.contains("data-variant=\"success\"".as_slice()), eq: true)
+  assert(warning_alert.contains("data-variant=\"warning\"".as_slice()), eq: true)
+  assert(destructive_alert.contains("data-variant=\"destructive\"".as_slice()), eq: true)
+
+test "card composition preserves its named slots":
+  let html = render(Card(children: [CardHeader(children: [CardTitle(children: ["Title"])]), CardContent(children: ["Body"])]))
+  assert(html.contains("data-ui=\"card-header\"".as_slice()), eq: true)
+  assert(html.contains("data-ui=\"card-content\"".as_slice()), eq: true)
+
+test "small cards propagate compact spacing":
+  let html = render(Card(size: CardSize::Small {}, children: [CardHeader(children: [CardTitle(children: ["Compact"])]), CardContent(children: ["Body"])]))
+  assert(html.contains("data-size=\"small\"".as_slice()), eq: true)
+  assert(html.contains("--ui-card-spacing: 1rem".as_slice()), eq: true)
+
+test "interactive card retains native button semantics":
+  let html = render(CardButton<TestMsg>(on_press: TestMsg::Clicked {}, aria_label: "Open article", children: [CardContent(children: ["Article"])]))
+  assert(html.contains("data-ui=\"card-button\"".as_slice()), eq: true)
+  assert(html.contains("aria-label=\"Open article\"".as_slice()), eq: true)
+
+test "cards expose static and interactive loading overlays":
+  let card = render(Card(loading: true, loading_label: "Loading article", children: [CardContent(children: ["Body"])]))
+  let button = render(CardButton<TestMsg>(loading: true, loading_label: "Opening article", on_press: TestMsg::Clicked {}, children: [CardContent(children: ["Body"])]))
+  assert(card.contains("data-ui=\"card-loading-overlay\"".as_slice()), eq: true)
+  assert(card.contains("aria-busy=\"true\"".as_slice()), eq: true)
+  assert(button.contains("aria-label=\"Opening article\"".as_slice()), eq: true)
+
+test "avatar fallback and badge render without host adapters":
+  let html = render(Avatar(children: [AvatarFallback(children: ["DR"]), Badge(variant: BadgeVariant::Outline {}, children: ["2"])]))
+  assert(html.contains("data-ui=\"avatar-fallback\"".as_slice()), eq: true)
+  assert(html.contains(">DR</span>".as_slice()), eq: true)
+
+test "progress clamps values and emits accessible metadata":
+  let html = render(Progress(value: 140.0, label: "Confidence", show_value: true))
+  assert(html.contains("aria-valuenow=\"100".as_slice()), eq: true)
+  assert(html.contains("aria-label=\"Confidence\"".as_slice()), eq: true)
+  assert(html.contains("width: 100".as_slice()), eq: true)
+
+test "closed dialog and inactive tab render no hidden interactive subtree":
+  let dialog = render(Dialog<TestMsg>(open: false, on_close: TestMsg::Clicked {}, children: [DialogContent(title_id: "title", children: [DialogTitle(id: "title", children: ["Title"])])]))
+  let tab = render(TabsContent(active: false, value: "brief", children: ["Hidden"] ))
+  assert(dialog.contains("role=\"dialog\"".as_slice()), eq: false)
+  assert(tab.contains("Hidden".as_slice()), eq: false)
+
+test "dialog close variants compose":
+  let html = render(Dialog<TestMsg>(open: false, on_close: TestMsg::Clicked {}, children: [DialogContent(title_id: "title", children: [DialogTitle(id: "title", children: ["Title"]), DialogCloseIcon<TestMsg>(on_close: TestMsg::Clicked {}), DialogFooter(children: [DialogClose<TestMsg>(variant: ButtonVariant::Outline {}, on_close: TestMsg::Clicked {}, children: ["Cancel"]), DialogClose<TestMsg>(variant: ButtonVariant::Default {}, on_close: TestMsg::Clicked {}, children: [Icon(name: IconName::sparkles()), "Confirm"])])])]))
+  assert(html.contains("Cancel".as_slice()), eq: true)
+
+test "outline dialog close renders alone":
+  assert(render(DialogClose<TestMsg>(variant: ButtonVariant::Outline {}, on_close: TestMsg::Clicked {}, children: ["Cancel"])).contains("Cancel".as_slice()), eq: true)
+
+test "primary dialog close renders alone":
+  assert(render(DialogClose<TestMsg>(variant: ButtonVariant::Default {}, on_close: TestMsg::Clicked {}, children: [Icon(name: IconName::sparkles()), "Confirm"])).contains("Confirm".as_slice()), eq: true)
+
+test "icon dialog close forwards optional props through its generic wrapper":
+  let html = render(DialogCloseIcon<TestMsg>(on_close: TestMsg::Clicked {}))
+  assert(html.contains("data-size=\"icon-small\"".as_slice()), eq: true)
+  assert(html.contains("aria-label=\"Close\"".as_slice()), eq: true)
+
+test "textarea exposes its controlled value":
+  let textarea = render(Textarea<TestMsg>(value: "Draft", on_change: (value) => TestMsg::Changed { value }))
+  assert(textarea.contains(">Draft</textarea>".as_slice()), eq: true)
+
+test "tabs expose controlled selection":
+  let trigger = render(TabsList(children: [TabsTrigger<TestMsg>(value: "brief", active: true, on_select: (value: String) -> TestMsg => TestMsg::Selected { value }, children: ["Brief"])]))
+  assert(trigger.contains("aria-selected=\"true\"".as_slice()), eq: true)
+
+test "tabs expose the line treatment used by the prototype":
+  let list = render(TabsList(variant: TabsListVariant::Line {}, children: [TabsTrigger<TestMsg>(value: "brief", active: true, on_select: (value: String) -> TestMsg => TestMsg::Selected { value }, children: ["Brief"])]))
+  assert(list.contains("data-variant=\"line\"".as_slice()), eq: true)
+
+test "input, label, and input group preserve form semantics":
+  let field = render(Label(for_id: Some<String> { value: "title" }, children: ["Title"]))
+  let input = render(Input<TestMsg>(id: Some<String> { value: "title" }, value: "Voyd", on_change: (value: String) -> TestMsg => TestMsg::Changed { value }))
+  let group = render(InputGroup(children: [InputGroupText(children: ["/wiki/"]), InputGroupInput<TestMsg>(value: "voyd", on_change: (value: String) -> TestMsg => TestMsg::Changed { value })]))
+  assert(field.contains("for=\"title\"".as_slice()), eq: true)
+  assert(input.contains("data-ui=\"input\"".as_slice()), eq: true)
+  assert(group.contains("data-ui=\"input-group-text\"".as_slice()), eq: true)
+  assert(group.contains("data-ui=\"input\"".as_slice()), eq: true)
+
+test "icon descriptor keeps its path":
+  let icon = render(Icon(name: IconName::search()))
+  assert(icon.contains("d=\"m21 21".as_slice()), eq: true)
+  assert(icon.contains("viewBox=\"0 0 24 24\"".as_slice()), eq: true)
+
+test "icon emits its accessibility contract":
+  let icon = render(Icon(name: IconName::search(), label: Some<String> { value: "Search" }))
+  assert(icon.contains("<svg".as_slice()), eq: true)
+  assert(icon.contains("<path".as_slice()), eq: true)
+  assert(icon.contains("role=\"img\"".as_slice()), eq: true)
+  assert(icon.contains("aria-label=\"Search\"".as_slice()), eq: true)
+
+test "icon supports the prototype filled bookmark state":
+  let icon = render(Icon(name: IconName::bookmark(), filled: true))
+  assert(icon.contains("data-filled=\"true\"".as_slice()), eq: true)
+  assert(icon.contains("fill=\"currentColor\"".as_slice()), eq: true)
+
+test "tooltip connects trigger and content":
+  let tooltip = render(Tooltip(children: [TooltipTrigger<TestMsg>(described_by: "tip", on_press: TestMsg::Clicked {}, children: ["Help"]), TooltipContent(id: "tip", children: ["More context"])]))
+  assert(tooltip.contains("aria-describedby=\"tip\"".as_slice()), eq: true)
+
+test "toast emits a live-region status":
+  let toast_item = toast_success(id: "saved", title: "Saved", description: Some<String> { value: "Revision published" })
+  let notification = render(Toast<TestMsg>(item: toast_item, on_dismiss: (_id: String) -> TestMsg => TestMsg::Clicked {}))
+  assert(notification.contains("role=\"status\"".as_slice()), eq: true)

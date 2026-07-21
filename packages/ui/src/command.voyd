@@ -1,0 +1,64 @@
+use std::array::Array
+use std::msgpack::MsgPack
+use std::optional::types::all
+use std::string::type::String
+use std::vx::self as vx
+use std::vx::InputEvent
+use src::dialog::{ Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle }
+use src::icon::Icon
+use src::shared::{ Child, View, bool_text, data_attr, empty, normalize_children, with_class }
+use src::icon_name::IconName
+
+pub fn CommandDialog<Msg>({ open: bool, on_close: Msg, title: String, description: String, children: Array<Child<Msg>>, id_prefix: String, class?: String }) -> View<Msg>
+  let title_id = id_prefix.concat("-title")
+  let description_id = id_prefix.concat("-description")
+  Dialog<Msg>(open: open, on_close: on_close, title_id: Some<String> { value: title_id }, description_id: Some<String> { value: description_id }, extra_attrs: [vx::attr(name: "data-command-dialog", value: "true")], children: [
+    DialogContent(title_id: title_id, description_id: Some<String> { value: description_id }, padded: false, class: Some<String> { value: with_class("max-w-xl overflow-hidden", class) }, children: [
+      DialogHeader(class: Some<String> { value: "sr-only" }, children: [
+        DialogTitle(id: title_id, children: [title]),
+        DialogDescription(id: Some<String> { value: description_id }, children: [description])
+      ]),
+      vx::html_element(tag: "div", attrs: [data_attr("command"), vx::class("flex size-full flex-col overflow-hidden bg-popover text-popover-foreground")], children: normalize_children(children))
+    ])
+  ])
+
+/// Attach this attribute to the application button that opens CommandDialog.
+/// The DOM adapter invokes that same typed trigger for Command/Ctrl+K.
+pub fn command_shortcut_trigger_attr() -> MsgPack
+  vx::attr(name: "data-command-shortcut-trigger", value: "true")
+
+pub fn CommandInput<Msg>({ value: String, on_change: fn(String) -> Msg, placeholder?: String, controls?: String, shortcut_label: String = "⌘ K", autofocus: bool = true, class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
+  let ~attrs = [data_attr("command-input"), vx::attr(name: "type", value: "search"), vx::attr(name: "role", value: "combobox"), vx::attr(name: "aria-autocomplete", value: "list"), vx::attr(name: "aria-expanded", value: "true"), vx::attr(name: "aria-keyshortcuts", value: "Meta+K Control+K"), vx::prop(name: "value", value: value), vx::class(with_class("h-12 min-w-0 flex-1 border-0 bg-transparent text-base outline-none placeholder:text-tertiary-foreground", class)), vx::html_event_payload_handler<InputEvent, Msg>(name: "input", handler: (event: InputEvent) -> Msg => on_change(event.value))]
+  if autofocus: attrs.push(vx::attr(name: "autofocus", value: ""))
+  if placeholder is Some: attrs.push(vx::attr(name: "placeholder", value: placeholder.value))
+  if controls is Some: attrs.push(vx::attr(name: "aria-controls", value: controls.value))
+  var index = 0
+  while index < extra_attrs.len():
+    attrs.push(extra_attrs.at(index))
+    index = index + 1
+  vx::html_element(tag: "div", attrs: [data_attr("command-input-wrapper"), vx::class("flex min-h-16 items-center gap-3 border-b px-4 py-2")], children: [Icon(name: IconName::search(), class: Some<String> { value: "size-5 text-muted-foreground" }), vx::html_element(tag: "input", attrs: attrs, children: Array<MsgPack>::init()), vx::html_element(tag: "kbd", attrs: [data_attr("command-input-shortcut"), vx::attr(name: "aria-hidden", value: "true"), vx::class("shrink-0 rounded-md border bg-muted px-2 py-1 text-[0.6875rem] leading-none font-semibold tracking-tight text-muted-foreground shadow-[var(--ui-shadow-control)]")], children: [vx::text(shortcut_label)])])
+
+pub fn CommandList({ children: Array<MsgPack>, id?: String, class?: String }) -> MsgPack
+  let ~attrs = [data_attr("command-list"), vx::attr(name: "role", value: "listbox"), vx::class(with_class("max-h-80 overflow-x-hidden overflow-y-auto p-1 outline-none", class))]
+  if id is Some: attrs.push(vx::id(id.value))
+  vx::html_element(tag: "div", attrs: attrs, children: normalize_children(children))
+
+pub fn CommandEmpty({ visible: bool, children: Array<MsgPack>, class?: String }) -> MsgPack
+  if visible then:
+    vx::html_element(tag: "div", attrs: [data_attr("command-empty"), vx::class(with_class("py-8 text-center text-sm text-muted-foreground", class))], children: normalize_children(children))
+  else:
+    empty()
+
+pub fn CommandGroup({ heading: String, children: Array<MsgPack>, class?: String }) -> MsgPack
+  vx::html_element(tag: "section", attrs: [data_attr("command-group"), vx::attr(name: "role", value: "group"), vx::attr(name: "aria-label", value: heading), vx::class(with_class("overflow-hidden p-1", class))], children: [vx::html_element(tag: "h3", attrs: [vx::attr(name: "aria-hidden", value: "true"), vx::class("px-2 py-1.5 text-xs font-medium text-muted-foreground")], children: [vx::text(heading)]), vx::html_element(tag: "div", attrs: [vx::attr(name: "role", value: "presentation"), vx::class("flex flex-col gap-0.5")], children: normalize_children(children))])
+
+pub fn CommandItem<Msg>({ children: Array<Child<Msg>>, value: String, on_select: fn(String) -> Msg, selected: bool = false, disabled: bool = false, class?: String, extra_attrs: Array<MsgPack> = Array<MsgPack>::init() }) -> View<Msg>
+  let ~attrs = [data_attr("command-item"), vx::attr(name: "type", value: "button"), vx::attr(name: "role", value: "option"), vx::attr(name: "tabindex", value: -1), vx::attr(name: "aria-selected", value: bool_text(selected)), vx::attr(name: "data-selected", value: bool_text(selected)), vx::disabled(disabled), vx::class(with_class("relative flex w-full cursor-default items-center gap-2 rounded-[var(--ui-radius-control)] px-2 py-2 text-left text-sm outline-none hover:bg-muted data-[selected=true]:bg-muted disabled:pointer-events-none disabled:opacity-50", class)), vx::html_event_handler<Msg>(name: "click", handler: () -> Msg => on_select(value))]
+  var index = 0
+  while index < extra_attrs.len():
+    attrs.push(extra_attrs.at(index))
+    index = index + 1
+  vx::html_element(tag: "button", attrs: attrs, children: normalize_children(children))
+
+pub fn CommandShortcut({ children: Array<MsgPack>, class?: String }) -> MsgPack
+  vx::html_element(tag: "span", attrs: [data_attr("command-shortcut"), vx::class(with_class("ml-auto text-xs tracking-widest text-muted-foreground", class))], children: normalize_children(children))

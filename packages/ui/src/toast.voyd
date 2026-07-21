@@ -1,0 +1,94 @@
+use std::array::Array
+use std::msgpack::MsgPack
+use std::optional::types::all
+use std::string::type::String
+use std::vx::self as vx
+use src::icon::Icon
+use src::shared::{ View, data_attr, normalize_children, with_class }
+use src::icon_name::IconName
+use src::toast_tone::ToastTone
+use src::toast_position::ToastPosition
+use src::types::ToastItem
+
+pub fn toast({ id: String, title: String, description?: String, duration_ms?: i32, revision?: i32 }) -> ToastItem
+  ToastItem { id, title, description: description, duration_ms: duration_ms, revision: revision, tone: ToastTone::Default {} }
+
+pub fn toast_success({ id: String, title: String, description?: String, duration_ms?: i32, revision?: i32 }) -> ToastItem
+  ToastItem { id, title, description: description, duration_ms: duration_ms, revision: revision, tone: ToastTone::Success {} }
+
+pub fn toast_information({ id: String, title: String, description?: String, duration_ms?: i32, revision?: i32 }) -> ToastItem
+  ToastItem { id, title, description: description, duration_ms: duration_ms, revision: revision, tone: ToastTone::Information {} }
+
+pub fn toast_warning({ id: String, title: String, description?: String, duration_ms?: i32, revision?: i32 }) -> ToastItem
+  ToastItem { id, title, description: description, duration_ms: duration_ms, revision: revision, tone: ToastTone::Warning {} }
+
+pub fn toast_error({ id: String, title: String, description?: String, duration_ms?: i32, revision?: i32 }) -> ToastItem
+  ToastItem { id, title, description: description, duration_ms: duration_ms, revision: revision, tone: ToastTone::Error {} }
+
+pub fn toast_loading({ id: String, title: String, description?: String, duration_ms?: i32, revision?: i32 }) -> ToastItem
+  ToastItem { id, title, description: description, duration_ms: duration_ms, revision: revision, tone: ToastTone::Loading {} }
+
+pub fn Toaster<Msg>({ items: Array<ToastItem>, on_dismiss: fn(String) -> Msg, position: ToastPosition = ToastPosition::BottomCenter {}, class?: String }) -> View<Msg>
+  let ~children = Array<MsgPack>::with_capacity(items.len())
+  var index = 0
+  while index < items.len():
+    let item = items.at(index)
+    children.push(vx::keyed(key: item.id, child: Toast<Msg>(item: item, on_dismiss: on_dismiss)))
+    index = index + 1
+  vx::html_element(tag: "div", attrs: [data_attr("toaster"), vx::attr(name: "aria-live", value: "polite"), vx::attr(name: "aria-relevant", value: "additions removals"), vx::class(with_class("fixed z-50 flex w-[min(24rem,calc(100vw-2rem))] flex-col gap-2 ".concat(toaster_position_class(position)), class))], children: children)
+
+pub fn Toast<Msg>({ item: ToastItem, on_dismiss: fn(String) -> Msg, class?: String }) -> View<Msg>
+  let ~body = [vx::html_element(tag: "strong", attrs: [vx::class("block text-sm font-medium")], children: [vx::text(item.title)])]
+  let description = item.description
+  if description is Some:
+    body.push(vx::html_element(tag: "p", attrs: [vx::class("m-0 text-xs text-muted-foreground")], children: [vx::text(description.value)]))
+  let content = [toast_icon(item.tone), vx::html_element(tag: "div", attrs: [vx::class("min-w-0 flex-1")], children: body), vx::html_element(tag: "button", attrs: [data_attr("toast-dismiss"), vx::attr(name: "type", value: "button"), vx::attr(name: "aria-label", value: "Dismiss notification"), vx::class("ml-auto rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"), vx::html_event_handler<Msg>(name: "click", handler: () -> Msg => on_dismiss(item.id))], children: [Icon(name: IconName::x())])]
+  let ~attrs = [data_attr("toast"), vx::attr(name: "data-tone", value: toast_tone_name(item.tone)), vx::attr(name: "role", value: toast_role(item.tone)), vx::class(with_class("grid grid-cols-[auto_1fr_auto] items-start gap-2 rounded-[var(--ui-radius-card)] border bg-popover p-3 text-popover-foreground shadow-[var(--ui-shadow-card)] data-[tone=error]:border-destructive/30 data-[tone=warning]:border-warning/30", class))]
+  let duration = item.duration_ms
+  if duration is Some: attrs.push(vx::attr(name: "data-duration", value: duration.value))
+  let revision = item.revision
+  if revision is Some: attrs.push(vx::attr(name: "data-revision", value: revision.value))
+  vx::html_element(tag: "section", attrs: attrs, children: content)
+
+fn toaster_position_class(position: ToastPosition) -> String
+  match(position)
+    ToastPosition::BottomRight: "right-4 bottom-4"
+    ToastPosition::BottomCenter: "bottom-4 left-1/2 -translate-x-1/2"
+    ToastPosition::TopRight: "top-4 right-4"
+
+fn toast_role(tone: ToastTone) -> String
+  match(tone)
+    ToastTone::Error: "alert"
+    ToastTone::Default: "status"
+    ToastTone::Success: "status"
+    ToastTone::Information: "status"
+    ToastTone::Warning: "status"
+    ToastTone::Loading: "status"
+
+fn toast_icon(tone: ToastTone) -> MsgPack
+  let name = match(tone)
+    ToastTone::Success: IconName::check()
+    ToastTone::Information: IconName::sparkles()
+    ToastTone::Warning: IconName::circle_alert()
+    ToastTone::Error: IconName::circle_alert()
+    ToastTone::Default: IconName::message_question()
+    ToastTone::Loading: IconName::clock()
+  Icon(name: name, class: Some<String> { value: toast_icon_class(tone) })
+
+fn toast_icon_class(tone: ToastTone) -> String
+  match(tone)
+    ToastTone::Success: "text-success"
+    ToastTone::Information: "text-information"
+    ToastTone::Warning: "text-warning"
+    ToastTone::Error: "text-destructive"
+    ToastTone::Default: "text-muted-foreground"
+    ToastTone::Loading: "animate-spin text-primary"
+
+fn toast_tone_name(tone: ToastTone) -> String
+  match(tone)
+    ToastTone::Default: "default"
+    ToastTone::Success: "success"
+    ToastTone::Information: "information"
+    ToastTone::Warning: "warning"
+    ToastTone::Error: "error"
+    ToastTone::Loading: "loading"

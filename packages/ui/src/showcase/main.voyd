@@ -1,0 +1,7 @@
+use std::vx::all
+use src::showcase::model::{ Model, initial_model }
+use src::showcase::update::{ Msg, step }
+use src::showcase::ui::view
+
+pub fn app() -> Program<Model, Msg>
+  program({ init: initial_model, step, view })

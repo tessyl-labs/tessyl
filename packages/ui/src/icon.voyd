@@ -1,0 +1,25 @@
+use std::msgpack::MsgPack
+use std::optional::types::all
+use std::string::type::String
+use std::vx::all
+use src::shared::{ bool_text, with_class }
+use src::icon_name::{ IconName, icon_path }
+
+/// Renders the icon set used by the knowledge-base prototype as native VX SVG.
+pub fn Icon({ name: IconName, filled: bool = false, class?: String, label?: String }) -> MsgPack
+  let icon_class = with_class("inline-block size-4 shrink-0", class)
+  let icon_fill = if filled then: "currentColor" else: "none"
+  if label is Some:
+    labelled_icon(name: name, filled: filled, icon_class: icon_class, icon_fill: icon_fill, label: label.value)
+  else:
+    decorative_icon(name: name, filled: filled, icon_class: icon_class, icon_fill: icon_fill)
+
+fn labelled_icon({ name: IconName, filled: bool, icon_class: String, icon_fill: String, label: String }) -> MsgPack
+  <svg data-ui="icon" data-filled={bool_text(filled)} class={icon_class} viewBox="0 0 24 24" fill={icon_fill} stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label={label}>
+    <path d={icon_path(name)} />
+  </svg>
+
+fn decorative_icon({ name: IconName, filled: bool, icon_class: String, icon_fill: String }) -> MsgPack
+  <svg data-ui="icon" data-filled={bool_text(filled)} class={icon_class} viewBox="0 0 24 24" fill={icon_fill} stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d={icon_path(name)} />
+  </svg>

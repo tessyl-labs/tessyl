@@ -1,0 +1,7 @@
+pub enum ButtonVariant
+  Default
+  Outline
+  Secondary
+  Ghost
+  Destructive
+  Link

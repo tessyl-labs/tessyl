@@ -1,0 +1,46 @@
+{
+  "name": "@tessyl/ui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pure Voyd, Tailwind-powered UI components for Tessyl applications",
+  "type": "module",
+  "files": [
+    "src",
+    "ui-adapters.ts",
+    "theme.css",
+    "tailwind.css",
+    "README.md"
+  ],
+  "exports": {
+    "./ui-adapters": "./ui-adapters.ts",
+    "./theme.css": "./theme.css",
+    "./tailwind.css": "./tailwind.css",
+    "./package.json": "./package.json"
+  },
+  "voyd": {
+    "source": "./src/pkg.voyd"
+  },
+  "scripts": {
+    "build": "npm run typecheck && vite build",
+    "dev": "vite --host 0.0.0.0",
+    "test": "node ../../.voyd-source/apps/cli/bin/voyd.js test ./src --fail-empty-tests && node ../../.voyd-source/apps/cli/bin/voyd.js test ./test --pkg-dir ../.. --fail-empty-tests && node --test ./test/ui-adapters.test.mjs",
+    "typecheck": "node scripts/compile-voyd.mjs --check && tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fontsource/noto-sans": "^5.3.0",
+    "@tessyl/design-tokens": "*",
+    "@voyd-lang/sdk": "file:../../.voyd-source/packages/sdk",
+    "@voyd-lang/std": "file:../../.voyd-source/packages/std",
+    "@voyd-lang/vx-dom": "file:../../.voyd-source/packages/vx-dom",
+    "@voyd-lang/web": "file:../../.voyd-source/packages/web"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.0",
+    "@types/node": "^22.5.1",
+    "@voyd-lang/cli": "file:../../.voyd-source/apps/cli",
+    "happy-dom": "^20.10.1",
+    "tailwindcss": "^4.3.0",
+    "typescript": "^5.8.3",
+    "vite": "^8.0.0"
+  }
+}

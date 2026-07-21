@@ -1,0 +1,81 @@
+@import "@fontsource/noto-sans/latin-400.css";
+@import "@fontsource/noto-sans/latin-500.css";
+@import "@fontsource/noto-sans/latin-600.css";
+@import "@fontsource/noto-sans/latin-700.css";
+@import "@tessyl/design-tokens/theme.css";
+@import "./theme.css";
+@import "tailwindcss";
+
+@source "./src/**/*.voyd";
+
+@theme inline {
+  --font-sans: var(--ui-font-sans);
+  --font-mono: var(--ts-font-mono);
+  --color-background: var(--ui-background);
+  --color-foreground: var(--ui-foreground);
+  --color-card: var(--ui-card);
+  --color-card-foreground: var(--ui-card-foreground);
+  --color-popover: var(--ui-popover);
+  --color-popover-foreground: var(--ui-popover-foreground);
+  --color-primary: var(--ui-primary);
+  --color-primary-foreground: var(--ui-primary-foreground);
+  --color-secondary: var(--ui-secondary);
+  --color-secondary-foreground: var(--ui-secondary-foreground);
+  --color-muted: var(--ui-muted);
+  --color-muted-foreground: var(--ui-muted-foreground);
+  --color-accent: var(--ui-accent);
+  --color-accent-foreground: var(--ui-accent-foreground);
+  --color-destructive: var(--ui-destructive);
+  --color-destructive-foreground: var(--ui-destructive-foreground);
+  --color-success: var(--ui-success);
+  --color-warning: var(--ui-warning);
+  --color-information: var(--ui-information);
+  --color-tertiary-foreground: var(--ui-tertiary-foreground);
+  --color-border: var(--ui-border);
+  --color-input: var(--ui-input);
+  --color-ring: var(--ui-ring);
+  --radius-sm: calc(var(--ui-radius-control) * 0.6);
+  --radius-md: calc(var(--ui-radius-control) * 0.8);
+  --radius-lg: var(--ui-radius-control);
+  --radius-xl: var(--ui-radius-card);
+}
+
+@layer base {
+  * { @apply border-border outline-ring/50; }
+  body { @apply bg-background text-foreground font-sans; }
+  ::selection { color: var(--ui-foreground); background: var(--ui-accent); }
+  a { color: var(--ui-primary); }
+  a:hover { color: var(--ui-primary-hover); }
+}
+
+@layer components {
+  [data-ui="tooltip"] [data-ui="tooltip-content"] { @apply pointer-events-none invisible opacity-0; }
+  [data-ui="tooltip"]:not([data-dismissed="true"]):hover [data-ui="tooltip-content"],
+  [data-ui="tooltip"]:not([data-dismissed="true"]):focus-within [data-ui="tooltip-content"] { @apply visible opacity-100; }
+  [data-ui="tooltip-content"][data-positioned="true"] { position: fixed; transform: none; }
+
+  [data-ui="tabs-list"][data-variant="line"] [data-ui="tabs-trigger"] {
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  [data-ui="tabs-list"][data-variant="line"] [data-ui="tabs-trigger"][data-active="true"] {
+    box-shadow: inset 0 -2px 0 var(--ui-primary) !important;
+  }
+
+  [data-ui="input-group"]:has([data-align="block-start"], [data-align="block-end"]) { flex-direction: column; align-items: stretch; }
+  [data-ui="input-group"] [data-align="inline-start"],
+  [data-ui="input-group"] [data-align="block-start"] { order: -1; }
+  [data-ui="input-group"] [data-align="inline-end"],
+  [data-ui="input-group"] [data-align="block-end"] { order: 1; }
+  [data-ui="input-group"] [data-align="block-start"],
+  [data-ui="input-group"] [data-align="block-end"] { width: 100%; justify-content: flex-start; }
+
+  [data-ui="avatar"][data-size="small"] [data-ui="avatar-badge"] { width: 0.5rem; height: 0.5rem; }
+  [data-ui="avatar"][data-size="large"] [data-ui="avatar-badge"] { width: 0.75rem; height: 0.75rem; }
+  [data-ui="avatar"][data-size="small"] [data-ui="avatar-fallback"] { font-size: 0.75rem; }
+  [data-ui="avatar-group"]:has([data-ui="avatar"][data-size="small"]) [data-ui="avatar-group-count"] { width: 1.5rem; height: 1.5rem; }
+  [data-ui="avatar-group"]:has([data-ui="avatar"][data-size="large"]) [data-ui="avatar-group-count"] { width: 2.5rem; height: 2.5rem; }
+  [data-ui="card"][data-size="small"] [data-ui="card-title"],
+  [data-ui="card-button"][data-size="small"] [data-ui="card-title"] { font-size: 0.875rem; }
+}
