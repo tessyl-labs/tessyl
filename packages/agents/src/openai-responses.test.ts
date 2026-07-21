@@ -44,6 +44,7 @@ const request: LlmModelRequest = {
       strict: true,
     },
   ],
+  retain_continuation: true,
 };
 
 describe("OpenAI Responses handlers", () => {
@@ -232,6 +233,210 @@ describe("OpenAI Responses handlers", () => {
       call_id: "call_1",
       output: "3",
     }]);
+  });
+
+  it("does not retain continuation state for one-shot requests", async () => {
+    const adapter = createOpenAIResponsesAdapter({
+      apiKey: "test-key",
+      fetch: async () => Response.json({
+        id: "resp_one_shot",
+        status: "completed",
+        output: [{
+          type: "message",
+          content: [{ type: "output_text", text: "Checkpoint" }],
+        }],
+        usage: {},
+      }),
+    });
+
+    const result = await adapter.respond({
+      ...request,
+      retain_continuation: false,
+    }, context);
+
+    assert.equal(result.tag, "LlmSucceeded");
+    if (result.tag === "LlmSucceeded") {
+      assert.equal(result.response.continuation_token, null);
+    }
+  });
+
+  it("compacts native OpenAI context with opaque response items intact", async () => {
+    const requestedUrls: string[] = [];
+    const sentBodies: Record<string, any>[] = [];
+    const adapter = createOpenAIResponsesAdapter({
+      apiKey: "test-key",
+      fetch: async (input, init) => {
+        requestedUrls.push(String(input));
+        sentBodies.push(JSON.parse(String(init?.body)) as Record<string, any>);
+        if (requestedUrls.length === 1) {
+          return Response.json({
+            id: "resp_tool",
+            status: "completed",
+            output: [
+              {
+                id: "reasoning_1",
+                type: "reasoning",
+                encrypted_content: "opaque-reasoning",
+              },
+              {
+                id: "fc_1",
+                type: "function_call",
+                status: "completed",
+                call_id: "call_1",
+                name: "add",
+                arguments: "{}",
+              },
+            ],
+            usage: { input_tokens: 10, output_tokens: 3, total_tokens: 13 },
+          });
+        }
+        return Response.json({
+          id: "cmp_1",
+          object: "response.compaction",
+          output: [{
+            id: "cmp_item_1",
+            type: "compaction",
+            encrypted_content: "opaque-compaction",
+          }],
+          usage: { input_tokens: 16, output_tokens: 2, total_tokens: 18 },
+        });
+      },
+    });
+
+    const first = await adapter.respond(request, context);
+    assert.equal(first.tag, "LlmSucceeded");
+    if (first.tag !== "LlmSucceeded") assert.fail("expected tool response");
+
+    assert.ok(adapter.compactNative);
+    const compacted = await adapter.compactNative({
+      ...request,
+      continuation_token: first.response.continuation_token,
+      input: [
+        ...request.input,
+        { tag: "ToolCall", call_id: "call_1", name: "add", arguments: "{}" },
+        { tag: "ToolOutput", call_id: "call_1", output: "3" },
+      ],
+      input_delta: [{ tag: "ToolOutput", call_id: "call_1", output: "3" }],
+      compaction: {
+        trigger_tokens: 1000,
+        keep_recent_items: 2,
+        instructions: "",
+        model: "",
+        prefer_native: true,
+      },
+      overflow_recovery: false,
+    }, context);
+
+    assert.deepEqual(requestedUrls, [
+      "https://api.openai.com/v1/responses",
+      "https://api.openai.com/v1/responses/compact",
+    ]);
+    assert.deepEqual(sentBodies[1], {
+      model: "gpt-test",
+      input: [
+        { role: "user", content: "What is 1 + 2?" },
+      ],
+    });
+    assert.deepEqual(compacted, {
+      tag: "CompactionSucceeded",
+      response: {
+        input: [
+          {
+            tag: "ProviderItem",
+            provider: "openai.responses",
+            data: JSON.stringify({
+              id: "cmp_item_1",
+              type: "compaction",
+              encrypted_content: "opaque-compaction",
+            }),
+          },
+          {
+            tag: "ProviderItem",
+            provider: "openai.responses",
+            data: JSON.stringify({
+              id: "reasoning_1",
+              type: "reasoning",
+              encrypted_content: "opaque-reasoning",
+            }),
+          },
+          { tag: "ToolCall", call_id: "call_1", name: "add", arguments: "{}" },
+          { tag: "ToolOutput", call_id: "call_1", output: "3" },
+        ],
+        continuation_token: null,
+        usage: { input_tokens: 16, output_tokens: 2, total_tokens: 18 },
+      },
+    });
+  });
+
+  it("compacts an entire atomic response batch when opaque reasoning exceeds the suffix budget", async () => {
+    const sentBodies: Record<string, any>[] = [];
+    const largeReasoning = "r".repeat(5_000);
+    const adapter = createOpenAIResponsesAdapter({
+      apiKey: "test-key",
+      fetch: async (_input, init) => {
+        sentBodies.push(JSON.parse(String(init?.body)) as Record<string, any>);
+        if (sentBodies.length === 1) {
+          return Response.json({
+            id: "resp_large_reasoning",
+            status: "completed",
+            output: [
+              {
+                id: "reasoning_large",
+                type: "reasoning",
+                encrypted_content: largeReasoning,
+              },
+              {
+                type: "function_call",
+                call_id: "call_1",
+                name: "add",
+                arguments: "{}",
+              },
+            ],
+            usage: {},
+          });
+        }
+        return Response.json({
+          id: "cmp_large_reasoning",
+          object: "response.compaction",
+          output: [{
+            id: "cmp_large_reasoning_item",
+            type: "compaction",
+            encrypted_content: "opaque-compaction",
+          }],
+          usage: { input_tokens: 1500, output_tokens: 20, total_tokens: 1520 },
+        });
+      },
+    });
+    const first = await adapter.respond(request, context);
+    assert.equal(first.tag, "LlmSucceeded");
+    if (first.tag !== "LlmSucceeded") assert.fail("expected tool response");
+
+    assert.ok(adapter.compactNative);
+    const compacted = await adapter.compactNative({
+      ...request,
+      continuation_token: first.response.continuation_token,
+      input: [
+        ...request.input,
+        { tag: "ToolCall", call_id: "call_1", name: "add", arguments: "{}" },
+        { tag: "ToolOutput", call_id: "call_1", output: "3" },
+      ],
+      input_delta: [{ tag: "ToolOutput", call_id: "call_1", output: "3" }],
+      overflow_recovery: false,
+      compaction: {
+        trigger_tokens: 1000,
+        keep_recent_items: 2,
+        instructions: "",
+        model: "",
+        prefer_native: true,
+      },
+    }, context);
+
+    assert.equal(sentBodies[1]?.input.length, 4);
+    assert.equal(sentBodies[1]?.input[1]?.encrypted_content, largeReasoning);
+    assert.equal(compacted.tag, "CompactionSucceeded");
+    if (compacted.tag === "CompactionSucceeded") {
+      assert.equal(compacted.response.input.length, 1);
+    }
   });
 
   it("maps complete tool transcripts for stateless providers", async () => {
