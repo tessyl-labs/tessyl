@@ -10,6 +10,7 @@ export type StorageErrorCode =
   | "conflict"
   | "failed_condition"
   | "invalid_request"
+  | "invalid_data"
   | "unavailable"
   | "quota_exceeded"
   | "limit_exceeded"
@@ -17,19 +18,7 @@ export type StorageErrorCode =
   | "cancelled"
   | "internal";
 
-export interface StorageErrorDto {
-  code: StorageErrorCode;
-  message: string;
-  retryable: boolean;
-  operation: string;
-  detailsJson: string;
-}
-
-export type StorageResult<T> =
-  | { ok: true; value: T; error: StorageErrorDto }
-  | { ok: false; value: T; error: StorageErrorDto };
-
-export type PortableScalar = null | boolean | number | string;
+export type PortableScalar = null | boolean | number | bigint | string;
 export type IndexScalarType = "null" | "boolean" | "number" | "string";
 
 export interface IndexFieldDefinition {
@@ -79,7 +68,7 @@ export interface TransactionRequest {
 
 export interface TransactionResult {
   documents: readonly StoredDocument[];
-  deletedKeys: readonly string[];
+  deletedKeys: readonly { table: string; key: string }[];
   replayed: boolean;
 }
 

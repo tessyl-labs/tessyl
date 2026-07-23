@@ -1,0 +1,254 @@
+//! Generic document value encoding and checked decoding.
+
+use std::array::Array
+use std::data::{
+  DataArray,
+  DataBool,
+  DataF32,
+  DataF64,
+  DataField,
+  DataI32,
+  DataI64,
+  DataNull,
+  DataObject,
+  DataString,
+  DataValue,
+  DataVariant,
+  DecodeError,
+  decode
+}
+use std::dict::Dict
+use std::msgpack::{
+  Binary,
+  Bool,
+  F32,
+  F64,
+  I32,
+  I64,
+  MsgPack,
+  Null
+}
+use std::msgpack::self as msgpack
+use std::optional::types::all
+use std::result::types::all
+use std::string::type::String
+use src::types::{
+  ErrorDetail,
+  StorageError,
+  StorageErrorCode,
+  Value,
+  ValueField,
+  ValueNode,
+  ValueNodeEntry
+}
+
+let max_value_depth = 32
+let max_value_nodes = 50000
+
+pub fn encode<T>(value: T): () -> Result<Value, StorageError>
+  let ~nodes = Array<ValueNodeEntry>::init()
+  match(append_node(msgpack::pack_boundary_value<T>(value), nodes, 0))
+    Ok<i32> { value: root }:
+      Ok<Value> { value: Value { root, nodes } }
+    Err<StorageError> { error }:
+      Err<StorageError> { error }
+
+pub fn decode_value<T>(value: Value): () -> Result<T, StorageError>
+  if value.nodes.is_empty():
+    return invalid_data("Stored value has no nodes", "$".to_string())
+  let ~visited = Array<bool>::with_capacity(value.nodes.len())
+  var visited_index = 0
+  while visited_index < value.nodes.len():
+    visited.push(false)
+    visited_index = visited_index + 1
+  match(data_value_at(value, value.root, 0, visited))
+    Ok<DataValue> { value: data }:
+      match(decode<T>(data))
+        Ok<T> { value }:
+          Ok<T> { value }
+        Err<DecodeError> { error }:
+          Err<StorageError> {
+            error: StorageError {
+              code: StorageErrorCode::InvalidData(),
+              message: "Stored value does not match the requested Voyd type".to_string(),
+              retryable: false,
+              operation: "document.decode".to_string(),
+              details: [
+                ErrorDetail { name: "path".to_string(), value: error.path },
+                ErrorDetail { name: "expected".to_string(), value: error.expected },
+                ErrorDetail { name: "actual".to_string(), value: error.actual }
+              ]
+            }
+          }
+    Err<StorageError> { error }:
+      Err<StorageError> { error }
+
+fn append_node(
+  value: MsgPack,
+  ~nodes: Array<ValueNodeEntry>,
+  depth: i32
+): () -> Result<i32, StorageError>
+  if depth > max_value_depth or nodes.len() >= max_value_nodes:
+    return invalid_data("Document value exceeds nesting or node limits", "$".to_string())
+
+  value.match(active)
+    Null:
+      append(nodes, ValueNode::Empty())
+    Bool:
+      append(nodes, ValueNode::BoolNode(value: active.value))
+    I32:
+      append(nodes, ValueNode::I32Node(value: active.value))
+    I64:
+      append(nodes, ValueNode::I64Node(value: active.value))
+    F32:
+      append(nodes, ValueNode::F32Node(value: active.value))
+    F64:
+      append(nodes, ValueNode::F64Node(value: active.value))
+    String:
+      append(nodes, ValueNode::TextNode(value: active))
+    Binary:
+      invalid_data("Binary values cannot be stored as documents", "$".to_string())
+    Array<MsgPack>:
+      let ~items = Array<i32>::with_capacity(active.len())
+      var index = 0
+      while index < active.len():
+        match(append_node(active.at(index), nodes, depth + 1))
+          Ok<i32> { value: child }:
+            items.push(child)
+          Err<StorageError> { error }:
+            return Err<StorageError> { error }
+        index = index + 1
+      append(nodes, ValueNode::ListNode(items: items))
+    else:
+      append_map(value, nodes, depth)
+
+fn append_map(
+  value: MsgPack,
+  ~nodes: Array<ValueNodeEntry>,
+  depth: i32
+): () -> Result<i32, StorageError>
+  match(msgpack::unpack_map(value))
+    Ok<Dict<String, MsgPack>> { value: map }:
+      let variant = map.get("$variant".to_string())
+      let ~fields = Array<ValueField>::with_capacity(map.len())
+      let entries = map.entries()
+      var index = 0
+      while index < entries.len():
+        let entry = entries.at(index)
+        let name = entry.0
+        if name != "$variant":
+          match(append_node(entry.1, nodes, depth + 1))
+            Ok<i32> { value: child }:
+              fields.push(ValueField { name, node: child })
+            Err<StorageError> { error }:
+              return Err<StorageError> { error }
+        index = index + 1
+
+      match(variant)
+        Some<MsgPack> { value: tag }:
+          match(msgpack::unpack_string(tag))
+            Ok<String> { value: name }:
+              append(nodes, ValueNode::NamedNode(name: name, fields: fields))
+            Err:
+              invalid_data("Voyd variant tag must be a string", "$variant".to_string())
+        None:
+          append(nodes, ValueNode::RecordNode(fields: fields))
+    Err:
+      invalid_data("Unsupported document value", "$".to_string())
+
+fn append(~nodes: Array<ValueNodeEntry>, node: ValueNode): () -> Result<i32, StorageError>
+  let index = nodes.len()
+  nodes.push(ValueNodeEntry { value: node })
+  Ok<i32> { value: index }
+
+fn data_value_at(
+  value: Value,
+  index: i32,
+  depth: i32,
+  ~visited: Array<bool>
+): () -> Result<DataValue, StorageError>
+  if depth > max_value_depth or index < 0 or index >= value.nodes.len():
+    return invalid_data("Stored value contains an invalid node reference", "$".to_string())
+  if visited.at(index):
+    return invalid_data("Stored value contains a repeated or cyclic node reference", "$".to_string())
+  visited.replace(index, with: true)
+
+  value.nodes.at(index).value.match(active)
+    ValueNode::Empty:
+      Ok<DataValue> { value: DataNull {} }
+    ValueNode::BoolNode:
+      Ok<DataValue> { value: DataBool { value: active.value } }
+    ValueNode::I32Node:
+      Ok<DataValue> { value: DataI32 { value: active.value } }
+    ValueNode::I64Node:
+      Ok<DataValue> { value: DataI64 { value: active.value } }
+    ValueNode::F32Node:
+      Ok<DataValue> { value: DataF32 { value: active.value } }
+    ValueNode::F64Node:
+      Ok<DataValue> { value: DataF64 { value: active.value } }
+    ValueNode::TextNode:
+      Ok<DataValue> { value: DataString { value: active.value } }
+    ValueNode::ListNode:
+      match(data_values(value, active.items, depth + 1, visited))
+        Ok<Array<DataValue>> { value: values }:
+          Ok<DataValue> { value: DataArray { values } }
+        Err<StorageError> { error }:
+          Err<StorageError> { error }
+    ValueNode::RecordNode:
+      match(data_fields(value, active.fields, depth + 1, visited))
+        Ok<Array<DataField>> { value: fields }:
+          Ok<DataValue> { value: DataObject { fields } }
+        Err<StorageError> { error }:
+          Err<StorageError> { error }
+    ValueNode::NamedNode:
+      match(data_fields(value, active.fields, depth + 1, visited))
+        Ok<Array<DataField>> { value: fields }:
+          Ok<DataValue> { value: DataVariant { name: active.name, fields } }
+        Err<StorageError> { error }:
+          Err<StorageError> { error }
+
+fn data_values(
+  value: Value,
+  items: Array<i32>,
+  depth: i32,
+  ~visited: Array<bool>
+): () -> Result<Array<DataValue>, StorageError>
+  let ~out = Array<DataValue>::with_capacity(items.len())
+  var index = 0
+  while index < items.len():
+    match(data_value_at(value, items.at(index), depth, visited))
+      Ok<DataValue> { value: item }:
+        out.push(item)
+      Err<StorageError> { error }:
+        return Err<StorageError> { error }
+    index = index + 1
+  Ok<Array<DataValue>> { value: out }
+
+fn data_fields(
+  value: Value,
+  fields: Array<ValueField>,
+  depth: i32,
+  ~visited: Array<bool>
+): () -> Result<Array<DataField>, StorageError>
+  let ~out = Array<DataField>::with_capacity(fields.len())
+  var index = 0
+  while index < fields.len():
+    let field = fields.at(index)
+    match(data_value_at(value, field.node, depth, visited))
+      Ok<DataValue> { value: item }:
+        out.push(DataField { name: field.name, value: item })
+      Err<StorageError> { error }:
+        return Err<StorageError> { error }
+    index = index + 1
+  Ok<Array<DataField>> { value: out }
+
+fn invalid_data<T>(message: String, path: String): () -> Result<T, StorageError>
+  Err<StorageError> {
+    error: StorageError {
+      code: StorageErrorCode::InvalidData(),
+      message,
+      retryable: false,
+      operation: "document.value".to_string(),
+      details: [ErrorDetail { name: "path".to_string(), value: path }]
+    }
+  }

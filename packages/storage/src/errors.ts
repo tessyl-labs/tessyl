@@ -1,4 +1,4 @@
-import type { StorageErrorCode, StorageErrorDto } from "./contracts.js";
+import type { StorageErrorCode } from "./contracts.js";
 
 const RETRYABLE_CODES = new Set<StorageErrorCode>(["unavailable", "timeout", "internal"]);
 
@@ -22,15 +22,6 @@ export class StorageError extends Error {
     this.details = Object.freeze({ ...(options.details ?? {}) });
   }
 
-  toDto(): StorageErrorDto {
-    return {
-      code: this.code,
-      message: this.message,
-      retryable: this.retryable,
-      operation: this.operation,
-      detailsJson: JSON.stringify(this.details),
-    };
-  }
 }
 
 export const asStorageError = (error: unknown, operation: string): StorageError => {
@@ -43,13 +34,3 @@ export const asStorageError = (error: unknown, operation: string): StorageError 
   }
   return new StorageError("internal", "Storage backend failed", { operation, cause: error });
 };
-
-export const missingValue = <T>(): T => undefined as T;
-
-export const emptyErrorDto = (): StorageErrorDto => ({
-  code: "internal",
-  message: "",
-  retryable: false,
-  operation: "",
-  detailsJson: "{}",
-});

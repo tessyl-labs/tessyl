@@ -1,0 +1,233 @@
+//! Generic document codecs and typed request builders.
+
+use std::array::Array
+use std::optional::types::all
+use std::result::types::all
+use std::string::type::String
+use src::external::{
+  DocumentQuery,
+  Mutation,
+  MutationEntry,
+  PutRequest,
+  RangeBound,
+  ScalarEntry,
+  TransactionRequest,
+  WireDocument,
+  WireDocumentPage,
+  WireOutboxRecord,
+  WriteCondition
+}
+use src::types::{ Order, Scalar, StorageError, Value }
+use src::value
+
+pub use src::external::{
+  DeleteRequest,
+  DocumentKey,
+  DocumentQuery,
+  Index,
+  IndexField,
+  IndexScalarType,
+  Mutation,
+  OutboxClaimRequest,
+  OutboxCompletion,
+  OutboxRetry,
+  PutRequest,
+  TableDefinition,
+  TableInspection,
+  TransactionRequest,
+  TransactionResult,
+  WriteCondition,
+  WriteResult
+}
+
+pub obj Stored<T> {
+  api key: String,
+  api version: String,
+  api value: T,
+  api created_at: String,
+  api updated_at: String
+}
+
+pub obj Page<T> {
+  api documents: Array<Stored<T>>,
+  api cursor: Optional<String>
+}
+
+pub obj Claimed<T> {
+  api document: Stored<T>,
+  api lease_token: String,
+  api attempt: i32
+}
+
+pub obj Bound {
+  api values: Array<Scalar>,
+  api inclusive: bool
+}
+
+/// Encodes a typed Voyd value for a document write.
+pub fn encode<T>(document: T): () -> Result<Value, StorageError>
+  value::encode<T>(document)
+
+/// Builds a typed put request without performing storage effects.
+pub fn put<T>(
+  {
+    table: String,
+    key: String,
+    document: T,
+    condition: WriteCondition,
+    idempotency_key: String
+  }
+): () -> Result<PutRequest, StorageError>
+  match(value::encode<T>(document))
+    Ok<Value> { value }:
+      Ok<PutRequest> {
+        value: PutRequest { table, key, value, condition, idempotency_key }
+      }
+    Err<StorageError> { error }:
+      Err<StorageError> { error }
+
+/// Builds one heterogeneous transaction mutation.
+pub fn put_mutation<T>(
+  {
+    table: String,
+    key: String,
+    document: T,
+    condition: WriteCondition
+  }
+): () -> Result<Mutation, StorageError>
+  match(value::encode<T>(document))
+    Ok<Value> { value }:
+      Ok<Mutation> {
+        value: Mutation::Put(
+          table: table,
+          key: key,
+          value: value,
+          condition: condition
+        )
+      }
+    Err<StorageError> { error }:
+      Err<StorageError> { error }
+
+pub fn delete_mutation(
+  {
+    table: String,
+    key: String,
+    condition: WriteCondition
+  }
+): () -> Mutation
+  Mutation::Delete(table: table, key: key, condition: condition)
+
+pub fn transaction(
+  {
+    idempotency_key: String,
+    mutations: Array<Mutation>
+  }
+): () -> TransactionRequest
+  TransactionRequest {
+    idempotency_key,
+    mutations: mutations.map<MutationEntry>(
+      (mutation: Mutation) -> MutationEntry => MutationEntry { value: mutation }
+    )
+  }
+
+pub fn query(
+  {
+    table: String,
+    index: String,
+    prefix: Array<Scalar>,
+    lower: Optional<Bound>,
+    upper: Optional<Bound>,
+    order: Order,
+    limit: i32,
+    cursor: Optional<String>
+  }
+): () -> DocumentQuery
+  DocumentQuery {
+    table,
+    index,
+    prefix: scalar_entries(prefix),
+    lower: wire_bound(lower),
+    upper: wire_bound(upper),
+    order,
+    limit,
+    cursor
+  }
+
+/// Decodes a stored document into the requested Voyd type.
+pub fn decode<T>(document: WireDocument): () -> Result<Stored<T>, StorageError>
+  match(value::decode_value<T>(document.value))
+    Ok<T> { value }:
+      Ok<Stored<T>> {
+        value: Stored<T> {
+          key: document.key,
+          version: document.version,
+          value,
+          created_at: document.created_at,
+          updated_at: document.updated_at
+        }
+      }
+    Err<StorageError> { error }:
+      Err<StorageError> { error }
+
+pub fn decode_optional<T>(
+  document: Optional<WireDocument>
+): () -> Result<Optional<Stored<T>>, StorageError>
+  match(document)
+    None:
+      Ok<Optional<Stored<T>>> { value: None {} }
+    Some<WireDocument> { value }:
+      match(decode<T>(value))
+        Ok<Stored<T>> { value }:
+          Ok<Optional<Stored<T>>> { value: Some<Stored<T>> { value } }
+        Err<StorageError> { error }:
+          Err<StorageError> { error }
+
+pub fn decode_page<T>(
+  page: WireDocumentPage
+): () -> Result<Page<T>, StorageError>
+  let ~documents = Array<Stored<T>>::with_capacity(page.documents.len())
+  var index = 0
+  while index < page.documents.len():
+    match(decode<T>(page.documents.at(index)))
+      Ok<Stored<T>> { value }:
+        documents.push(value)
+      Err<StorageError> { error }:
+        return Err<StorageError> { error }
+    index = index + 1
+  Ok<Page<T>> { value: Page<T> { documents, cursor: page.cursor } }
+
+pub fn decode_claimed<T>(
+  records: Array<WireOutboxRecord>
+): () -> Result<Array<Claimed<T>>, StorageError>
+  let ~out = Array<Claimed<T>>::with_capacity(records.len())
+  var index = 0
+  while index < records.len():
+    let record = records.at(index)
+    match(decode<T>(record.document))
+      Ok<Stored<T>> { value: document }:
+        out.push(Claimed<T> {
+          document,
+          lease_token: record.lease_token,
+          attempt: record.attempt
+        })
+      Err<StorageError> { error }:
+        return Err<StorageError> { error }
+    index = index + 1
+  Ok<Array<Claimed<T>>> { value: out }
+
+fn scalar_entries(values: Array<Scalar>): () -> Array<ScalarEntry>
+  values.map<ScalarEntry>(
+    (value: Scalar) -> ScalarEntry => ScalarEntry { value }
+  )
+
+fn wire_bound(bound: Optional<Bound>): () -> Optional<RangeBound>
+  match(bound)
+    Some<Bound> { value }:
+      Some<RangeBound> {
+        value: RangeBound {
+          values: scalar_entries(value.values),
+          inclusive: value.inclusive
+        }
+      }
+    None:
+      None {}

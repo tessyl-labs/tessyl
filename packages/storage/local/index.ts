@@ -56,6 +56,7 @@ import {
   compareUtf8,
   decodeCursor,
   definitionHash,
+  displayCanonicalScalar,
   encodeCursor,
   encodeIndexValues,
   extractIndexValues,
@@ -135,6 +136,15 @@ class LocalDatabase {
         document_key TEXT NOT NULL,
         version INTEGER NOT NULL,
         PRIMARY KEY(namespace, table_name, document_key)
+      ) STRICT;
+      CREATE TABLE IF NOT EXISTS storage_outbox_state (
+        namespace TEXT NOT NULL,
+        table_name TEXT NOT NULL,
+        document_key TEXT NOT NULL,
+        state_json TEXT NOT NULL,
+        PRIMARY KEY(namespace, table_name, document_key),
+        FOREIGN KEY(namespace, table_name, document_key)
+          REFERENCES storage_documents(namespace, table_name, document_key) ON DELETE CASCADE
       ) STRICT;
       CREATE TABLE IF NOT EXISTS storage_index_entries (
         namespace TEXT NOT NULL,
@@ -239,49 +249,7 @@ class LocalDatabase {
       ) STRICT;
       `);
       const version = Number((this.db.prepare("SELECT value FROM storage_meta WHERE key='schema_version'").get() as Row).value);
-      if (!Number.isSafeInteger(version) || version < 1) throw new StorageError("internal", "Local storage schema version is invalid", { operation: "local.migrate" });
-      if (version > 4) throw new StorageError("conflict", "Local storage database is newer than this binary", { operation: "local.migrate" });
-      if (version < 2) {
-        const uploadColumns = new Set((this.db.prepare("PRAGMA table_info(storage_upload_sessions)").all() as Row[]).map((row) => String(row.name)));
-        if (!uploadColumns.has("request_hash")) this.db.exec("ALTER TABLE storage_upload_sessions ADD COLUMN request_hash TEXT NOT NULL DEFAULT ''");
-        if (!uploadColumns.has("part_count")) this.db.exec("ALTER TABLE storage_upload_sessions ADD COLUMN part_count INTEGER NOT NULL DEFAULT 1");
-        this.db.exec(`
-          INSERT OR IGNORE INTO storage_search_versions(namespace,physical_name,document_id,version,deleted)
-            SELECT namespace,physical_name,document_id,version,0 FROM storage_search_documents;
-          INSERT OR IGNORE INTO storage_document_versions(namespace,table_name,document_key,version)
-            SELECT namespace,table_name,document_key,version FROM storage_documents;
-          INSERT OR IGNORE INTO storage_object_keys(namespace,object_key,session_id)
-            SELECT s.namespace,s.object_key,MIN(s.session_id) FROM storage_upload_sessions s
-              JOIN storage_objects o ON o.namespace=s.namespace AND o.object_key=s.object_key
-                AND o.content_type=s.content_type AND o.byte_length=s.byte_length
-                AND o.checksum_sha256=s.checksum_sha256 AND o.metadata_json=s.metadata_json
-              WHERE s.completed=1 GROUP BY s.namespace,s.object_key HAVING COUNT(*)=1;
-          INSERT INTO storage_upload_sessions(session_id,namespace,object_key,content_type,byte_length,checksum_sha256,metadata_json,idempotency_key,temp_path,expires_at,request_hash,part_count,completed)
-            SELECT 'legacy-object:' || hex(randomblob(16)),o.namespace,o.object_key,o.content_type,o.byte_length,o.checksum_sha256,o.metadata_json,
-              'legacy:' || hex(randomblob(16)),o.file_path,o.created_at,'',1,1
-            FROM storage_objects o WHERE NOT EXISTS (
-              SELECT 1 FROM storage_object_keys k WHERE k.namespace=o.namespace AND k.object_key=o.object_key
-            );
-          INSERT OR IGNORE INTO storage_object_keys(namespace,object_key,session_id)
-            SELECT o.namespace,o.object_key,s.session_id FROM storage_objects o
-              JOIN storage_upload_sessions s ON s.namespace=o.namespace AND s.object_key=o.object_key AND s.completed=1
-              WHERE s.session_id LIKE 'legacy-object:%';
-        `);
-        this.db.prepare("UPDATE storage_meta SET value='2' WHERE key='schema_version'").run();
-      }
-      if (version < 3) {
-        const uploadColumns = new Set((this.db.prepare("PRAGMA table_info(storage_upload_sessions)").all() as Row[]).map((row) => String(row.name)));
-        if (!uploadColumns.has("operation_state")) this.db.exec("ALTER TABLE storage_upload_sessions ADD COLUMN operation_state TEXT");
-        if (!uploadColumns.has("operation_token")) this.db.exec("ALTER TABLE storage_upload_sessions ADD COLUMN operation_token TEXT");
-        if (!uploadColumns.has("operation_started_at")) this.db.exec("ALTER TABLE storage_upload_sessions ADD COLUMN operation_started_at TEXT");
-        this.db.prepare("UPDATE storage_meta SET value='3' WHERE key='schema_version'").run();
-      }
-      if (version < 4) {
-        this.db.exec(`INSERT INTO storage_search_generation_counters(namespace,logical_name,generation)
-          SELECT namespace,logical_name,MAX(generation) FROM storage_search_indices GROUP BY namespace,logical_name
-          ON CONFLICT(namespace,logical_name) DO UPDATE SET generation=MAX(generation,excluded.generation)`);
-        this.db.prepare("UPDATE storage_meta SET value='4' WHERE key='schema_version'").run();
-      }
+      if (version !== 1) throw new StorageError("conflict", "Local storage schema version is unsupported", { operation: "local.initialize" });
       this.db.exec("COMMIT");
     } catch (error) {
       try { this.db.exec("ROLLBACK"); } catch { /* preserve migration failure */ }
@@ -442,7 +410,7 @@ export class LocalDocumentStore extends LocalService implements DocumentStore {
           }
         }
         const documents: StoredDocument[] = [];
-        const deletedKeys: string[] = [];
+        const deletedKeys: { table: string; key: string }[] = [];
         for (const mutation of request.operations) {
           assertName(mutation.table, "table name", this.limits);
           assertKey(mutation.key, this.limits);
@@ -452,7 +420,7 @@ export class LocalDocumentStore extends LocalService implements DocumentStore {
           assertCondition(mutation.condition, current, "document.transact");
           if (mutation.kind === "delete") {
             if (current) { const deletedVersion = Number(versionState?.version ?? current.version) + 1; this.backend.db.prepare(`INSERT INTO storage_document_versions(namespace,table_name,document_key,version) VALUES(?,?,?,?) ON CONFLICT(namespace,table_name,document_key) DO UPDATE SET version=excluded.version`).run(request.namespace, mutation.table, mutation.key, deletedVersion); this.backend.db.prepare("DELETE FROM storage_documents WHERE namespace = ? AND table_name = ? AND document_key = ?").run(request.namespace, mutation.table, mutation.key); }
-            deletedKeys.push(`${mutation.table}:${mutation.key}`);
+            deletedKeys.push({ table: mutation.table, key: mutation.key });
             continue;
           }
           const body = parsePortableDocument(mutation.bodyJson, this.limits);
@@ -464,6 +432,22 @@ export class LocalDocumentStore extends LocalService implements DocumentStore {
           this.backend.db.prepare("DELETE FROM storage_index_entries WHERE namespace = ? AND table_name = ? AND document_key = ?").run(request.namespace, mutation.table, mutation.key);
           this.backend.db.prepare(`INSERT INTO storage_document_versions(namespace,table_name,document_key,version) VALUES(?,?,?,?) ON CONFLICT(namespace,table_name,document_key) DO UPDATE SET version=excluded.version`).run(request.namespace, mutation.table, mutation.key, version);
           this.writeIndexEntries(request.namespace, definition, mutation.key, body);
+          if (Object.hasOwn(body, "available_at")) {
+            const state = {
+              available_at: body.available_at,
+              attempt: body.attempt ?? 0,
+              processed_at: body.processed_at ?? null,
+              lease_token: null,
+              lease_until: null,
+              last_error: body.last_error ?? null,
+            };
+            this.backend.db.prepare(`INSERT INTO storage_outbox_state(namespace,table_name,document_key,state_json) VALUES(?,?,?,?)
+              ON CONFLICT(namespace,table_name,document_key) DO UPDATE SET state_json=excluded.state_json`)
+              .run(request.namespace, mutation.table, mutation.key, canonicalJson(state));
+          } else {
+            this.backend.db.prepare("DELETE FROM storage_outbox_state WHERE namespace=? AND table_name=? AND document_key=?")
+              .run(request.namespace, mutation.table, mutation.key);
+          }
           const stored = this.backend.db.prepare("SELECT * FROM storage_documents WHERE namespace = ? AND table_name = ? AND document_key = ?").get(request.namespace, mutation.table, mutation.key) as Row;
           documents.push(asStoredDocument(stored));
         }
@@ -537,37 +521,32 @@ export class LocalDocumentStore extends LocalService implements DocumentStore {
       const now = new Date(request.now);
       if (Number.isNaN(now.getTime()) || !Number.isSafeInteger(request.leaseSeconds) || request.leaseSeconds < 1 || request.leaseSeconds > MAX_OUTBOX_LEASE_SECONDS) throw new StorageError("invalid_request", "Invalid outbox lease", { operation: "document.claim_outbox" });
       return this.backend.transaction(() => {
-        const definition = this.inspectTableSync(request.namespace, request.table).definition;
-        const candidates = this.backend.db.prepare(`SELECT * FROM storage_documents
-          WHERE namespace=? AND table_name=?
-            AND json_extract(body_json, '$.processed_at') IS NULL
-            AND julianday(json_extract(body_json, '$.available_at')) <= julianday(?)
-            AND (json_extract(body_json, '$.lease_until') IS NULL OR julianday(json_extract(body_json, '$.lease_until')) <= julianday(?))
-          ORDER BY json_extract(body_json, '$.available_at'), document_key LIMIT ?`).all(request.namespace, request.table, now.toISOString(), now.toISOString(), request.limit) as Row[];
+        this.inspectTableSync(request.namespace, request.table);
+        const candidates = this.backend.db.prepare(`SELECT d.*, s.state_json FROM storage_outbox_state s
+          JOIN storage_documents d USING(namespace,table_name,document_key)
+          WHERE s.namespace=? AND s.table_name=?
+            AND json_extract(s.state_json, '$.processed_at') IS NULL
+            AND julianday(json_extract(s.state_json, '$.available_at')) <= julianday(?)
+            AND (json_extract(s.state_json, '$.lease_until') IS NULL OR julianday(json_extract(s.state_json, '$.lease_until')) <= julianday(?))
+          ORDER BY json_extract(s.state_json, '$.available_at'), s.document_key LIMIT ?`).all(request.namespace, request.table, now.toISOString(), now.toISOString(), request.limit) as Row[];
         const claimed: OutboxRecord[] = [];
         for (const row of candidates) {
           if (claimed.length >= request.limit) break;
-          const body = parsePortableDocument(String(row.body_json), this.limits);
-          if (body.processed_at !== null && body.processed_at !== undefined) continue;
-          const availableAt = new Date(String(body.available_at ?? ""));
-          const leaseUntil = body.lease_until ? new Date(String(body.lease_until)) : undefined;
+          const state = safeJsonParse<Record<string, unknown>>(String(row.state_json), "document.claim_outbox");
+          if (state.processed_at !== null && state.processed_at !== undefined) continue;
+          const availableAt = new Date(String(state.available_at ?? ""));
+          const leaseUntil = state.lease_until ? new Date(String(state.lease_until)) : undefined;
           if (Number.isNaN(availableAt.getTime()) || availableAt > now || (leaseUntil && !Number.isNaN(leaseUntil.getTime()) && leaseUntil > now)) continue;
           const leaseToken = `${request.workerId}:${randomUUID()}`;
-          const priorAttempt = body.attempt ?? 0;
+          const priorAttempt = state.attempt ?? 0;
           if (!Number.isSafeInteger(priorAttempt) || Number(priorAttempt) < 0 || Number(priorAttempt) >= Number.MAX_SAFE_INTEGER) throw new StorageError("invalid_request", "Outbox attempt must be a nonnegative safe integer", { operation: "document.claim_outbox" });
           const attempt = Number(priorAttempt) + 1;
-          body.lease_token = leaseToken;
-          body.lease_until = new Date(now.getTime() + request.leaseSeconds * 1000).toISOString();
-          body.attempt = attempt;
-          const version = Number(row.version) + 1;
-          const updatedAt = new Date().toISOString();
-          const bodyJson = canonicalJson(body);
-          parsePortableDocument(bodyJson, this.limits);
-          this.backend.db.prepare("UPDATE storage_documents SET body_json = ?, version = ?, updated_at = ? WHERE namespace = ? AND table_name = ? AND document_key = ? AND version = ?").run(bodyJson, version, updatedAt, request.namespace, request.table, row.document_key, row.version);
-          this.backend.db.prepare("UPDATE storage_document_versions SET version=? WHERE namespace=? AND table_name=? AND document_key=?").run(version, request.namespace, request.table, row.document_key);
-          this.backend.db.prepare("DELETE FROM storage_index_entries WHERE namespace = ? AND table_name = ? AND document_key = ?").run(request.namespace, request.table, row.document_key);
-          this.writeIndexEntries(request.namespace, definition, String(row.document_key), body);
-          claimed.push({ document: { ...asStoredDocument(row), version: String(version), bodyJson, updatedAt }, leaseToken, attempt });
+          state.lease_token = leaseToken;
+          state.lease_until = new Date(now.getTime() + request.leaseSeconds * 1000).toISOString();
+          state.attempt = attempt;
+          this.backend.db.prepare("UPDATE storage_outbox_state SET state_json=? WHERE namespace=? AND table_name=? AND document_key=?")
+            .run(canonicalJson(state), request.namespace, request.table, row.document_key);
+          claimed.push({ document: asStoredDocument(row), leaseToken, attempt });
         }
         return claimed;
       });
@@ -587,19 +566,16 @@ export class LocalDocumentStore extends LocalService implements DocumentStore {
   private async updateOutbox(namespace: string, table: string, key: string, leaseToken: string, mutate: (body: Record<string, unknown>) => void, operation: string, options?: OperationOptions): Promise<void> {
     return this.operation(operation, options, () => this.backend.transaction(() => {
       assertNamespace(namespace, this.limits); assertName(table, "table name", this.limits); assertKey(key, this.limits); assertLeaseToken(leaseToken, this.limits);
-      const definition = this.inspectTableSync(namespace, table).definition;
+      this.inspectTableSync(namespace, table);
       const row = this.backend.db.prepare("SELECT * FROM storage_documents WHERE namespace=? AND table_name=? AND document_key=?").get(namespace, table, key) as Row | undefined;
       if (!row) throw new StorageError("not_found", "Outbox record was not found", { operation });
-      const body = parsePortableDocument(String(row.body_json), this.limits);
-      if (body.lease_token !== leaseToken) throw new StorageError("failed_condition", "Outbox lease token does not match", { operation });
-      mutate(body);
-      const bodyJson = canonicalJson(body);
-      parsePortableDocument(bodyJson, this.limits);
-      const version = Number(row.version) + 1;
-      this.backend.db.prepare("UPDATE storage_documents SET body_json=?, version=?, updated_at=? WHERE namespace=? AND table_name=? AND document_key=?").run(bodyJson, version, new Date().toISOString(), namespace, table, key);
-      this.backend.db.prepare("UPDATE storage_document_versions SET version=? WHERE namespace=? AND table_name=? AND document_key=?").run(version, namespace, table, key);
-      this.backend.db.prepare("DELETE FROM storage_index_entries WHERE namespace=? AND table_name=? AND document_key=?").run(namespace, table, key);
-      this.writeIndexEntries(namespace, definition, key, body);
+      const stateRow = this.backend.db.prepare("SELECT state_json FROM storage_outbox_state WHERE namespace=? AND table_name=? AND document_key=?").get(namespace, table, key) as Row | undefined;
+      if (!stateRow) throw new StorageError("invalid_request", "Document is not an outbox record", { operation });
+      const state = safeJsonParse<Record<string, unknown>>(String(stateRow.state_json), operation);
+      if (state.lease_token !== leaseToken) throw new StorageError("failed_condition", "Outbox lease token does not match", { operation });
+      mutate(state);
+      this.backend.db.prepare("UPDATE storage_outbox_state SET state_json=? WHERE namespace=? AND table_name=? AND document_key=?")
+        .run(canonicalJson(state), namespace, table, key);
     }));
   }
 }
@@ -607,7 +583,7 @@ export class LocalDocumentStore extends LocalService implements DocumentStore {
 const validateQueryValues = (index: IndexDefinition, values: readonly PortableScalar[], kind: string): void => {
   if (values.length > index.fields.length) throw new StorageError("invalid_request", `${kind} has too many index values`, { operation: "document.query" });
   values.forEach((value, position) => {
-    const actual = value === null ? "null" : typeof value;
+    const actual = value === null ? "null" : typeof value === "bigint" ? "number" : typeof value;
     if (actual !== index.fields[position]!.type) throw new StorageError("invalid_request", `${kind} value ${position} must be ${index.fields[position]!.type}`, { operation: "document.query" });
   });
 };
@@ -616,7 +592,7 @@ const localPhysicalPrefix = (namespace: string): string => `p:${createHash("sha2
 const resolveSearchIndex = (db: DatabaseSync, namespace: string, name: string): Row => {
   const physical = db.prepare("SELECT * FROM storage_search_indices WHERE namespace=? AND physical_name=?").get(namespace, name) as Row | undefined;
   const logical = name.startsWith("p:") ? undefined : db.prepare("SELECT * FROM storage_search_indices WHERE namespace=? AND logical_name=? AND active=1").get(namespace, name) as Row | undefined;
-  if (physical && logical && String(physical.physical_name) !== String(logical.physical_name)) throw new StorageError("conflict", `Search target ${name} is ambiguous after a legacy upgrade`, { operation: "search_index.inspect" });
+  if (physical && logical && String(physical.physical_name) !== String(logical.physical_name)) throw new StorageError("conflict", `Search target ${name} is ambiguous`, { operation: "search_index.inspect" });
   const row = physical ?? logical;
   if (!row) throw new StorageError("not_found", `Search index ${name} was not found`, { operation: "search_index.inspect" });
   return row;
@@ -808,7 +784,7 @@ export class LocalSearchService extends LocalService implements SearchService {
       const last = selectedHits.at(-1);
       const facets: SearchFacet[] = request.facets.map((name) => {
         const counts = facetCounts.get(name)!;
-        const buckets: FacetBucket[] = [...counts].map(([encoded, count]) => ({ value: String(JSON.parse(encoded) as PortableScalar), count })).sort((a, b) => b.count - a.count || compareUtf8(a.value, b.value)).slice(0, this.limits.maxResultCount);
+        const buckets: FacetBucket[] = [...counts].map(([encoded, count]) => ({ value: displayCanonicalScalar(encoded), count })).sort((a, b) => b.count - a.count || compareUtf8(a.value, b.value)).slice(0, this.limits.maxResultCount);
         return { name, buckets };
       });
       const hits: SearchHit[] = selectedHits.map(({ filters: _filters, ...hit }) => hit);

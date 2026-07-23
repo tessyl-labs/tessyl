@@ -1,0 +1,24 @@
+//! Full-text search request and response types.
+
+pub use src::external::{
+  FacetBucket,
+  HighlightRange,
+  SearchCutover,
+  SearchDelete,
+  SearchDocument,
+  SearchFacet,
+  SearchField,
+  SearchFieldSelection,
+  SearchFilter,
+  SearchFilterEntry,
+  SearchFilterValue,
+  SearchGenerationPage,
+  SearchGenerationRequest,
+  SearchHighlight,
+  SearchHit,
+  SearchIndexInspection,
+  SearchMutationResult,
+  SearchPage,
+  SearchQuery,
+  SearchSchema
+}

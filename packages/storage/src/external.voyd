@@ -1,58 +1,401 @@
+//! Typed adapter-facing storage contracts.
+
 use std::array::Array
-use std::msgpack::self as __std_msgpack
-use std::string::self as __std_string
+use std::optional::types::Optional
+use std::result::types::Result
+use std::result::types::Unit
 use std::string::type::String
-
-pub type StorageError = {
-  code: String,
-  message: String,
-  retryable: bool,
-  operation: String,
-  detailsJson: String
+use src::types::{
+  Order,
+  Scalar,
+  StorageError,
+  Value
 }
 
-pub type StorageResponse = {
-  ok: bool,
-  valueJson: String,
-  error: StorageError
+pub enum IndexScalarType
+  Null
+  Boolean
+  Number
+  Text
+
+pub obj IndexField {
+  api path: String,
+  api value_type: IndexScalarType
 }
 
-// Transactional structured-document persistence. Request and response documents
-// are bounded canonical JSON strings so recursive backend values never cross the ABI.
+pub obj Index {
+  api name: String,
+  api fields: Array<IndexField>,
+  api unique: bool,
+  api ordered: bool,
+  api sparse: bool
+}
+
+pub obj TableDefinition {
+  api name: String,
+  api schema_version: i32,
+  api indexes: Array<Index>
+}
+
+pub obj TableInspection {
+  api definition: TableDefinition,
+  api definition_hash: String,
+  api document_count: i64
+}
+
+pub obj WireDocument {
+  api namespace: String,
+  api table: String,
+  api key: String,
+  api version: String,
+  api value: Value,
+  api created_at: String,
+  api updated_at: String
+}
+
+pub enum WriteCondition
+  Any
+  Absent
+  Present
+  Version { value: String }
+
+pub enum Mutation
+  Put {
+    table: String,
+    key: String,
+    value: Value,
+    condition: WriteCondition
+  }
+  Delete {
+    table: String,
+    key: String,
+    condition: WriteCondition
+  }
+
+pub obj MutationEntry {
+  api value: Mutation
+}
+
+pub obj PutRequest {
+  api table: String,
+  api key: String,
+  api value: Value,
+  api condition: WriteCondition,
+  api idempotency_key: String
+}
+
+pub obj DeleteRequest {
+  api table: String,
+  api key: String,
+  api condition: WriteCondition,
+  api idempotency_key: String
+}
+
+pub obj TransactionRequest {
+  api idempotency_key: String,
+  api mutations: Array<MutationEntry>
+}
+
+pub obj WriteResult {
+  api table: String,
+  api key: String,
+  api version: String
+}
+
+pub obj DocumentKey {
+  api table: String,
+  api key: String
+}
+
+pub obj TransactionResult {
+  api writes: Array<WriteResult>,
+  api deletes: Array<DocumentKey>,
+  api replayed: bool
+}
+
+pub obj RangeBound {
+  api values: Array<ScalarEntry>,
+  api inclusive: bool
+}
+
+pub obj ScalarEntry {
+  api value: Scalar
+}
+
+pub obj DocumentQuery {
+  api table: String,
+  api index: String,
+  api prefix: Array<ScalarEntry>,
+  api lower: Optional<RangeBound>,
+  api upper: Optional<RangeBound>,
+  api order: Order,
+  api limit: i32,
+  api cursor: Optional<String>
+}
+
+pub obj WireDocumentPage {
+  api documents: Array<WireDocument>,
+  api cursor: Optional<String>
+}
+
+pub obj OutboxClaimRequest {
+  api table: String,
+  api worker_id: String,
+  api now: String,
+  api lease_seconds: i32,
+  api limit: i32
+}
+
+pub obj WireOutboxRecord {
+  api document: WireDocument,
+  api lease_token: String,
+  api attempt: i32
+}
+
+pub obj OutboxCompletion {
+  api table: String,
+  api key: String,
+  api lease_token: String
+}
+
+pub obj OutboxRetry {
+  api table: String,
+  api key: String,
+  api lease_token: String,
+  api available_at: String,
+  api error: String
+}
+
+pub obj SearchField {
+  api name: String,
+  api text: String
+}
+
+pub obj SearchFilterValue {
+  api name: String,
+  api value: Scalar
+}
+
+pub obj SearchDocument {
+  api index: String,
+  api document_id: String,
+  api version: String,
+  api fields: Array<SearchField>,
+  api filters: Array<SearchFilterValue>,
+  api tags: Array<String>,
+  api locale: String
+}
+
+pub obj SearchSchema {
+  api name: String,
+  api version: i32,
+  api fields: Array<String>,
+  api filter_fields: Array<String>,
+  api facet_fields: Array<String>,
+  api locales: Array<String>
+}
+
+pub obj SearchFieldSelection {
+  api name: String,
+  api boost: f64
+}
+
+pub enum SearchFilter
+  Equal { name: String, value: Scalar }
+  NotEqual { name: String, value: Scalar }
+
+pub obj SearchFilterEntry {
+  api value: SearchFilter
+}
+
+pub obj SearchQuery {
+  api index: String,
+  api text: String,
+  api fields: Array<SearchFieldSelection>,
+  api filters: Array<SearchFilterEntry>,
+  api tags: Array<String>,
+  api facets: Array<String>,
+  api locale: String,
+  api limit: i32,
+  api cursor: Optional<String>
+}
+
+pub obj HighlightRange {
+  api start: i32,
+  api end: i32
+}
+
+pub obj SearchHighlight {
+  api field: String,
+  api text: String,
+  api ranges: Array<HighlightRange>
+}
+
+pub obj SearchHit {
+  api document_id: String,
+  api version: String,
+  api score: f64,
+  api fields: Array<SearchField>,
+  api highlights: Array<SearchHighlight>
+}
+
+pub obj FacetBucket {
+  api value: String,
+  api count: i64
+}
+
+pub obj SearchFacet {
+  api name: String,
+  api buckets: Array<FacetBucket>
+}
+
+pub obj SearchPage {
+  api hits: Array<SearchHit>,
+  api facets: Array<SearchFacet>,
+  api cursor: Optional<String>
+}
+
+pub obj SearchMutationResult {
+  api applied: bool,
+  api current_version: String
+}
+
+pub obj SearchIndexInspection {
+  api namespace: String,
+  api logical_name: String,
+  api physical_name: String,
+  api schema: SearchSchema,
+  api generation: i32,
+  api active: bool
+}
+
+pub obj SearchGenerationRequest {
+  api logical_name: String,
+  api limit: i32,
+  api cursor: Optional<String>
+}
+
+pub obj SearchGenerationPage {
+  api generations: Array<SearchIndexInspection>,
+  api cursor: Optional<String>
+}
+
+pub obj SearchCutover {
+  api logical_name: String,
+  api physical_name: String
+}
+
+pub obj SearchDelete {
+  api index: String,
+  api document_id: String,
+  api version: String
+}
+
+pub obj Metadata {
+  api name: String,
+  api value: String
+}
+
+pub obj ObjectMetadata {
+  api namespace: String,
+  api key: String,
+  api content_type: String,
+  api byte_length: i64,
+  api checksum_sha256: String,
+  api metadata: Array<Metadata>,
+  api version: String,
+  api created_at: String
+}
+
+pub obj UploadPart {
+  api part_number: i32,
+  api url: String
+}
+
+pub obj UploadSession {
+  api session_id: String,
+  api namespace: String,
+  api key: String,
+  api expires_at: String,
+  api upload_handle: String,
+  api parts: Array<UploadPart>
+}
+
+pub obj CompletedPart {
+  api part_number: i32,
+  api etag: String
+}
+
+pub obj UploadRequest {
+  api key: String,
+  api content_type: String,
+  api byte_length: i64,
+  api checksum_sha256: String,
+  api metadata: Array<Metadata>,
+  api idempotency_key: String,
+  api part_count: i32,
+  api expires_in_seconds: i32
+}
+
+pub obj CompleteUploadRequest {
+  api session_id: String,
+  api parts: Array<CompletedPart>
+}
+
+pub obj DownloadRequest {
+  api key: String,
+  api expires_in_seconds: i32
+}
+
+pub obj DownloadResolution {
+  api metadata: ObjectMetadata,
+  api url: String,
+  api expires_at: String
+}
+
+pub obj DeleteObjectRequest {
+  api key: String,
+  api expected_version: Optional<String>
+}
+
+pub obj CleanupRequest {
+  api before: String,
+  api limit: i32
+}
+
 @external(id: "tessyl:storage/document@1")
 pub eff Document
-  migrate_table(tail, namespace: String, definitionJson: String) -> StorageResponse
-  inspect_table(tail, namespace: String, table: String) -> StorageResponse
-  get(tail, namespace: String, table: String, key: String) -> StorageResponse
-  transact(tail, namespace: String, requestJson: String) -> StorageResponse
-  query_documents(tail, namespace: String, requestJson: String) -> StorageResponse
-  claim_outbox(tail, namespace: String, requestJson: String) -> StorageResponse
-  complete_outbox(tail, namespace: String, table: String, key: String, leaseToken: String) -> StorageResponse
-  retry_outbox(tail, namespace: String, table: String, key: String, leaseToken: String, availableAt: String, error: String) -> StorageResponse
+  migrate_table(tail, namespace: String, definition: TableDefinition) -> Result<TableInspection, StorageError>
+  inspect_table(tail, namespace: String, table: String) -> Result<TableInspection, StorageError>
+  get(tail, namespace: String, table: String, key: String) -> Result<Optional<WireDocument>, StorageError>
+  put(tail, namespace: String, request: PutRequest) -> Result<WireDocument, StorageError>
+  delete(tail, namespace: String, request: DeleteRequest) -> Result<Unit, StorageError>
+  transact(tail, namespace: String, request: TransactionRequest) -> Result<TransactionResult, StorageError>
+  query_documents(tail, namespace: String, request: DocumentQuery) -> Result<WireDocumentPage, StorageError>
+  claim_outbox(tail, namespace: String, request: OutboxClaimRequest) -> Result<Array<WireOutboxRecord>, StorageError>
+  complete_outbox(tail, namespace: String, request: OutboxCompletion) -> Result<Unit, StorageError>
+  retry_outbox(tail, namespace: String, request: OutboxRetry) -> Result<Unit, StorageError>
 
-// Query-only full-text search authority.
 @external(id: "tessyl:storage/search@1")
 pub eff Search
-  search(tail, namespace: String, requestJson: String) -> StorageResponse
+  search(tail, namespace: String, request: SearchQuery) -> Result<SearchPage, StorageError>
 
-// Search mutation and lifecycle authority. It is deliberately separate from Search.
 @external(id: "tessyl:storage/search-index@1")
 pub eff SearchIndex
-  create(tail, namespace: String, schemaJson: String) -> StorageResponse
-  inspect(tail, namespace: String, logicalName: String) -> StorageResponse
-  list_generations(tail, namespace: String, logicalName: String, limit: i32, cursor: String) -> StorageResponse
-  begin_rebuild(tail, namespace: String, schemaJson: String) -> StorageResponse
-  cutover(tail, namespace: String, logicalName: String, physicalName: String) -> StorageResponse
-  delete_generation(tail, namespace: String, physicalName: String) -> StorageResponse
-  upsert(tail, namespace: String, documentJson: String) -> StorageResponse
-  delete_document(tail, namespace: String, index: String, documentId: String, version: String) -> StorageResponse
+  create(tail, namespace: String, schema: SearchSchema) -> Result<SearchIndexInspection, StorageError>
+  inspect(tail, namespace: String, logical_name: String) -> Result<Optional<SearchIndexInspection>, StorageError>
+  list_generations(tail, namespace: String, request: SearchGenerationRequest) -> Result<SearchGenerationPage, StorageError>
+  begin_rebuild(tail, namespace: String, schema: SearchSchema) -> Result<SearchIndexInspection, StorageError>
+  cutover(tail, namespace: String, request: SearchCutover) -> Result<SearchIndexInspection, StorageError>
+  delete_generation(tail, namespace: String, physical_name: String) -> Result<Unit, StorageError>
+  upsert(tail, namespace: String, document: SearchDocument) -> Result<SearchMutationResult, StorageError>
+  delete_document(tail, namespace: String, request: SearchDelete) -> Result<SearchMutationResult, StorageError>
 
-// Immutable object metadata and host-resolved transfer sessions.
 @external(id: "tessyl:storage/object@1")
-pub eff Object
-  initiate_upload(tail, namespace: String, requestJson: String) -> StorageResponse
-  complete_upload(tail, namespace: String, sessionId: String, partsJson: String) -> StorageResponse
-  stat(tail, namespace: String, key: String) -> StorageResponse
-  resolve_download(tail, namespace: String, key: String, expiresInSeconds: i32) -> StorageResponse
-  delete_object(tail, namespace: String, key: String, expectedVersion: String) -> StorageResponse
-  cleanup_abandoned(tail, namespace: String, before: String, limit: i32) -> StorageResponse
+pub eff ObjectStorage
+  initiate_upload(tail, namespace: String, request: UploadRequest) -> Result<UploadSession, StorageError>
+  complete_upload(tail, namespace: String, request: CompleteUploadRequest) -> Result<ObjectMetadata, StorageError>
+  stat(tail, namespace: String, key: String) -> Result<Optional<ObjectMetadata>, StorageError>
+  resolve_download(tail, namespace: String, request: DownloadRequest) -> Result<DownloadResolution, StorageError>
+  delete_object(tail, namespace: String, request: DeleteObjectRequest) -> Result<Unit, StorageError>
+  cleanup_abandoned(tail, namespace: String, request: CleanupRequest) -> Result<i32, StorageError>

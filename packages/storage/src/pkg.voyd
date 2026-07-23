@@ -1,11 +1,31 @@
-//! Namespace-isolated storage contracts for Tessyl applications.
+//! Typed, namespace-isolated storage for Voyd applications.
 
-pub self::external
+pub self::document
+pub self::search
+pub self::types
+pub use self::external::{ Document, ObjectStorage, Search, SearchIndex }
 pub use self::external::{
-  Document,
-  Object,
-  Search,
-  SearchIndex,
+  CompletedPart,
+  CleanupRequest,
+  CompleteUploadRequest,
+  DeleteObjectRequest,
+  DownloadRequest,
+  DownloadResolution,
+  Metadata,
+  ObjectMetadata,
+  SearchDocument,
+  SearchField,
+  SearchFilterValue,
+  SearchSchema,
+  UploadRequest,
+  UploadPart,
+  UploadSession
+}
+pub use self::types::{
+  ErrorDetail,
+  Order,
+  PageRequest,
+  Scalar,
   StorageError,
-  StorageResponse
+  StorageErrorCode
 }
