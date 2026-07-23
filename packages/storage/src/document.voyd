@@ -1,40 +1,25 @@
-//! Generic document codecs and typed request builders.
+//! Typed Voyd facade for document storage.
 
 use std::array::Array
 use std::optional::types::all
 use std::result::types::all
 use std::string::type::String
-use src::external::{
-  DocumentQuery,
-  Mutation,
-  MutationEntry,
-  PutRequest,
-  RangeBound,
-  ScalarEntry,
-  TransactionRequest,
-  WireDocument,
-  WireDocumentPage,
-  WireOutboxRecord,
-  WriteCondition
-}
-use src::types::{ Order, Scalar, StorageError, Value }
+use src::external::Document
+use src::external::{ Mutation as WireMutation }
+use src::external::self as wire
+use src::types::{ Order, Scalar, StorageError }
 use src::value
 
 pub use src::external::{
-  DeleteRequest,
   DocumentKey,
-  DocumentQuery,
   Index,
   IndexField,
   IndexScalarType,
-  Mutation,
   OutboxClaimRequest,
   OutboxCompletion,
   OutboxRetry,
-  PutRequest,
   TableDefinition,
   TableInspection,
-  TransactionRequest,
   TransactionResult,
   WriteCondition,
   WriteResult
@@ -59,102 +44,214 @@ pub obj Claimed<T> {
   api attempt: i32
 }
 
+pub obj Put<T> {
+  api table: String,
+  api key: String,
+  api value: T,
+  api condition: WriteCondition,
+  api idempotency_key: String
+}
+
+pub obj PutMutation<T> {
+  api table: String,
+  api key: String,
+  api value: T,
+  api condition: WriteCondition
+}
+
+pub obj Delete {
+  api table: String,
+  api key: String,
+  api condition: WriteCondition,
+  api idempotency_key: String
+}
+
+pub obj DeleteMutation {
+  api table: String,
+  api key: String,
+  api condition: WriteCondition
+}
+
+/// An encoded heterogeneous transaction mutation.
+///
+/// Construct this value with the mutation overloads of `put` and `delete`.
+pub obj TransactionMutation {
+  value: WireMutation
+}
+
+pub obj Transaction {
+  api idempotency_key: String,
+  api mutations: Array<TransactionMutation>
+}
+
 pub obj Bound {
   api values: Array<Scalar>,
   api inclusive: bool
 }
 
-/// Encodes a typed Voyd value for a document write.
-pub fn encode<T>(document: T): () -> Result<Value, StorageError>
-  value::encode<T>(document)
+pub obj Query {
+  api table: String,
+  api index: String,
+  api prefix: Array<Scalar>,
+  api lower: Optional<Bound>,
+  api upper: Optional<Bound>,
+  api order: Order,
+  api limit: i32,
+  api cursor: Optional<String>
+}
 
-/// Builds a typed put request without performing storage effects.
+pub fn migrate_table(
+  namespace: String,
+  definition: TableDefinition
+): Document -> Result<TableInspection, StorageError>
+  Document::migrate_table(namespace, definition)
+
+pub fn inspect_table(
+  namespace: String,
+  table: String
+): Document -> Result<TableInspection, StorageError>
+  Document::inspect_table(namespace, table)
+
+pub fn get<T>(
+  namespace: String,
+  table: String,
+  key: String
+): Document -> Result<Optional<Stored<T>>, StorageError>
+  match(Document::get(namespace, table, key))
+    Err<StorageError> { error }:
+      Err<StorageError> { error }
+    Ok { value }:
+      decode_optional<T>(value)
+
 pub fn put<T>(
-  {
-    table: String,
-    key: String,
-    document: T,
-    condition: WriteCondition,
-    idempotency_key: String
-  }
-): () -> Result<PutRequest, StorageError>
-  match(value::encode<T>(document))
-    Ok<Value> { value }:
-      Ok<PutRequest> {
-        value: PutRequest { table, key, value, condition, idempotency_key }
-      }
+  namespace: String,
+  request: Put<T>
+): Document -> Result<Stored<T>, StorageError>
+  match(value::encode<T>(request.value))
     Err<StorageError> { error }:
       Err<StorageError> { error }
+    Ok { value }:
+      match(Document::put(
+        namespace,
+        wire::PutRequest {
+          table: request.table,
+          key: request.key,
+          value,
+          condition: request.condition,
+          idempotency_key: request.idempotency_key
+        }
+      ))
+        Err<StorageError> { error }:
+          Err<StorageError> { error }
+        Ok { value: document }:
+          decode<T>(document)
 
-/// Builds one heterogeneous transaction mutation.
-pub fn put_mutation<T>(
-  {
-    table: String,
-    key: String,
-    document: T,
-    condition: WriteCondition
-  }
-): () -> Result<Mutation, StorageError>
-  match(value::encode<T>(document))
-    Ok<Value> { value }:
-      Ok<Mutation> {
-        value: Mutation::Put(
-          table: table,
-          key: key,
-          value: value,
-          condition: condition
-        )
-      }
+/// Encodes a typed value as one heterogeneous transaction mutation.
+pub fn put<T>(
+  { mutation request: PutMutation<T> }
+): () -> Result<TransactionMutation, StorageError>
+  match(value::encode<T>(request.value))
     Err<StorageError> { error }:
       Err<StorageError> { error }
+    Ok { value }:
+      Ok<TransactionMutation> {
+        value: TransactionMutation {
+          value: WireMutation::Put {
+            table: request.table,
+            key: request.key,
+            value,
+            condition: request.condition
+          }
+        }
+      }
 
-pub fn delete_mutation(
-  {
-    table: String,
-    key: String,
-    condition: WriteCondition
-  }
-): () -> Mutation
-  Mutation::Delete(table: table, key: key, condition: condition)
+pub fn delete(
+  namespace: String,
+  request: Delete
+): Document -> Result<Unit, StorageError>
+  Document::delete(
+    namespace,
+    wire::DeleteRequest {
+      table: request.table,
+      key: request.key,
+      condition: request.condition,
+      idempotency_key: request.idempotency_key
+    }
+  )
 
-pub fn transaction(
-  {
-    idempotency_key: String,
-    mutations: Array<Mutation>
-  }
-): () -> TransactionRequest
-  TransactionRequest {
-    idempotency_key,
-    mutations: mutations.map<MutationEntry>(
-      (mutation: Mutation) -> MutationEntry => MutationEntry { value: mutation }
-    )
-  }
-
-pub fn query(
-  {
-    table: String,
-    index: String,
-    prefix: Array<Scalar>,
-    lower: Optional<Bound>,
-    upper: Optional<Bound>,
-    order: Order,
-    limit: i32,
-    cursor: Optional<String>
-  }
-): () -> DocumentQuery
-  DocumentQuery {
-    table,
-    index,
-    prefix: scalar_entries(prefix),
-    lower: wire_bound(lower),
-    upper: wire_bound(upper),
-    order,
-    limit,
-    cursor
+pub fn delete(
+  { mutation request: DeleteMutation }
+): () -> TransactionMutation
+  TransactionMutation {
+    value: WireMutation::Delete {
+      table: request.table,
+      key: request.key,
+      condition: request.condition
+    }
   }
 
-/// Decodes a stored document into the requested Voyd type.
-pub fn decode<T>(document: WireDocument): () -> Result<Stored<T>, StorageError>
+pub fn transact(
+  namespace: String,
+  request: Transaction
+): Document -> Result<TransactionResult, StorageError>
+  Document::transact(
+    namespace,
+    wire::TransactionRequest {
+      idempotency_key: request.idempotency_key,
+      mutations: request.mutations.map<wire::MutationEntry>(
+        (mutation: TransactionMutation) -> wire::MutationEntry =>
+          wire::MutationEntry { value: mutation.value }
+      )
+    }
+  )
+
+pub fn query<T>(
+  namespace: String,
+  request: Query
+): Document -> Result<Page<T>, StorageError>
+  match(Document::query_documents(
+    namespace,
+    wire::DocumentQuery {
+      table: request.table,
+      index: request.index,
+      prefix: scalar_entries(request.prefix),
+      lower: wire_bound(request.lower),
+      upper: wire_bound(request.upper),
+      order: request.order,
+      limit: request.limit,
+      cursor: request.cursor
+    }
+  ))
+    Err<StorageError> { error }:
+      Err<StorageError> { error }
+    Ok { value }:
+      decode_page<T>(value)
+
+pub fn claim_outbox<T>(
+  namespace: String,
+  request: OutboxClaimRequest
+): Document -> Result<Array<Claimed<T>>, StorageError>
+  match(Document::claim_outbox(namespace, request))
+    Err<StorageError> { error }:
+      Err<StorageError> { error }
+    Ok { value }:
+      decode_claimed<T>(value)
+
+pub fn complete_outbox(
+  namespace: String,
+  request: OutboxCompletion
+): Document -> Result<Unit, StorageError>
+  Document::complete_outbox(namespace, request)
+
+pub fn retry_outbox(
+  namespace: String,
+  request: OutboxRetry
+): Document -> Result<Unit, StorageError>
+  Document::retry_outbox(namespace, request)
+
+fn decode<T>(
+  document: wire::WireDocument
+): () -> Result<Stored<T>, StorageError>
   match(value::decode_value<T>(document.value))
     Ok<T> { value }:
       Ok<Stored<T>> {
@@ -169,21 +266,21 @@ pub fn decode<T>(document: WireDocument): () -> Result<Stored<T>, StorageError>
     Err<StorageError> { error }:
       Err<StorageError> { error }
 
-pub fn decode_optional<T>(
-  document: Optional<WireDocument>
+fn decode_optional<T>(
+  document: Optional<wire::WireDocument>
 ): () -> Result<Optional<Stored<T>>, StorageError>
   match(document)
     None:
       Ok<Optional<Stored<T>>> { value: None {} }
-    Some<WireDocument> { value }:
+    Some<wire::WireDocument> { value }:
       match(decode<T>(value))
         Ok<Stored<T>> { value }:
           Ok<Optional<Stored<T>>> { value: Some<Stored<T>> { value } }
         Err<StorageError> { error }:
           Err<StorageError> { error }
 
-pub fn decode_page<T>(
-  page: WireDocumentPage
+fn decode_page<T>(
+  page: wire::WireDocumentPage
 ): () -> Result<Page<T>, StorageError>
   let ~documents = Array<Stored<T>>::with_capacity(page.documents.len())
   var index = 0
@@ -196,8 +293,8 @@ pub fn decode_page<T>(
     index = index + 1
   Ok<Page<T>> { value: Page<T> { documents, cursor: page.cursor } }
 
-pub fn decode_claimed<T>(
-  records: Array<WireOutboxRecord>
+fn decode_claimed<T>(
+  records: Array<wire::WireOutboxRecord>
 ): () -> Result<Array<Claimed<T>>, StorageError>
   let ~out = Array<Claimed<T>>::with_capacity(records.len())
   var index = 0
@@ -215,16 +312,16 @@ pub fn decode_claimed<T>(
     index = index + 1
   Ok<Array<Claimed<T>>> { value: out }
 
-fn scalar_entries(values: Array<Scalar>): () -> Array<ScalarEntry>
-  values.map<ScalarEntry>(
-    (value: Scalar) -> ScalarEntry => ScalarEntry { value }
+fn scalar_entries(values: Array<Scalar>): () -> Array<wire::ScalarEntry>
+  values.map<wire::ScalarEntry>(
+    (value: Scalar) -> wire::ScalarEntry => wire::ScalarEntry { value }
   )
 
-fn wire_bound(bound: Optional<Bound>): () -> Optional<RangeBound>
+fn wire_bound(bound: Optional<Bound>): () -> Optional<wire::RangeBound>
   match(bound)
     Some<Bound> { value }:
-      Some<RangeBound> {
-        value: RangeBound {
+      Some<wire::RangeBound> {
+        value: wire::RangeBound {
           values: scalar_entries(value.values),
           inclusive: value.inclusive
         }

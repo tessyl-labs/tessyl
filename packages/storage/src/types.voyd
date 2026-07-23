@@ -1,7 +1,6 @@
-//! Shared public storage value types.
+//! Shared storage value types.
 
 use std::array::Array
-use std::optional::types::Optional
 use std::string::type::String
 
 pub enum StorageErrorCode
@@ -43,11 +42,6 @@ pub enum Order
   Ascending
   Descending
 
-pub obj PageRequest {
-  api limit: i32,
-  api cursor: Optional<String>
-}
-
 pub enum ValueNode
   Empty
   BoolNode { value: bool }
@@ -77,6 +71,3 @@ pub obj Value {
   api root: i32,
   api nodes: Array<ValueNodeEntry>
 }
-
-pub fn no_cursor(): () -> Optional<String>
-  None {}

@@ -14,11 +14,20 @@ authorities the module needs:
 ```voyd
 use pkg::storage::{ Document, StorageError, document }
 use pkg::storage::document::{
+  Delete,
+  DeleteMutation,
   Index,
   IndexField,
   IndexScalarType,
+  OutboxClaimRequest,
+  OutboxCompletion,
+  OutboxRetry,
+  Put,
+  PutMutation,
+  Query,
   Stored,
   TableDefinition,
+  Transaction,
   WriteCondition
 }
 ```
@@ -42,7 +51,7 @@ Every operation is isolated by a namespace. Choose the namespace from trusted
 application context, such as an authenticated account or workspace:
 
 ```voyd
-Document::get(workspace.id, "articles", article_id)
+document::get<Article>(workspace.id, "articles", article_id)
 ```
 
 Do not accept a namespace directly from an untrusted request.
@@ -69,7 +78,7 @@ primitives, arrays, nested records, optional values, and named variants.
 ### Create or migrate a table
 
 ```voyd
-match(Document::migrate_table(
+match(document::migrate_table(
   namespace,
   TableDefinition {
     name: "articles",
@@ -105,8 +114,8 @@ types are `Null`, `Boolean`, `Number`, and `Text`.
 
 ### Put a typed document
 
-`document::put` is a pure builder. It validates and encodes the Voyd value,
-then returns the typed request accepted by `Document::put`:
+`document::put` accepts your Voyd value directly. It handles storage encoding
+and returns `Stored<T>`:
 
 ```voyd
 let article = Article {
@@ -116,24 +125,19 @@ let article = Article {
 }
 
 match(document::put(
-  table: "articles",
-  key: "article-1",
-  document: article,
-  condition: WriteCondition::Absent(),
-  idempotency_key: request_id
+  namespace,
+  Put<Article> {
+    table: "articles",
+    key: "article-1",
+    value: article,
+    condition: WriteCondition::Absent(),
+    idempotency_key: request_id
+  }
 ))
   Err<StorageError> { error }:
-    // The value could not be encoded.
-  Ok { value: request }:
-    match(Document::put(namespace, request))
-      Err<StorageError> { error }:
-        // The write failed.
-      Ok { value: stored }:
-        match(document::decode<Article>(stored))
-          Ok<Stored<Article>> { value }:
-            value.value.title
-          Err<StorageError> { error }:
-            // Stored data did not match Article.
+    // Encoding or storage failed.
+  Ok<Stored<Article>> { value: stored }:
+    stored.value.title
 ```
 
 Write conditions are:
@@ -151,19 +155,15 @@ request returns its original result.
 Missing documents are represented by `None`, not an error:
 
 ```voyd
-match(Document::get(namespace, "articles", key))
+match(document::get<Article>(namespace, "articles", key))
   Err<StorageError> { error }:
-    // Backend or request failure.
-  Ok { value: wire_document }:
-    match(document::decode_optional<Article>(wire_document))
-      Err<StorageError> { error }:
-        // The stored value did not match Article.
-      Ok { value: article }:
-        article.match(active)
-          None:
-            // Missing.
-          Some<Stored<Article>>:
-            active.value.value.title
+    // Backend failure, invalid request, or incompatible stored data.
+  Ok { value: article }:
+    article.match(active)
+      None:
+        // Missing.
+      Some<Stored<Article>>:
+        active.value.value.title
 ```
 
 `Stored<T>` contains:
@@ -178,38 +178,62 @@ obj Stored<T> {
 }
 ```
 
-### Transactions
-
-Build typed mutations independently, then erase only their document type when
-assembling the transaction:
+### Delete a document
 
 ```voyd
-match(document::put_mutation(
-  table: "articles",
-  key: article.public_id,
-  document: article,
-  condition: WriteCondition::Absent()
+document::delete(
+  namespace,
+  Delete {
+    table: "articles",
+    key,
+    condition: WriteCondition::Version(value: current_version),
+    idempotency_key: request_id
+  }
+)
+```
+
+Use `Absent`, `Present`, or `Version` when concurrent changes must be detected.
+
+### Transactions
+
+Use the `mutation:` overloads of `put` and `delete` to assemble one atomic
+transaction. The put overload can fail while encoding the value:
+
+```voyd
+match(document::put(
+  mutation: PutMutation<Article> {
+    table: "articles",
+    key: article.public_id,
+    value: article,
+    condition: WriteCondition::Absent()
+  }
 ))
   Err<StorageError> { error }:
     // Encoding failed.
   Ok { value: article_write }:
-    match(document::put_mutation(
-      table: "outbox",
-      key: event.id,
-      document: event,
-      condition: WriteCondition::Absent()
+    match(document::put(
+      mutation: PutMutation<Event> {
+        table: "outbox",
+        key: event.id,
+        value: event,
+        condition: WriteCondition::Absent()
+      }
     ))
       Err<StorageError> { error }:
         // Encoding failed.
       Ok { value: event_write }:
-        Document::transact(
+        document::transact(
           namespace,
-          document::transaction(
+          Transaction {
             idempotency_key: request_id,
             mutations: [article_write, event_write]
-          )
+          }
         )
 ```
+
+Create a delete mutation with
+`document::delete(mutation: DeleteMutation { ... })`. Transactions may mix
+mutations for different document types and tables.
 
 The transaction result contains written table/key/version triples, deleted
 keys, and a `replayed` flag. All mutations commit or none do.
@@ -219,7 +243,7 @@ keys, and a `replayed` flag. All mutations commit or none do.
 ```voyd
 use pkg::storage::{ Order, Scalar }
 
-let request = document::query(
+let request = Query {
   table: "articles",
   index: "status_updated",
   prefix: [Scalar::Text(value: "draft")],
@@ -228,31 +252,73 @@ let request = document::query(
   order: Order::Ascending(),
   limit: 20,
   cursor: None {}
-)
+}
 
-match(Document::query_documents(namespace, request))
+match(document::query<Article>(namespace, request))
   Err<StorageError> { error }:
     // Query failed.
   Ok { value: page }:
-    document::decode_page<Article>(page)
+    page.documents
 ```
 
 Use `Bound { values, inclusive }` for lower or upper range bounds. Pass the
-returned cursor to fetch the next page. Cursors are opaque.
+returned cursor to fetch the next page. Cursors are opaque. Every document in
+the returned `Page<T>` is decoded as `T`; incompatible stored data returns
+`InvalidData`.
 
 ### Outbox workers
 
-`Document::claim_outbox` leases eligible documents. Decode the returned records
-with `document::decode_claimed<T>`.
+`document::claim_outbox<T>` leases and decodes eligible documents:
+
+```voyd
+match(document::claim_outbox<Event>(
+  namespace,
+  OutboxClaimRequest {
+    table: "outbox",
+    worker_id,
+    now,
+    lease_seconds: 30,
+    limit: 20
+  }
+))
+  Err<StorageError> { error }:
+    // Claim failed.
+  Ok { value: claimed }:
+    let first = claimed.at(0)
+    first.document.value
+```
 
 An outbox document must have a top-level `available_at: String` field containing
 an ISO 8601 timestamp. The provider keeps attempts and leases separately, so
 claiming or retrying a record never changes the shape or contents of `T`.
 
-After processing:
+After processing, either complete the record:
 
-- call `complete_outbox` to mark the record complete and stop future claims;
-- call `retry_outbox` to release it with a new availability time and error.
+```voyd
+document::complete_outbox(
+  namespace,
+  OutboxCompletion {
+    table: "outbox",
+    key: first.document.key,
+    lease_token: first.lease_token
+  }
+)
+```
+
+Or release it for another attempt:
+
+```voyd
+document::retry_outbox(
+  namespace,
+  OutboxRetry {
+    table: "outbox",
+    key: first.document.key,
+    lease_token: first.lease_token,
+    available_at: next_attempt_at,
+    error: failure_message
+  }
+)
+```
 
 Lease tokens are required for both operations. A stale token returns
 `FailedCondition`.
@@ -419,22 +485,24 @@ include the failing path, expected type, and actual value kind.
 
 ## Operation reference
 
-### `Document`
+### `document`
 
-| Operation | Result |
+These facade functions require the `Document` effect.
+
+| Function | Result |
 | --- | --- |
-| `migrate_table(namespace, definition)` | `TableInspection` |
-| `inspect_table(namespace, table)` | `TableInspection` |
-| `get(namespace, table, key)` | `Optional<WireDocument>` |
-| `put(namespace, request)` | `WireDocument` |
-| `delete(namespace, request)` | `Unit` |
-| `transact(namespace, request)` | `TransactionResult` |
-| `query_documents(namespace, request)` | `WireDocumentPage` |
-| `claim_outbox(namespace, request)` | `Array<WireOutboxRecord>` |
-| `complete_outbox(namespace, request)` | `Unit` |
-| `retry_outbox(namespace, request)` | `Unit` |
-
-Use the `document` module to encode write values and decode wire documents.
+| `migrate_table(namespace, definition)` | `Result<TableInspection, StorageError>` |
+| `inspect_table(namespace, table)` | `Result<TableInspection, StorageError>` |
+| `get<T>(namespace, table, key)` | `Result<Optional<Stored<T>>, StorageError>` |
+| `put<T>(namespace, Put<T>)` | `Result<Stored<T>, StorageError>` |
+| `put<T>(mutation: PutMutation<T>)` | `Result<TransactionMutation, StorageError>` |
+| `delete(namespace, Delete)` | `Result<Unit, StorageError>` |
+| `delete(mutation: DeleteMutation)` | `TransactionMutation` |
+| `transact(namespace, Transaction)` | `Result<TransactionResult, StorageError>` |
+| `query<T>(namespace, Query)` | `Result<Page<T>, StorageError>` |
+| `claim_outbox<T>(namespace, OutboxClaimRequest)` | `Result<Array<Claimed<T>>, StorageError>` |
+| `complete_outbox(namespace, OutboxCompletion)` | `Result<Unit, StorageError>` |
+| `retry_outbox(namespace, OutboxRetry)` | `Result<Unit, StorageError>` |
 
 ### `Search`
 

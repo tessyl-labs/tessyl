@@ -21,7 +21,7 @@ use std::result::types::all
 use std::string::type::String
 use pkg::storage::{ Document, Order, Search, SearchIndex, Scalar, StorageError, StorageErrorCode }
 use pkg::storage::{ document, search }
-use pkg::storage::document::{ Index, IndexField, IndexScalarType, OutboxClaimRequest, OutboxCompletion, Stored, TableDefinition, WriteCondition }
+use pkg::storage::document::{ DeleteMutation, Index, IndexField, IndexScalarType, OutboxClaimRequest, OutboxCompletion, Put, PutMutation, Query, Stored, TableDefinition, Transaction, WriteCondition }
 use pkg::storage::search::{ SearchDocument, SearchField, SearchFieldSelection, SearchFilter, SearchFilterEntry, SearchFilterValue, SearchQuery, SearchSchema }
 
 obj Article {
@@ -73,7 +73,7 @@ describe("Voyd → host → local backend integration", () => {
   it("stores and reads typed Voyd documents", async () => {
     const source = `
 pub fn main(): Document -> bool
-  match(Document::migrate_table(
+  match(document::migrate_table(
     "${namespace}",
     TableDefinition {
       name: "articles",
@@ -98,38 +98,29 @@ pub fn main(): Document -> bool
         title: "Typed storage"
       }
       match(document::put(
-        table: "articles",
-        key: "a1",
-        document: article,
-        condition: WriteCondition::Absent(),
-        idempotency_key: "put-a1"
+        "${namespace}",
+        Put<Article> {
+          table: "articles",
+          key: "a1",
+          value: article,
+          condition: WriteCondition::Absent(),
+          idempotency_key: "put-a1"
+        }
       ))
         Err<StorageError>:
           false
-        Ok { value: request }:
-          match(Document::put("${namespace}", request))
+        Ok<Stored<Article>> { value: stored }:
+          if stored.value.title != "Typed storage":
+            return false
+          match(document::get<Article>("${namespace}", "articles", "a1"))
             Err<StorageError>:
               false
-            Ok { value: wire }:
-              match(document::decode<Article>(wire))
-                Err<StorageError>:
+            Ok { value: found }:
+              found.match(active)
+                Some<Stored<Article>>:
+                  active.value.value.public_id == "typed-1"
+                None:
                   false
-                Ok<Stored<Article>> { value: stored }:
-                  if stored.value.title != "Typed storage":
-                    return false
-                  match(Document::get("${namespace}", "articles", "a1"))
-                    Err<StorageError>:
-                      false
-                    Ok { value: found }:
-                      match(document::decode_optional<Article>(found))
-                        Err<StorageError>:
-                          false
-                        Ok { value: decoded }:
-                          decoded.match(active)
-                            Some<Stored<Article>>:
-                              active.value.value.public_id == "typed-1"
-                            None:
-                              false
 `;
     assert.equal(await run(source), true);
   });
@@ -142,26 +133,28 @@ pub fn main(): Document -> bool
     status: "ready",
     title: "Transactional storage"
   }
-  match(document::put_mutation(
-    table: "articles",
-    key: "a-transaction",
-    document: article,
-    condition: WriteCondition::Absent()
+  match(document::put(
+    mutation: PutMutation<Article> {
+      table: "articles",
+      key: "a-transaction",
+      value: article,
+      condition: WriteCondition::Absent()
+    }
   ))
     Err<StorageError>:
       false
     Ok { value: mutation }:
-      match(Document::transact(
+      match(document::transact(
         "${namespace}",
-        document::transaction(
+        Transaction {
           idempotency_key: "transaction-a",
           mutations: [mutation]
-        )
+        }
       ))
         Err<StorageError>:
           false
         Ok:
-          let request = document::query(
+          let request = Query {
             table: "articles",
             index: "public_id",
             prefix: [Scalar::Text(value: "typed-transaction")],
@@ -170,39 +163,37 @@ pub fn main(): Document -> bool
             order: Order::Ascending(),
             limit: 10,
             cursor: None {}
-          )
-          match(Document::query_documents("${namespace}", request))
+          }
+          match(document::query<Article>("${namespace}", request))
             Err<StorageError>:
               false
-            Ok { value: page }:
-              match(document::decode_page<Article>(page))
-                Err<StorageError>:
-                  false
-                Ok { value: decoded }:
-                  if decoded.documents.len() != 1:
-                    return false
-                  if decoded.documents.at(0).value.title != "Transactional storage":
-                    return false
-                  let deletion = document::delete_mutation(
+            Ok { value: decoded }:
+              if decoded.documents.len() != 1:
+                return false
+              if decoded.documents.at(0).value.title != "Transactional storage":
+                return false
+              let deletion = document::delete(
+                mutation: DeleteMutation {
                     table: "articles",
                     key: "a-transaction",
                     condition: WriteCondition::Present()
-                  )
-                  match(Document::transact(
-                    "${namespace}",
-                    document::transaction(
-                      idempotency_key: "transaction-delete-a",
-                      mutations: [deletion]
-                    )
-                  ))
-                    Err<StorageError>:
-                      false
-                    Ok { value: deleted }:
-                      if deleted.deletes.len() != 1:
-                        return false
-                      if deleted.deletes.at(0).table != "articles":
-                        return false
-                      deleted.deletes.at(0).key == "a-transaction"
+                }
+              )
+              match(document::transact(
+                "${namespace}",
+                Transaction {
+                  idempotency_key: "transaction-delete-a",
+                  mutations: [deletion]
+                }
+              ))
+                Err<StorageError>:
+                  false
+                Ok { value: deleted }:
+                  if deleted.deletes.len() != 1:
+                    return false
+                  if deleted.deletes.at(0).table != "articles":
+                    return false
+                  deleted.deletes.at(0).key == "a-transaction"
 `;
     assert.equal(await run(source), true);
   });
@@ -210,7 +201,7 @@ pub fn main(): Document -> bool
   it("round-trips the full signed i64 range", async () => {
     const source = `
 pub fn main(): Document -> bool
-  match(Document::migrate_table(
+  match(document::migrate_table(
     "${namespace}",
     TableDefinition {
       name: "wide_integers",
@@ -230,45 +221,40 @@ pub fn main(): Document -> bool
       false
     Ok:
       match(document::put(
-        table: "wide_integers",
-        key: "limits",
-        document: WideIntegers {
-          minimum: -9223372036854775808i64,
-          maximum: 9223372036854775807i64
-        },
-        condition: WriteCondition::Absent(),
-        idempotency_key: "wide-integers-put"
+        "${namespace}",
+        Put<WideIntegers> {
+          table: "wide_integers",
+          key: "limits",
+          value: WideIntegers {
+            minimum: -9223372036854775808i64,
+            maximum: 9223372036854775807i64
+          },
+          condition: WriteCondition::Absent(),
+          idempotency_key: "wide-integers-put"
+        }
       ))
         Err<StorageError>:
           false
-        Ok { value: request }:
-          match(Document::put("${namespace}", request))
+        Ok { value: stored }:
+          if stored.value.minimum != -9223372036854775808i64:
+            return false
+          if stored.value.maximum != 9223372036854775807i64:
+            return false
+          let request = Query {
+            table: "wide_integers",
+            index: "maximum",
+            prefix: [Scalar::I64(value: 9223372036854775807i64)],
+            lower: None {},
+            upper: None {},
+            order: Order::Ascending(),
+            limit: 1,
+            cursor: None {}
+          }
+          match(document::query<WideIntegers>("${namespace}", request))
             Err<StorageError>:
               false
-            Ok { value: wire }:
-              match(document::decode<WideIntegers>(wire))
-                Err<StorageError>:
-                  false
-                Ok { value: stored }:
-                  if stored.value.minimum != -9223372036854775808i64:
-                    return false
-                  if stored.value.maximum != 9223372036854775807i64:
-                    return false
-                  let request = document::query(
-                    table: "wide_integers",
-                    index: "maximum",
-                    prefix: [Scalar::I64(value: 9223372036854775807i64)],
-                    lower: None {},
-                    upper: None {},
-                    order: Order::Ascending(),
-                    limit: 1,
-                    cursor: None {}
-                  )
-                  match(Document::query_documents("${namespace}", request))
-                    Err<StorageError>:
-                      false
-                    Ok { value: page }:
-                      page.documents.len() == 1
+            Ok { value: page }:
+              page.documents.len() == 1
 `;
     assert.equal(await run(source), true);
   });
@@ -340,7 +326,7 @@ pub fn main(): (SearchIndex, Search) -> bool
   it("claims and completes typed outbox values without rewriting their shape", async () => {
     const source = `
 pub fn main(): Document -> bool
-  match(Document::migrate_table(
+  match(document::migrate_table(
     "${namespace}",
     TableDefinition {
       name: "typed_outbox",
@@ -352,59 +338,54 @@ pub fn main(): Document -> bool
       false
     Ok:
       match(document::put(
-        table: "typed_outbox",
-        key: "event-1",
-        document: OutboxEvent {
-          available_at: "2026-07-22T00:00:00.000Z",
-          attempt: 0,
-          payload: "typed payload"
-        },
-        condition: WriteCondition::Absent(),
-        idempotency_key: "typed-outbox-put"
+        "${namespace}",
+        Put<OutboxEvent> {
+          table: "typed_outbox",
+          key: "event-1",
+          value: OutboxEvent {
+            available_at: "2026-07-22T00:00:00.000Z",
+            attempt: 0,
+            payload: "typed payload"
+          },
+          condition: WriteCondition::Absent(),
+          idempotency_key: "typed-outbox-put"
+        }
       ))
         Err<StorageError>:
           false
-        Ok { value: request }:
-          match(Document::put("${namespace}", request))
+        Ok:
+          match(document::claim_outbox<OutboxEvent>(
+            "${namespace}",
+            OutboxClaimRequest {
+              table: "typed_outbox",
+              worker_id: "worker",
+              now: "2026-07-22T01:00:00.000Z",
+              lease_seconds: 30,
+              limit: 1
+            }
+          ))
             Err<StorageError>:
               false
-            Ok:
-              match(Document::claim_outbox(
+            Ok { value: claimed }:
+              if claimed.len() != 1:
+                return false
+              let record = claimed.at(0)
+              if record.document.value.payload != "typed payload":
+                return false
+              if record.attempt != 1:
+                return false
+              match(document::complete_outbox(
                 "${namespace}",
-                OutboxClaimRequest {
+                OutboxCompletion {
                   table: "typed_outbox",
-                  worker_id: "worker",
-                  now: "2026-07-22T01:00:00.000Z",
-                  lease_seconds: 30,
-                  limit: 1
+                  key: record.document.key,
+                  lease_token: record.lease_token
                 }
               ))
                 Err<StorageError>:
                   false
-                Ok { value: records }:
-                  match(document::decode_claimed<OutboxEvent>(records))
-                    Err<StorageError>:
-                      false
-                    Ok { value: claimed }:
-                      if claimed.len() != 1:
-                        return false
-                      let record = claimed.at(0)
-                      if record.document.value.payload != "typed payload":
-                        return false
-                      if record.attempt != 1:
-                        return false
-                      match(Document::complete_outbox(
-                        "${namespace}",
-                        OutboxCompletion {
-                          table: "typed_outbox",
-                          key: record.document.key,
-                          lease_token: record.lease_token
-                        }
-                      ))
-                        Err<StorageError>:
-                          false
-                        Ok:
-                          true
+                Ok:
+                  true
 `;
     assert.equal(await run(source), true);
   });
@@ -429,7 +410,7 @@ pub fn main(): ObjectStorage -> bool
   it("links only when every required authority has exactly one provider", async () => {
     const result = await compile(`
 pub fn main(): Document -> bool
-  match(Document::get("${namespace}", "articles", "missing"))
+  match(document::get<Article>("${namespace}", "articles", "missing"))
     Ok: true
     Err: false
 `);

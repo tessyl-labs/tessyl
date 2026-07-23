@@ -2,7 +2,6 @@
 
 pub self::document
 pub self::search
-pub self::types
 pub use self::external::{ Document, ObjectStorage, Search, SearchIndex }
 pub use self::external::{
   CompletedPart,
@@ -24,7 +23,6 @@ pub use self::external::{
 pub use self::types::{
   ErrorDetail,
   Order,
-  PageRequest,
   Scalar,
   StorageError,
   StorageErrorCode
