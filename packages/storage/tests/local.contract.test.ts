@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { after, before, describe, it } from "node:test";
-import { runStorageConformance, SEARCH_SCHEMA } from "../conformance/index.js";
+import { runStorageConformance } from "../conformance/index.js";
 import { createLocalStorage } from "../local/index.js";
 import { composeStorage } from "../src/composition.js";
 import type { StorageComposition } from "../src/contracts.js";
@@ -67,85 +67,6 @@ describe("local storage conformance", () => {
       await assert.rejects(access(handlePath), (error: NodeJS.ErrnoException) => error.code === "ENOENT");
       assert.equal((await expiring.object.stat("n", "object.txt")).byteLength, String(content.length));
     } finally { await expiring.close(); await rm(expiryDirectory, { recursive: true, force: true }); }
-  });
-
-  it("does not publish an oversized host-mutated outbox document", async () => {
-    const limitedDirectory = await mkdtemp(path.join(os.tmpdir(), "tessyl-storage-small-documents-"));
-    const limited = await createLocalStorage({ dataDirectory: limitedDirectory, limits: { maxDocumentBytes: 256 } });
-    try {
-      await limited.document.migrateTable("n", { name: "outbox", schemaVersion: 1, indexes: [] });
-      const original = { available_at: "2026-01-01T00:00:00.000Z", payload: "x".repeat(170) };
-      await limited.document.transact({ namespace: "n", idempotencyKey: "event", operations: [{ kind: "put", table: "outbox", key: "event", bodyJson: JSON.stringify(original), condition: { kind: "absent" } }] });
-      await assert.rejects(limited.document.claimOutbox({ namespace: "n", table: "outbox", workerId: "worker", now: "2026-07-18T00:00:00.000Z", leaseSeconds: 30, limit: 1 }), (error: unknown) => error instanceof StorageError && error.code === "limit_exceeded");
-      assert.deepEqual(JSON.parse((await limited.document.get("n", "outbox", "event")).bodyJson), original);
-    } finally { await limited.close(); await rm(limitedDirectory, { recursive: true, force: true }); }
-  });
-
-  it("migrates legacy search generations without reusing their handles", async () => {
-    const legacyDirectory = await mkdtemp(path.join(os.tmpdir(), "tessyl-storage-legacy-search-"));
-    let legacy = await createLocalStorage({ dataDirectory: legacyDirectory });
-    try {
-      const schema = { ...SEARCH_SCHEMA, fields: [...SEARCH_SCHEMA.fields], filterFields: [...SEARCH_SCHEMA.filterFields], facetFields: [...SEARCH_SCHEMA.facetFields], locales: [...SEARCH_SCHEMA.locales] };
-      await legacy.searchIndex.create("n", schema); await legacy.close();
-      const database = new DatabaseSync(path.join(legacyDirectory, "storage.sqlite"));
-      database.prepare("INSERT INTO storage_search_indices(namespace,logical_name,physical_name,schema_json,generation,active) VALUES(?,?,?,?,9,0)").run("n", "articles", "articles_v9_g9", JSON.stringify({ ...schema, version: 9 }));
-      database.prepare("DELETE FROM storage_search_generation_counters WHERE namespace='n' AND logical_name='articles'").run();
-      database.prepare("UPDATE storage_meta SET value='3' WHERE key='schema_version'").run(); database.close();
-      legacy = await createLocalStorage({ dataDirectory: legacyDirectory });
-      assert.ok((await legacy.searchIndex.listGenerations("n", "articles", 10)).generations.some(({ physicalName }) => physicalName === "articles_v9_g9"));
-      const next = await legacy.searchIndex.beginRebuild("n", { ...schema, version: 10 }); assert.equal(next.generation, 10);
-      await legacy.searchIndex.deleteGeneration("n", "articles_v9_g9");
-    } finally { await legacy.close().catch(() => undefined); await rm(legacyDirectory, { recursive: true, force: true }); }
-  });
-
-  it("migrates legacy objects into the current deletable reservation lifecycle", async () => {
-    const legacyDirectory = await mkdtemp(path.join(os.tmpdir(), "tessyl-storage-legacy-object-"));
-    let legacy = await createLocalStorage({ dataDirectory: legacyDirectory });
-    try {
-      const content = new TextEncoder().encode("legacy object"); const checksum = createHash("sha256").update(content).digest("hex");
-      const request = { namespace: "n", key: "legacy.txt", contentType: "text/plain", byteLength: String(content.length), checksumSha256: checksum, applicationMetadata: [], idempotencyKey: "legacy", partCount: 1, expiresInSeconds: 300 } as const;
-      const session = await legacy.object.initiateUpload(request); await writeFile(fileURLToPath(session.uploadHandle), content); await legacy.object.completeUpload("n", session.sessionId); await legacy.close();
-      const database = new DatabaseSync(path.join(legacyDirectory, "storage.sqlite"));
-      database.prepare("DELETE FROM storage_object_keys WHERE namespace='n' AND object_key='legacy.txt'").run(); database.prepare("DELETE FROM storage_upload_sessions WHERE namespace='n' AND object_key='legacy.txt'").run();
-      database.prepare("UPDATE storage_meta SET value='1' WHERE key='schema_version'").run(); database.close();
-      legacy = await createLocalStorage({ dataDirectory: legacyDirectory });
-      assert.equal((await legacy.object.stat("n", "legacy.txt")).checksumSha256, checksum); await legacy.object.delete("n", "legacy.txt");
-      const replacement = await legacy.object.initiateUpload({ ...request, idempotencyKey: "replacement" }); assert.equal(replacement.key, "legacy.txt");
-    } finally { await legacy.close().catch(() => undefined); await rm(legacyDirectory, { recursive: true, force: true }); }
-  });
-
-  it("does not resurrect reservations for legacy-deleted objects", async () => {
-    const legacyDirectory = await mkdtemp(path.join(os.tmpdir(), "tessyl-storage-legacy-deleted-object-"));
-    let legacy = await createLocalStorage({ dataDirectory: legacyDirectory });
-    try {
-      const content = new TextEncoder().encode("deleted"); const checksum = createHash("sha256").update(content).digest("hex");
-      const request = { namespace: "n", key: "deleted.txt", contentType: "text/plain", byteLength: String(content.length), checksumSha256: checksum, applicationMetadata: [], idempotencyKey: "original", partCount: 1, expiresInSeconds: 300 } as const;
-      const session = await legacy.object.initiateUpload(request); await writeFile(fileURLToPath(session.uploadHandle), content); await legacy.object.completeUpload("n", session.sessionId); await legacy.close();
-      const database = new DatabaseSync(path.join(legacyDirectory, "storage.sqlite"));
-      database.prepare("DELETE FROM storage_objects WHERE namespace='n' AND object_key='deleted.txt'").run();
-      database.prepare("DELETE FROM storage_object_keys WHERE namespace='n' AND object_key='deleted.txt'").run();
-      database.prepare("UPDATE storage_meta SET value='1' WHERE key='schema_version'").run(); database.close();
-      legacy = await createLocalStorage({ dataDirectory: legacyDirectory });
-      const replacement = await legacy.object.initiateUpload({ ...request, idempotencyKey: "replacement" }); assert.equal(replacement.key, "deleted.txt");
-    } finally { await legacy.close().catch(() => undefined); await rm(legacyDirectory, { recursive: true, force: true }); }
-  });
-
-  it("migrates authority to the uniquely matching completed session", async () => {
-    const legacyDirectory = await mkdtemp(path.join(os.tmpdir(), "tessyl-storage-legacy-session-authority-"));
-    let legacy = await createLocalStorage({ dataDirectory: legacyDirectory });
-    try {
-      const content = new TextEncoder().encode("current"); const checksum = createHash("sha256").update(content).digest("hex");
-      const request = { namespace: "n", key: "object.txt", contentType: "text/plain", byteLength: String(content.length), checksumSha256: checksum, applicationMetadata: [], idempotencyKey: "current", partCount: 1, expiresInSeconds: 300 } as const;
-      const current = await legacy.object.initiateUpload(request); await writeFile(fileURLToPath(current.uploadHandle), content); await legacy.object.completeUpload("n", current.sessionId); await legacy.close();
-      const database = new DatabaseSync(path.join(legacyDirectory, "storage.sqlite"));
-      database.prepare("INSERT INTO storage_upload_sessions(session_id,namespace,object_key,content_type,byte_length,checksum_sha256,metadata_json,idempotency_key,temp_path,expires_at,request_hash,part_count,completed) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1)")
-        .run("00000000-0000-4000-8000-000000000000", "n", "object.txt", "text/plain", 5, createHash("sha256").update("stale").digest("hex"), "[]", "stale", "stale.upload", new Date().toISOString(), "stale", 1);
-      database.prepare("DELETE FROM storage_object_keys WHERE namespace='n' AND object_key='object.txt'").run();
-      database.prepare("UPDATE storage_meta SET value='1' WHERE key='schema_version'").run(); database.close();
-      legacy = await createLocalStorage({ dataDirectory: legacyDirectory });
-      assert.equal((await legacy.object.completeUpload("n", current.sessionId)).checksumSha256, checksum);
-      await assert.rejects(legacy.object.completeUpload("n", "00000000-0000-4000-8000-000000000000"), (error: unknown) => error instanceof StorageError && error.code === "not_found");
-    } finally { await legacy.close().catch(() => undefined); await rm(legacyDirectory, { recursive: true, force: true }); }
   });
 
   it("hides orphan objects and rejects stale upload-session replays", async () => {

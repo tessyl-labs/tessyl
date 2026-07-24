@@ -50,7 +50,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist",
-    "generate": "voyd generate adapter ./src --out ./generated",
+    "generate": "node ../../.voyd-source/apps/cli/dist/cli.js generate adapter ./src/external.voyd --out ./generated",
     "lint": "tsc --noEmit -p tsconfig.json",
     "test": "tsx --test tests/**/*.test.ts",
     "test:hosted": "TESSYL_STORAGE_HOSTED_TEST=1 tsx --test tests/hosted.integration.test.ts",

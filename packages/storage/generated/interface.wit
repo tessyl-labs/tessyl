@@ -1,88 +1,873 @@
 package tessyl:storage@1.0.0;
 
 interface document {
-  record type-a2649608c603be2c {
-    code: string,
-    detailsjson: string,
+  record type-01e29b3e7aec4652 {
+    deletes: type-b191a5f962ceabf5,
+    replayed: bool,
+    writes: type-13c10d462d67a772,
+  }
+  record type-0741e8c71f1fb4db-err-payload {
+    error: type-fb7bf6547e8a9ad8,
+  }
+  record type-0741e8c71f1fb4db-ok-payload {
+    value: type-524bc3a997603ced,
+  }
+  variant type-0741e8c71f1fb4db {
+    err(type-0741e8c71f1fb4db-err-payload),
+    ok(type-0741e8c71f1fb4db-ok-payload),
+  }
+  record type-0bb0af6323720297 {
+    nodes: type-3e40723ee861f862,
+    root: s32,
+  }
+  record type-0ce51ab0d9c2ba74 {
+    value: type-c131803bb970977f,
+  }
+  record type-1105f077d8898ef3 {
+    inclusive: bool,
+    values: type-9476d2e973b795a5,
+  }
+  record type-1270b0f23abbfe76-version-payload {
+    value: string,
+  }
+  variant type-1270b0f23abbfe76 {
+    any,
+    absent,
+    present,
+    version(type-1270b0f23abbfe76-version-payload),
+  }
+  record type-136567e560c0e301 {
+    idempotency-key: string,
+    mutations: type-627f3a6b99e05627,
+  }
+  type type-13c10d462d67a772 = list<type-cff54a1b2f71ccc7>;
+  record type-1617353add45690e {
+    indexes: type-c3ecbcce612162da,
+    name: string,
+    schema-version: s32,
+  }
+  record type-1cf421c3ec532d4f {
+    lease-seconds: s32,
+    limit: s32,
+    now: string,
+    table: string,
+    worker-id: string,
+  }
+  record type-25090cf3d67a0eff {
+    key: string,
+    lease-token: string,
+    table: string,
+  }
+  record type-26353625003de361 {
+    condition: type-1270b0f23abbfe76,
+    idempotency-key: string,
+    key: string,
+    table: string,
+    value: type-0bb0af6323720297,
+  }
+  record type-2a6d7df0241455d4-err-payload {
+    error: type-fb7bf6547e8a9ad8,
+  }
+  record type-2a6d7df0241455d4-ok-payload {
+    value: type-01e29b3e7aec4652,
+  }
+  variant type-2a6d7df0241455d4 {
+    err(type-2a6d7df0241455d4-err-payload),
+    ok(type-2a6d7df0241455d4-ok-payload),
+  }
+  record type-2d0e8eb76a790d9b {
+    cursor: type-b0c8984e59de5cfa,
+    documents: type-3a13c71ee5e56a22,
+  }
+  type type-3761ea7248d03056 = list<s32>;
+  type type-3a13c71ee5e56a22 = list<type-61d1601b9ce46c7f>;
+  type type-3e40723ee861f862 = list<type-a2de51f3a92efcf7>;
+  variant type-43a4cab771cc8713 {
+    null,
+    boolean,
+    number,
+    text,
+  }
+  record type-453a0e424c4d55b6 {
+    value: type-d0018c512660cca5,
+  }
+  type type-467bfd0affa9fad6 = list<type-a84c462f10662b9b>;
+  type type-469798648c3e0800 = list<type-5616fd2560347c21>;
+  record type-4a5ccd431996f5e7 {
+    name: string,
+    value: string,
+  }
+  type type-524bc3a997603ced = list<type-7a2c513a247d1346>;
+  record type-5616fd2560347c21 {
+    name: string,
+    node: s32,
+  }
+  record type-563d4004899ed118 {
+    condition: type-1270b0f23abbfe76,
+    idempotency-key: string,
+    key: string,
+    table: string,
+  }
+  record type-61d1601b9ce46c7f {
+    created-at: string,
+    key: string,
+    namespace: string,
+    table: string,
+    updated-at: string,
+    value: type-0bb0af6323720297,
+    version: string,
+  }
+  record type-61d506672839873b {
+    cursor: type-b0c8984e59de5cfa,
+    index: string,
+    limit: s32,
+    lower: type-f17ad805ff3bd6e1,
+    order: type-f740603a01993ab6,
+    prefix: type-9476d2e973b795a5,
+    table: string,
+    upper: type-f17ad805ff3bd6e1,
+  }
+  type type-627f3a6b99e05627 = list<type-0ce51ab0d9c2ba74>;
+  record type-6e188f23d96b9b9f-some-payload {
+    value: type-61d1601b9ce46c7f,
+  }
+  variant type-6e188f23d96b9b9f {
+    none,
+    some(type-6e188f23d96b9b9f-some-payload),
+  }
+  record type-7a2c513a247d1346 {
+    attempt: s32,
+    document: type-61d1601b9ce46c7f,
+    lease-token: string,
+  }
+  record type-7edc4edd4d4885b1-err-payload {
+    error: type-fb7bf6547e8a9ad8,
+  }
+  record type-7edc4edd4d4885b1-ok-payload {
+    value: type-2d0e8eb76a790d9b,
+  }
+  variant type-7edc4edd4d4885b1 {
+    err(type-7edc4edd4d4885b1-err-payload),
+    ok(type-7edc4edd4d4885b1-ok-payload),
+  }
+  record type-904877d33303c7bf-ok-payload {
+    value: type-e905523d19d71049,
+  }
+  record type-904877d33303c7bf-err-payload {
+    error: type-fb7bf6547e8a9ad8,
+  }
+  variant type-904877d33303c7bf {
+    ok(type-904877d33303c7bf-ok-payload),
+    err(type-904877d33303c7bf-err-payload),
+  }
+  type type-9476d2e973b795a5 = list<type-453a0e424c4d55b6>;
+  record type-a06bba5e4fd59eca-boolnode-payload {
+    value: bool,
+  }
+  record type-a06bba5e4fd59eca-i32node-payload {
+    value: s32,
+  }
+  record type-a06bba5e4fd59eca-i64node-payload {
+    value: s64,
+  }
+  record type-a06bba5e4fd59eca-f32node-payload {
+    value: float32,
+  }
+  record type-a06bba5e4fd59eca-f64node-payload {
+    value: float64,
+  }
+  record type-a06bba5e4fd59eca-textnode-payload {
+    value: string,
+  }
+  record type-a06bba5e4fd59eca-listnode-payload {
+    items: type-3761ea7248d03056,
+  }
+  record type-a06bba5e4fd59eca-recordnode-payload {
+    fields: type-469798648c3e0800,
+  }
+  record type-a06bba5e4fd59eca-namednode-payload {
+    fields: type-469798648c3e0800,
+    name: string,
+  }
+  variant type-a06bba5e4fd59eca {
+    empty,
+    boolnode(type-a06bba5e4fd59eca-boolnode-payload),
+    i32node(type-a06bba5e4fd59eca-i32node-payload),
+    i64node(type-a06bba5e4fd59eca-i64node-payload),
+    f32node(type-a06bba5e4fd59eca-f32node-payload),
+    f64node(type-a06bba5e4fd59eca-f64node-payload),
+    textnode(type-a06bba5e4fd59eca-textnode-payload),
+    listnode(type-a06bba5e4fd59eca-listnode-payload),
+    recordnode(type-a06bba5e4fd59eca-recordnode-payload),
+    namednode(type-a06bba5e4fd59eca-namednode-payload),
+  }
+  record type-a2de51f3a92efcf7 {
+    value: type-a06bba5e4fd59eca,
+  }
+  record type-a84c462f10662b9b {
+    path: string,
+    value-type: type-43a4cab771cc8713,
+  }
+  record type-b0c8984e59de5cfa-some-payload {
+    value: string,
+  }
+  variant type-b0c8984e59de5cfa {
+    none,
+    some(type-b0c8984e59de5cfa-some-payload),
+  }
+  type type-b191a5f962ceabf5 = list<type-bdf0d27ad0d8442e>;
+  record type-bdf0d27ad0d8442e {
+    key: string,
+    table: string,
+  }
+  record type-beb557c297e5780e {
+    definition: type-1617353add45690e,
+    definition-hash: string,
+    document-count: s64,
+  }
+  record type-c131803bb970977f-put-payload {
+    condition: type-1270b0f23abbfe76,
+    key: string,
+    table: string,
+    value: type-0bb0af6323720297,
+  }
+  record type-c131803bb970977f-delete-payload {
+    condition: type-1270b0f23abbfe76,
+    key: string,
+    table: string,
+  }
+  variant type-c131803bb970977f {
+    put(type-c131803bb970977f-put-payload),
+    delete(type-c131803bb970977f-delete-payload),
+  }
+  record type-c2a60deb24433f67 {
+    fields: type-467bfd0affa9fad6,
+    name: string,
+    ordered: bool,
+    sparse: bool,
+    unique: bool,
+  }
+  type type-c3ecbcce612162da = list<type-c2a60deb24433f67>;
+  record type-c7d2ddac67635bb0 {
+    available-at: string,
+    error: string,
+    key: string,
+    lease-token: string,
+    table: string,
+  }
+  record type-cff54a1b2f71ccc7 {
+    key: string,
+    table: string,
+    version: string,
+  }
+  record type-d0018c512660cca5-boolean-payload {
+    value: bool,
+  }
+  record type-d0018c512660cca5-i32-payload {
+    value: s32,
+  }
+  record type-d0018c512660cca5-i64-payload {
+    value: s64,
+  }
+  record type-d0018c512660cca5-f32-payload {
+    value: float32,
+  }
+  record type-d0018c512660cca5-f64-payload {
+    value: float64,
+  }
+  record type-d0018c512660cca5-text-payload {
+    value: string,
+  }
+  variant type-d0018c512660cca5 {
+    null,
+    boolean(type-d0018c512660cca5-boolean-payload),
+    i32(type-d0018c512660cca5-i32-payload),
+    i64(type-d0018c512660cca5-i64-payload),
+    f32(type-d0018c512660cca5-f32-payload),
+    f64(type-d0018c512660cca5-f64-payload),
+    text(type-d0018c512660cca5-text-payload),
+  }
+  record type-e6d6621c8f672498-ok-payload {
+    value: type-beb557c297e5780e,
+  }
+  record type-e6d6621c8f672498-err-payload {
+    error: type-fb7bf6547e8a9ad8,
+  }
+  variant type-e6d6621c8f672498 {
+    ok(type-e6d6621c8f672498-ok-payload),
+    err(type-e6d6621c8f672498-err-payload),
+  }
+  record type-e701e59db6933c11-err-payload {
+    error: type-fb7bf6547e8a9ad8,
+  }
+  record type-e701e59db6933c11-ok-payload {
+    value: type-61d1601b9ce46c7f,
+  }
+  variant type-e701e59db6933c11 {
+    err(type-e701e59db6933c11-err-payload),
+    ok(type-e701e59db6933c11-ok-payload),
+  }
+  record type-e905523d19d71049 {
+
+  }
+  record type-f17ad805ff3bd6e1-some-payload {
+    value: type-1105f077d8898ef3,
+  }
+  variant type-f17ad805ff3bd6e1 {
+    none,
+    some(type-f17ad805ff3bd6e1-some-payload),
+  }
+  type type-f6707c0e97695e72 = list<type-4a5ccd431996f5e7>;
+  variant type-f70baeaae2d0bd6e {
+    notfound,
+    conflict,
+    failedcondition,
+    invalidrequest,
+    invaliddata,
+    unavailable,
+    quotaexceeded,
+    limitexceeded,
+    timeout,
+    cancelled,
+    internal,
+  }
+  variant type-f740603a01993ab6 {
+    ascending,
+    descending,
+  }
+  record type-fb7bf6547e8a9ad8 {
+    code: type-f70baeaae2d0bd6e,
+    details: type-f6707c0e97695e72,
     message: string,
     operation: string,
     retryable: bool,
   }
-  record type-b0834ca05fe499e4 {
-    error: type-a2649608c603be2c,
-    ok: bool,
-    valuejson: string,
+  record type-fd75e50bfc3f6eef-err-payload {
+    error: type-fb7bf6547e8a9ad8,
+  }
+  record type-fd75e50bfc3f6eef-ok-payload {
+    value: type-6e188f23d96b9b9f,
+  }
+  variant type-fd75e50bfc3f6eef {
+    err(type-fd75e50bfc3f6eef-err-payload),
+    ok(type-fd75e50bfc3f6eef-ok-payload),
   }
 
-  claim-outbox: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
-  complete-outbox: func(arg0: string, arg1: string, arg2: string, arg3: string) -> type-b0834ca05fe499e4;
-  get: func(arg0: string, arg1: string, arg2: string) -> type-b0834ca05fe499e4;
-  inspect-table: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
-  migrate-table: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
-  query-documents: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
-  retry-outbox: func(arg0: string, arg1: string, arg2: string, arg3: string, arg4: string, arg5: string) -> type-b0834ca05fe499e4;
-  transact: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
+  claim-outbox: func(arg0: string, arg1: type-1cf421c3ec532d4f) -> type-0741e8c71f1fb4db;
+  complete-outbox: func(arg0: string, arg1: type-25090cf3d67a0eff) -> type-904877d33303c7bf;
+  delete: func(arg0: string, arg1: type-563d4004899ed118) -> type-904877d33303c7bf;
+  get: func(arg0: string, arg1: string, arg2: string) -> type-fd75e50bfc3f6eef;
+  inspect-table: func(arg0: string, arg1: string) -> type-e6d6621c8f672498;
+  migrate-table: func(arg0: string, arg1: type-1617353add45690e) -> type-e6d6621c8f672498;
+  put: func(arg0: string, arg1: type-26353625003de361) -> type-e701e59db6933c11;
+  query-documents: func(arg0: string, arg1: type-61d506672839873b) -> type-7edc4edd4d4885b1;
+  retry-outbox: func(arg0: string, arg1: type-c7d2ddac67635bb0) -> type-904877d33303c7bf;
+  transact: func(arg0: string, arg1: type-136567e560c0e301) -> type-2a6d7df0241455d4;
 }
 
 interface object {
-  record type-a2649608c603be2c {
-    code: string,
-    detailsjson: string,
+  record type-12b6e3aab6d8ba9e {
+    etag: string,
+    part-number: s32,
+  }
+  record type-242457ff835f633b {
+    expected-version: type-b0c8984e59de5cfa,
+    key: string,
+  }
+  record type-29258d2c0d341c18-err-payload {
+    error: type-fb7bf6547e8a9ad8,
+  }
+  record type-29258d2c0d341c18-ok-payload {
+    value: type-c4c19c269d8013f2,
+  }
+  variant type-29258d2c0d341c18 {
+    err(type-29258d2c0d341c18-err-payload),
+    ok(type-29258d2c0d341c18-ok-payload),
+  }
+  record type-2951c4b73b1b0f73-ok-payload {
+    value: s32,
+  }
+  record type-2951c4b73b1b0f73-err-payload {
+    error: type-fb7bf6547e8a9ad8,
+  }
+  variant type-2951c4b73b1b0f73 {
+    ok(type-2951c4b73b1b0f73-ok-payload),
+    err(type-2951c4b73b1b0f73-err-payload),
+  }
+  record type-378a545efcf5f50a-err-payload {
+    error: type-fb7bf6547e8a9ad8,
+  }
+  record type-378a545efcf5f50a-ok-payload {
+    value: type-9512d66207eb5bd6,
+  }
+  variant type-378a545efcf5f50a {
+    err(type-378a545efcf5f50a-err-payload),
+    ok(type-378a545efcf5f50a-ok-payload),
+  }
+  record type-40967548247ab1c4 {
+    before: string,
+    limit: s32,
+  }
+  record type-4a5ccd431996f5e7 {
+    name: string,
+    value: string,
+  }
+  record type-5d7b1108c6e24654 {
+    part-number: s32,
+    url: string,
+  }
+  record type-72179a660287d43a-err-payload {
+    error: type-fb7bf6547e8a9ad8,
+  }
+  record type-72179a660287d43a-ok-payload {
+    value: type-76d6461cb8e99be0,
+  }
+  variant type-72179a660287d43a {
+    err(type-72179a660287d43a-err-payload),
+    ok(type-72179a660287d43a-ok-payload),
+  }
+  record type-76d6461cb8e99be0 {
+    expires-at: string,
+    metadata: type-79e40e2470e7b730,
+    url: string,
+  }
+  record type-79e40e2470e7b730 {
+    byte-length: s64,
+    checksum-sha256: string,
+    content-type: string,
+    created-at: string,
+    key: string,
+    metadata: type-f6707c0e97695e72,
+    namespace: string,
+    version: string,
+  }
+  record type-8673b49b3b76e73f {
+    expires-in-seconds: s32,
+    key: string,
+  }
+  record type-904877d33303c7bf-ok-payload {
+    value: type-e905523d19d71049,
+  }
+  record type-904877d33303c7bf-err-payload {
+    error: type-fb7bf6547e8a9ad8,
+  }
+  variant type-904877d33303c7bf {
+    ok(type-904877d33303c7bf-ok-payload),
+    err(type-904877d33303c7bf-err-payload),
+  }
+  record type-94f827dc70a9f070 {
+    parts: type-c3dd3ee99c58f8b5,
+    session-id: string,
+  }
+  record type-9512d66207eb5bd6 {
+    expires-at: string,
+    key: string,
+    namespace: string,
+    parts: type-d214fbc359127c97,
+    session-id: string,
+    upload-handle: string,
+  }
+  record type-b0c8984e59de5cfa-some-payload {
+    value: string,
+  }
+  variant type-b0c8984e59de5cfa {
+    none,
+    some(type-b0c8984e59de5cfa-some-payload),
+  }
+  record type-b9369da47bcfbe38-err-payload {
+    error: type-fb7bf6547e8a9ad8,
+  }
+  record type-b9369da47bcfbe38-ok-payload {
+    value: type-79e40e2470e7b730,
+  }
+  variant type-b9369da47bcfbe38 {
+    err(type-b9369da47bcfbe38-err-payload),
+    ok(type-b9369da47bcfbe38-ok-payload),
+  }
+  type type-c3dd3ee99c58f8b5 = list<type-12b6e3aab6d8ba9e>;
+  record type-c4c19c269d8013f2-some-payload {
+    value: type-79e40e2470e7b730,
+  }
+  variant type-c4c19c269d8013f2 {
+    none,
+    some(type-c4c19c269d8013f2-some-payload),
+  }
+  type type-d214fbc359127c97 = list<type-5d7b1108c6e24654>;
+  record type-e905523d19d71049 {
+
+  }
+  record type-f48eaa671c966a6b {
+    byte-length: s64,
+    checksum-sha256: string,
+    content-type: string,
+    expires-in-seconds: s32,
+    idempotency-key: string,
+    key: string,
+    metadata: type-f6707c0e97695e72,
+    part-count: s32,
+  }
+  type type-f6707c0e97695e72 = list<type-4a5ccd431996f5e7>;
+  variant type-f70baeaae2d0bd6e {
+    notfound,
+    conflict,
+    failedcondition,
+    invalidrequest,
+    invaliddata,
+    unavailable,
+    quotaexceeded,
+    limitexceeded,
+    timeout,
+    cancelled,
+    internal,
+  }
+  record type-fb7bf6547e8a9ad8 {
+    code: type-f70baeaae2d0bd6e,
+    details: type-f6707c0e97695e72,
     message: string,
     operation: string,
     retryable: bool,
   }
-  record type-b0834ca05fe499e4 {
-    error: type-a2649608c603be2c,
-    ok: bool,
-    valuejson: string,
-  }
 
-  cleanup-abandoned: func(arg0: string, arg1: string, arg2: s32) -> type-b0834ca05fe499e4;
-  complete-upload: func(arg0: string, arg1: string, arg2: string) -> type-b0834ca05fe499e4;
-  delete-object: func(arg0: string, arg1: string, arg2: string) -> type-b0834ca05fe499e4;
-  initiate-upload: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
-  resolve-download: func(arg0: string, arg1: string, arg2: s32) -> type-b0834ca05fe499e4;
-  stat: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
+  cleanup-abandoned: func(arg0: string, arg1: type-40967548247ab1c4) -> type-2951c4b73b1b0f73;
+  complete-upload: func(arg0: string, arg1: type-94f827dc70a9f070) -> type-b9369da47bcfbe38;
+  delete-object: func(arg0: string, arg1: type-242457ff835f633b) -> type-904877d33303c7bf;
+  initiate-upload: func(arg0: string, arg1: type-f48eaa671c966a6b) -> type-378a545efcf5f50a;
+  resolve-download: func(arg0: string, arg1: type-8673b49b3b76e73f) -> type-72179a660287d43a;
+  stat: func(arg0: string, arg1: string) -> type-29258d2c0d341c18;
 }
 
 interface search-index {
-  record type-a2649608c603be2c {
-    code: string,
-    detailsjson: string,
+  record type-068d8540fa581594 {
+    name: string,
+    value: type-d0018c512660cca5,
+  }
+  record type-3004425372b7f967-err-payload {
+    error: type-fb7bf6547e8a9ad8,
+  }
+  record type-3004425372b7f967-ok-payload {
+    value: type-5516f757492d67e3,
+  }
+  variant type-3004425372b7f967 {
+    err(type-3004425372b7f967-err-payload),
+    ok(type-3004425372b7f967-ok-payload),
+  }
+  type type-3092b0c2b0d8edce = list<type-5516f757492d67e3>;
+  record type-4a5ccd431996f5e7 {
+    name: string,
+    value: string,
+  }
+  type type-52b45b8a04d45fa6 = list<type-6ec094ff398708ab>;
+  record type-5516f757492d67e3 {
+    active: bool,
+    generation: s32,
+    logical-name: string,
+    namespace: string,
+    physical-name: string,
+    schema: type-df0bf5f6228af24a,
+  }
+  record type-61726337e207d2cb {
+    document-id: string,
+    index: string,
+    version: string,
+  }
+  record type-6b110eb54bdb70d1-some-payload {
+    value: type-5516f757492d67e3,
+  }
+  variant type-6b110eb54bdb70d1 {
+    none,
+    some(type-6b110eb54bdb70d1-some-payload),
+  }
+  record type-6ec094ff398708ab {
+    name: string,
+    text: string,
+  }
+  record type-7ed1ccd191301255 {
+    applied: bool,
+    current-version: string,
+  }
+  record type-88773067c835d383 {
+    logical-name: string,
+    physical-name: string,
+  }
+  record type-904877d33303c7bf-ok-payload {
+    value: type-e905523d19d71049,
+  }
+  record type-904877d33303c7bf-err-payload {
+    error: type-fb7bf6547e8a9ad8,
+  }
+  variant type-904877d33303c7bf {
+    ok(type-904877d33303c7bf-ok-payload),
+    err(type-904877d33303c7bf-err-payload),
+  }
+  record type-a0a1b5690c305e55-err-payload {
+    error: type-fb7bf6547e8a9ad8,
+  }
+  record type-a0a1b5690c305e55-ok-payload {
+    value: type-7ed1ccd191301255,
+  }
+  variant type-a0a1b5690c305e55 {
+    err(type-a0a1b5690c305e55-err-payload),
+    ok(type-a0a1b5690c305e55-ok-payload),
+  }
+  record type-a6015e4ce9760710 {
+    cursor: type-b0c8984e59de5cfa,
+    generations: type-3092b0c2b0d8edce,
+  }
+  record type-b0c8984e59de5cfa-some-payload {
+    value: string,
+  }
+  variant type-b0c8984e59de5cfa {
+    none,
+    some(type-b0c8984e59de5cfa-some-payload),
+  }
+  record type-b3874f374c6afdbb {
+    cursor: type-b0c8984e59de5cfa,
+    limit: s32,
+    logical-name: string,
+  }
+  type type-bd02313bd46e6b5f = list<string>;
+  record type-cb941ecb5646a717-err-payload {
+    error: type-fb7bf6547e8a9ad8,
+  }
+  record type-cb941ecb5646a717-ok-payload {
+    value: type-6b110eb54bdb70d1,
+  }
+  variant type-cb941ecb5646a717 {
+    err(type-cb941ecb5646a717-err-payload),
+    ok(type-cb941ecb5646a717-ok-payload),
+  }
+  record type-d0018c512660cca5-boolean-payload {
+    value: bool,
+  }
+  record type-d0018c512660cca5-i32-payload {
+    value: s32,
+  }
+  record type-d0018c512660cca5-i64-payload {
+    value: s64,
+  }
+  record type-d0018c512660cca5-f32-payload {
+    value: float32,
+  }
+  record type-d0018c512660cca5-f64-payload {
+    value: float64,
+  }
+  record type-d0018c512660cca5-text-payload {
+    value: string,
+  }
+  variant type-d0018c512660cca5 {
+    null,
+    boolean(type-d0018c512660cca5-boolean-payload),
+    i32(type-d0018c512660cca5-i32-payload),
+    i64(type-d0018c512660cca5-i64-payload),
+    f32(type-d0018c512660cca5-f32-payload),
+    f64(type-d0018c512660cca5-f64-payload),
+    text(type-d0018c512660cca5-text-payload),
+  }
+  record type-d32ad46afbd104ce-err-payload {
+    error: type-fb7bf6547e8a9ad8,
+  }
+  record type-d32ad46afbd104ce-ok-payload {
+    value: type-a6015e4ce9760710,
+  }
+  variant type-d32ad46afbd104ce {
+    err(type-d32ad46afbd104ce-err-payload),
+    ok(type-d32ad46afbd104ce-ok-payload),
+  }
+  record type-df0bf5f6228af24a {
+    facet-fields: type-bd02313bd46e6b5f,
+    fields: type-bd02313bd46e6b5f,
+    filter-fields: type-bd02313bd46e6b5f,
+    locales: type-bd02313bd46e6b5f,
+    name: string,
+    version: s32,
+  }
+  type type-dfdcceb3b33d35cf = list<type-068d8540fa581594>;
+  record type-e33a70e4b6e51e70 {
+    document-id: string,
+    fields: type-52b45b8a04d45fa6,
+    filters: type-dfdcceb3b33d35cf,
+    index: string,
+    locale: string,
+    tags: type-bd02313bd46e6b5f,
+    version: string,
+  }
+  record type-e905523d19d71049 {
+
+  }
+  type type-f6707c0e97695e72 = list<type-4a5ccd431996f5e7>;
+  variant type-f70baeaae2d0bd6e {
+    notfound,
+    conflict,
+    failedcondition,
+    invalidrequest,
+    invaliddata,
+    unavailable,
+    quotaexceeded,
+    limitexceeded,
+    timeout,
+    cancelled,
+    internal,
+  }
+  record type-fb7bf6547e8a9ad8 {
+    code: type-f70baeaae2d0bd6e,
+    details: type-f6707c0e97695e72,
     message: string,
     operation: string,
     retryable: bool,
   }
-  record type-b0834ca05fe499e4 {
-    error: type-a2649608c603be2c,
-    ok: bool,
-    valuejson: string,
-  }
 
-  begin-rebuild: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
-  create: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
-  cutover: func(arg0: string, arg1: string, arg2: string) -> type-b0834ca05fe499e4;
-  delete-document: func(arg0: string, arg1: string, arg2: string, arg3: string) -> type-b0834ca05fe499e4;
-  delete-generation: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
-  inspect: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
-  list-generations: func(arg0: string, arg1: string, arg2: s32, arg3: string) -> type-b0834ca05fe499e4;
-  upsert: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
+  begin-rebuild: func(arg0: string, arg1: type-df0bf5f6228af24a) -> type-3004425372b7f967;
+  create: func(arg0: string, arg1: type-df0bf5f6228af24a) -> type-3004425372b7f967;
+  cutover: func(arg0: string, arg1: type-88773067c835d383) -> type-3004425372b7f967;
+  delete-document: func(arg0: string, arg1: type-61726337e207d2cb) -> type-a0a1b5690c305e55;
+  delete-generation: func(arg0: string, arg1: string) -> type-904877d33303c7bf;
+  inspect: func(arg0: string, arg1: string) -> type-cb941ecb5646a717;
+  list-generations: func(arg0: string, arg1: type-b3874f374c6afdbb) -> type-d32ad46afbd104ce;
+  upsert: func(arg0: string, arg1: type-e33a70e4b6e51e70) -> type-a0a1b5690c305e55;
 }
 
 interface search {
-  record type-a2649608c603be2c {
-    code: string,
-    detailsjson: string,
+  record type-0ce0bf19f7bcea55-equal-payload {
+    name: string,
+    value: type-d0018c512660cca5,
+  }
+  record type-0ce0bf19f7bcea55-notequal-payload {
+    name: string,
+    value: type-d0018c512660cca5,
+  }
+  variant type-0ce0bf19f7bcea55 {
+    equal(type-0ce0bf19f7bcea55-equal-payload),
+    notequal(type-0ce0bf19f7bcea55-notequal-payload),
+  }
+  type type-1513e1371a8877b3 = list<type-2ca96a347bf08d48>;
+  record type-1b6a5e00957b0734 {
+    cursor: type-b0c8984e59de5cfa,
+    facets: type-bd02313bd46e6b5f,
+    fields: type-841b91d3cd7503cf,
+    filters: type-f14ab5312ada80b5,
+    index: string,
+    limit: s32,
+    locale: string,
+    tags: type-bd02313bd46e6b5f,
+    text: string,
+  }
+  type type-222b45a420890a90 = list<type-df186b552844e001>;
+  record type-2ca96a347bf08d48 {
+    field: string,
+    ranges: type-8ee477eb53f2d86f,
+    text: string,
+  }
+  record type-38cba8a92bd13a3d {
+    count: s64,
+    value: string,
+  }
+  type type-3fc3561019799624 = list<type-38cba8a92bd13a3d>;
+  record type-4a5ccd431996f5e7 {
+    name: string,
+    value: string,
+  }
+  type type-52b45b8a04d45fa6 = list<type-6ec094ff398708ab>;
+  record type-6030d7cad8b8beb6 {
+    value: type-0ce0bf19f7bcea55,
+  }
+  record type-6ec094ff398708ab {
+    name: string,
+    text: string,
+  }
+  record type-78c7a07d47b96ff1 {
+    buckets: type-3fc3561019799624,
+    name: string,
+  }
+  record type-82eaf1888e12e5dc {
+    boost: float64,
+    name: string,
+  }
+  type type-841b91d3cd7503cf = list<type-82eaf1888e12e5dc>;
+  type type-8ee477eb53f2d86f = list<type-d3cfd658825b3154>;
+  record type-96501920636b1834-err-payload {
+    error: type-fb7bf6547e8a9ad8,
+  }
+  record type-96501920636b1834-ok-payload {
+    value: type-c93c800ca25248f8,
+  }
+  variant type-96501920636b1834 {
+    err(type-96501920636b1834-err-payload),
+    ok(type-96501920636b1834-ok-payload),
+  }
+  type type-abc04d7c410d6f60 = list<type-78c7a07d47b96ff1>;
+  record type-b0c8984e59de5cfa-some-payload {
+    value: string,
+  }
+  variant type-b0c8984e59de5cfa {
+    none,
+    some(type-b0c8984e59de5cfa-some-payload),
+  }
+  type type-bd02313bd46e6b5f = list<string>;
+  record type-c93c800ca25248f8 {
+    cursor: type-b0c8984e59de5cfa,
+    facets: type-abc04d7c410d6f60,
+    hits: type-222b45a420890a90,
+  }
+  record type-d0018c512660cca5-boolean-payload {
+    value: bool,
+  }
+  record type-d0018c512660cca5-i32-payload {
+    value: s32,
+  }
+  record type-d0018c512660cca5-i64-payload {
+    value: s64,
+  }
+  record type-d0018c512660cca5-f32-payload {
+    value: float32,
+  }
+  record type-d0018c512660cca5-f64-payload {
+    value: float64,
+  }
+  record type-d0018c512660cca5-text-payload {
+    value: string,
+  }
+  variant type-d0018c512660cca5 {
+    null,
+    boolean(type-d0018c512660cca5-boolean-payload),
+    i32(type-d0018c512660cca5-i32-payload),
+    i64(type-d0018c512660cca5-i64-payload),
+    f32(type-d0018c512660cca5-f32-payload),
+    f64(type-d0018c512660cca5-f64-payload),
+    text(type-d0018c512660cca5-text-payload),
+  }
+  record type-d3cfd658825b3154 {
+    end: s32,
+    start: s32,
+  }
+  record type-df186b552844e001 {
+    document-id: string,
+    fields: type-52b45b8a04d45fa6,
+    highlights: type-1513e1371a8877b3,
+    score: float64,
+    version: string,
+  }
+  type type-f14ab5312ada80b5 = list<type-6030d7cad8b8beb6>;
+  type type-f6707c0e97695e72 = list<type-4a5ccd431996f5e7>;
+  variant type-f70baeaae2d0bd6e {
+    notfound,
+    conflict,
+    failedcondition,
+    invalidrequest,
+    invaliddata,
+    unavailable,
+    quotaexceeded,
+    limitexceeded,
+    timeout,
+    cancelled,
+    internal,
+  }
+  record type-fb7bf6547e8a9ad8 {
+    code: type-f70baeaae2d0bd6e,
+    details: type-f6707c0e97695e72,
     message: string,
     operation: string,
     retryable: bool,
   }
-  record type-b0834ca05fe499e4 {
-    error: type-a2649608c603be2c,
-    ok: bool,
-    valuejson: string,
-  }
 
-  search: func(arg0: string, arg1: string) -> type-b0834ca05fe499e4;
+  search: func(arg0: string, arg1: type-1b6a5e00957b0734) -> type-96501920636b1834;
 }

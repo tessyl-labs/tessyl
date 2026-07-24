@@ -66,6 +66,7 @@ import {
   compareUtf8,
   decodeCursor,
   definitionHash,
+  displayCanonicalScalar,
   encodeCursor,
   encodeIndexValues,
   extractIndexValues,
@@ -199,7 +200,7 @@ const bindPgAbort = (client: PoolClient, signal: AbortSignal): (() => void) => {
   return () => { signal.removeEventListener("abort", abort); if (!destroyed) { destroyed = true; client.release(); } };
 };
 
-const pgMigrations = `
+const pgSchema = `
   CREATE TABLE IF NOT EXISTS tessyl_storage_table_definitions (
     namespace text NOT NULL, table_name text NOT NULL, schema_version integer NOT NULL,
     definition_hash text NOT NULL, definition_json jsonb NOT NULL,
@@ -215,8 +216,12 @@ const pgMigrations = `
     namespace text NOT NULL, table_name text NOT NULL, document_key text NOT NULL, version bigint NOT NULL,
     PRIMARY KEY(namespace, table_name, document_key)
   );
-  INSERT INTO tessyl_storage_document_versions(namespace,table_name,document_key,version)
-    SELECT namespace,table_name,document_key,version FROM tessyl_storage_documents ON CONFLICT DO NOTHING;
+  CREATE TABLE IF NOT EXISTS tessyl_storage_outbox_state (
+    namespace text NOT NULL, table_name text NOT NULL, document_key text NOT NULL, state_json jsonb NOT NULL,
+    PRIMARY KEY(namespace, table_name, document_key),
+    FOREIGN KEY(namespace, table_name, document_key)
+      REFERENCES tessyl_storage_documents(namespace, table_name, document_key) ON DELETE CASCADE
+  );
   CREATE TABLE IF NOT EXISTS tessyl_storage_index_entries (
     namespace text NOT NULL, table_name text NOT NULL, index_name text NOT NULL,
     sort_key text COLLATE "C" NOT NULL, values_json jsonb NOT NULL, document_key text NOT NULL,
@@ -241,19 +246,11 @@ const pgMigrations = `
     version text, backend_version_id text, request_hash text NOT NULL, part_count integer NOT NULL, operation_state text, operation_token text, operation_started_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(), UNIQUE(namespace, idempotency_key)
   );
-  ALTER TABLE tessyl_storage_upload_sessions ADD COLUMN IF NOT EXISTS request_hash text NOT NULL DEFAULT '';
-  ALTER TABLE tessyl_storage_upload_sessions ADD COLUMN IF NOT EXISTS part_count integer NOT NULL DEFAULT 1;
-  ALTER TABLE tessyl_storage_upload_sessions ADD COLUMN IF NOT EXISTS operation_state text;
-  ALTER TABLE tessyl_storage_upload_sessions ADD COLUMN IF NOT EXISTS operation_token text;
-  ALTER TABLE tessyl_storage_upload_sessions ADD COLUMN IF NOT EXISTS operation_started_at timestamptz;
-  ALTER TABLE tessyl_storage_upload_sessions ADD COLUMN IF NOT EXISTS backend_version_id text;
   CREATE TABLE IF NOT EXISTS tessyl_storage_object_keys (
     namespace text NOT NULL, object_key text NOT NULL, session_id text NOT NULL,
     PRIMARY KEY(namespace, object_key), UNIQUE(session_id)
   );
 `;
-const PG_MIGRATION_ID = 5;
-const PG_MIGRATION_CHECKSUM = createHash("sha256").update(pgMigrations).digest("hex");
 
 const assertCondition = (condition: WriteCondition, current: PgRow | undefined, operation: string): void => {
   if (condition.kind === "absent" && current) throw new StorageError("failed_condition", "Document already exists", { operation });
@@ -269,12 +266,7 @@ export class HostedDocumentStore extends HostedService implements DocumentStore 
     try {
       await client.query("BEGIN");
       await client.query("SELECT pg_advisory_xact_lock(hashtext('tessyl_storage_schema'))");
-      await client.query("CREATE TABLE IF NOT EXISTS tessyl_storage_migrations(version integer PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now())");
-      const newest = Number((await client.query<PgRow>("SELECT COALESCE(MAX(version),0) AS version FROM tessyl_storage_migrations")).rows[0]!.version);
-      if (newest > PG_MIGRATION_ID) throw new StorageError("conflict", "Hosted storage database is newer than this binary", { operation: "hosted.initialize" });
-      const applied = (await client.query<PgRow>("SELECT checksum FROM tessyl_storage_migrations WHERE version=$1", [PG_MIGRATION_ID])).rows[0];
-      if (applied && String(applied.checksum) !== PG_MIGRATION_CHECKSUM) throw new StorageError("conflict", "Hosted storage migration checksum mismatch", { operation: "hosted.initialize" });
-      if (!applied) { await client.query(pgMigrations); await client.query("INSERT INTO tessyl_storage_migrations(version,checksum) VALUES($1,$2)", [PG_MIGRATION_ID, PG_MIGRATION_CHECKSUM]); }
+      await client.query(pgSchema);
       await client.query("COMMIT");
     } catch (error) { await client.query("ROLLBACK").catch(() => undefined); throw error; }
     finally { client.release(); }
@@ -354,7 +346,7 @@ export class HostedDocumentStore extends HostedService implements DocumentStore 
               await client.query("COMMIT"); const response = replay.response_json as TransactionResult; return { ...response, replayed: true };
             }
           }
-          const documents: StoredDocument[] = []; const deletedKeys: string[] = [];
+          const documents: StoredDocument[] = []; const deletedKeys: { table: string; key: string }[] = [];
           for (const mutation of request.operations) {
             assertName(mutation.table, "table name", this.limits); assertKey(mutation.key, this.limits);
             await client.query("SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))", [request.namespace, mutation.table]);
@@ -362,12 +354,27 @@ export class HostedDocumentStore extends HostedService implements DocumentStore 
             const current = (await client.query<PgRow>("SELECT * FROM tessyl_storage_documents WHERE namespace=$1 AND table_name=$2 AND document_key=$3 FOR UPDATE", [request.namespace, mutation.table, mutation.key])).rows[0];
             const versionState = (await client.query<PgRow>("SELECT version FROM tessyl_storage_document_versions WHERE namespace=$1 AND table_name=$2 AND document_key=$3 FOR UPDATE", [request.namespace, mutation.table, mutation.key])).rows[0];
             assertCondition(mutation.condition, current, "document.transact");
-            if (mutation.kind === "delete") { if (current) { const deletedVersion = BigInt(String(versionState?.version ?? current.version)) + 1n; await client.query(`INSERT INTO tessyl_storage_document_versions(namespace,table_name,document_key,version) VALUES($1,$2,$3,$4) ON CONFLICT(namespace,table_name,document_key) DO UPDATE SET version=excluded.version`, [request.namespace, mutation.table, mutation.key, deletedVersion.toString()]); await client.query("DELETE FROM tessyl_storage_documents WHERE namespace=$1 AND table_name=$2 AND document_key=$3", [request.namespace, mutation.table, mutation.key]); } deletedKeys.push(`${mutation.table}:${mutation.key}`); continue; }
+            if (mutation.kind === "delete") { if (current) { const deletedVersion = BigInt(String(versionState?.version ?? current.version)) + 1n; await client.query(`INSERT INTO tessyl_storage_document_versions(namespace,table_name,document_key,version) VALUES($1,$2,$3,$4) ON CONFLICT(namespace,table_name,document_key) DO UPDATE SET version=excluded.version`, [request.namespace, mutation.table, mutation.key, deletedVersion.toString()]); await client.query("DELETE FROM tessyl_storage_documents WHERE namespace=$1 AND table_name=$2 AND document_key=$3", [request.namespace, mutation.table, mutation.key]); } deletedKeys.push({ table: mutation.table, key: mutation.key }); continue; }
             const body = parsePortableDocument(mutation.bodyJson, this.limits); const now = new Date(); const version = BigInt(String(versionState?.version ?? current?.version ?? 0)) + 1n;
             const row = (await client.query<PgRow>(`INSERT INTO tessyl_storage_documents(namespace,table_name,document_key,version,body_json,created_at,updated_at) VALUES($1,$2,$3,$4,$5::jsonb,$6,$6)
               ON CONFLICT(namespace,table_name,document_key) DO UPDATE SET version=excluded.version,body_json=excluded.body_json,updated_at=excluded.updated_at RETURNING *`, [request.namespace, mutation.table, mutation.key, version.toString(), mutation.bodyJson, now])).rows[0]!;
             await client.query("DELETE FROM tessyl_storage_index_entries WHERE namespace=$1 AND table_name=$2 AND document_key=$3", [request.namespace, mutation.table, mutation.key]);
             await client.query(`INSERT INTO tessyl_storage_document_versions(namespace,table_name,document_key,version) VALUES($1,$2,$3,$4) ON CONFLICT(namespace,table_name,document_key) DO UPDATE SET version=excluded.version`, [request.namespace, mutation.table, mutation.key, version.toString()]);
+            if (Object.hasOwn(body, "available_at")) {
+              const state = {
+                available_at: body.available_at,
+                attempt: body.attempt ?? 0,
+                processed_at: body.processed_at ?? null,
+                lease_token: null,
+                lease_until: null,
+                last_error: body.last_error ?? null,
+              };
+              await client.query(`INSERT INTO tessyl_storage_outbox_state(namespace,table_name,document_key,state_json) VALUES($1,$2,$3,$4::jsonb)
+                ON CONFLICT(namespace,table_name,document_key) DO UPDATE SET state_json=excluded.state_json`,
+              [request.namespace, mutation.table, mutation.key, canonicalJson(state)]);
+            } else {
+              await client.query("DELETE FROM tessyl_storage_outbox_state WHERE namespace=$1 AND table_name=$2 AND document_key=$3", [request.namespace, mutation.table, mutation.key]);
+            }
             await this.writeIndexEntries(client, request.namespace, definition, mutation.key, body); documents.push(asStoredDocument(row));
           }
           const result: TransactionResult = { documents, deletedKeys, replayed: false };
@@ -436,23 +443,23 @@ export class HostedDocumentStore extends HostedService implements DocumentStore 
       if (Number.isNaN(now.getTime()) || !Number.isSafeInteger(request.leaseSeconds) || request.leaseSeconds < 1 || request.leaseSeconds > MAX_OUTBOX_LEASE_SECONDS || !Number.isSafeInteger(request.limit) || request.limit < 1 || request.limit > this.limits.maxResultCount) throw new StorageError("invalid_request", "Invalid outbox claim request", { operation: "document.claim_outbox" });
       const client = await acquirePgClient(this.pool, signal); const release = bindPgAbort(client, signal);
       try {
-        await client.query("BEGIN"); await configurePgTimeout(client, options); const definition = (await this.inspectTableInternal(request.namespace, request.table, client)).definition;
-        const rows = (await client.query<PgRow>(`SELECT * FROM tessyl_storage_documents WHERE namespace=$1 AND table_name=$2
-          AND (body_json->>'processed_at' IS NULL)
-          AND CASE WHEN pg_input_is_valid(body_json->>'available_at','timestamptz') THEN (body_json->>'available_at')::timestamptz ELSE 'infinity'::timestamptz END <= $3
-          AND CASE WHEN body_json->>'lease_until' IS NULL THEN 'epoch'::timestamptz WHEN pg_input_is_valid(body_json->>'lease_until','timestamptz') THEN (body_json->>'lease_until')::timestamptz ELSE 'infinity'::timestamptz END <= $3
-          ORDER BY CASE WHEN pg_input_is_valid(body_json->>'available_at','timestamptz') THEN (body_json->>'available_at')::timestamptz ELSE 'infinity'::timestamptz END,document_key FOR UPDATE SKIP LOCKED LIMIT $4`, [request.namespace, request.table, request.now, request.limit])).rows;
+        await client.query("BEGIN"); await configurePgTimeout(client, options); await this.inspectTableInternal(request.namespace, request.table, client);
+        const rows = (await client.query<PgRow>(`SELECT d.*,s.state_json FROM tessyl_storage_outbox_state s
+          JOIN tessyl_storage_documents d USING(namespace,table_name,document_key)
+          WHERE s.namespace=$1 AND s.table_name=$2
+          AND (s.state_json->>'processed_at' IS NULL)
+          AND CASE WHEN pg_input_is_valid(s.state_json->>'available_at','timestamptz') THEN (s.state_json->>'available_at')::timestamptz ELSE 'infinity'::timestamptz END <= $3
+          AND CASE WHEN s.state_json->>'lease_until' IS NULL THEN 'epoch'::timestamptz WHEN pg_input_is_valid(s.state_json->>'lease_until','timestamptz') THEN (s.state_json->>'lease_until')::timestamptz ELSE 'infinity'::timestamptz END <= $3
+          ORDER BY CASE WHEN pg_input_is_valid(s.state_json->>'available_at','timestamptz') THEN (s.state_json->>'available_at')::timestamptz ELSE 'infinity'::timestamptz END,s.document_key
+          FOR UPDATE OF s SKIP LOCKED LIMIT $4`, [request.namespace, request.table, request.now, request.limit])).rows;
         const claimed: OutboxRecord[] = [];
         for (const row of rows) {
-          const body = row.body_json as Record<string, unknown>; const leaseToken = `${request.workerId}:${crypto.randomUUID()}`; const priorAttempt = body.attempt ?? 0;
+          const state = row.state_json as Record<string, unknown>; const leaseToken = `${request.workerId}:${crypto.randomUUID()}`; const priorAttempt = state.attempt ?? 0;
           if (!Number.isSafeInteger(priorAttempt) || Number(priorAttempt) < 0 || Number(priorAttempt) >= Number.MAX_SAFE_INTEGER) throw new StorageError("invalid_request", "Outbox attempt must be a nonnegative safe integer", { operation: "document.claim_outbox" });
           const attempt = Number(priorAttempt) + 1;
-          body.lease_token = leaseToken; body.lease_until = new Date(new Date(request.now).getTime() + request.leaseSeconds * 1000).toISOString(); body.attempt = attempt;
-          const bodyJson = canonicalJson(body); parsePortableDocument(bodyJson, this.limits);
-          const updated = (await client.query<PgRow>("UPDATE tessyl_storage_documents SET body_json=$1::jsonb,version=version+1,updated_at=now() WHERE namespace=$2 AND table_name=$3 AND document_key=$4 RETURNING *", [bodyJson, request.namespace, request.table, row.document_key])).rows[0]!;
-          await client.query("UPDATE tessyl_storage_document_versions SET version=$1 WHERE namespace=$2 AND table_name=$3 AND document_key=$4", [updated.version, request.namespace, request.table, row.document_key]);
-          await client.query("DELETE FROM tessyl_storage_index_entries WHERE namespace=$1 AND table_name=$2 AND document_key=$3", [request.namespace, request.table, row.document_key]); await this.writeIndexEntries(client, request.namespace, definition, String(row.document_key), body);
-          claimed.push({ document: asStoredDocument(updated), leaseToken, attempt });
+          state.lease_token = leaseToken; state.lease_until = new Date(new Date(request.now).getTime() + request.leaseSeconds * 1000).toISOString(); state.attempt = attempt;
+          await client.query("UPDATE tessyl_storage_outbox_state SET state_json=$1::jsonb WHERE namespace=$2 AND table_name=$3 AND document_key=$4", [canonicalJson(state), request.namespace, request.table, row.document_key]);
+          claimed.push({ document: asStoredDocument(row), leaseToken, attempt });
         }
         await client.query("COMMIT"); return claimed;
       } catch (error) { await client.query("ROLLBACK").catch(() => undefined); throw error; } finally { release(); }
@@ -466,14 +473,15 @@ export class HostedDocumentStore extends HostedService implements DocumentStore 
     return this.operation(operation, options, async (signal) => {
       assertNamespace(namespace, this.limits); assertName(table, "table name", this.limits); assertKey(key, this.limits); assertLeaseToken(leaseToken, this.limits);
       const client = await acquirePgClient(this.pool, signal); const release = bindPgAbort(client, signal); try {
-        await client.query("BEGIN"); await configurePgTimeout(client, options); const definition = (await this.inspectTableInternal(namespace, table, client)).definition;
+        await client.query("BEGIN"); await configurePgTimeout(client, options); await this.inspectTableInternal(namespace, table, client);
         const row = (await client.query<PgRow>("SELECT * FROM tessyl_storage_documents WHERE namespace=$1 AND table_name=$2 AND document_key=$3 FOR UPDATE", [namespace, table, key])).rows[0];
-        if (!row) throw new StorageError("not_found", "Outbox record was not found", { operation }); const body = row.body_json as Record<string, unknown>;
-        if (body.lease_token !== leaseToken) throw new StorageError("failed_condition", "Outbox lease token does not match", { operation }); mutate(body);
-        const bodyJson = canonicalJson(body); parsePortableDocument(bodyJson, this.limits);
-        await client.query("UPDATE tessyl_storage_documents SET body_json=$1::jsonb,version=version+1,updated_at=now() WHERE namespace=$2 AND table_name=$3 AND document_key=$4", [bodyJson, namespace, table, key]);
-        await client.query("UPDATE tessyl_storage_document_versions SET version=(SELECT version FROM tessyl_storage_documents WHERE namespace=$1 AND table_name=$2 AND document_key=$3) WHERE namespace=$1 AND table_name=$2 AND document_key=$3", [namespace, table, key]);
-        await client.query("DELETE FROM tessyl_storage_index_entries WHERE namespace=$1 AND table_name=$2 AND document_key=$3", [namespace, table, key]); await this.writeIndexEntries(client, namespace, definition, key, body); await client.query("COMMIT");
+        if (!row) throw new StorageError("not_found", "Outbox record was not found", { operation });
+        const stateRow = (await client.query<PgRow>("SELECT state_json FROM tessyl_storage_outbox_state WHERE namespace=$1 AND table_name=$2 AND document_key=$3 FOR UPDATE", [namespace, table, key])).rows[0];
+        if (!stateRow) throw new StorageError("invalid_request", "Document is not an outbox record", { operation });
+        const state = stateRow.state_json as Record<string, unknown>;
+        if (state.lease_token !== leaseToken) throw new StorageError("failed_condition", "Outbox lease token does not match", { operation }); mutate(state);
+        await client.query("UPDATE tessyl_storage_outbox_state SET state_json=$1::jsonb WHERE namespace=$2 AND table_name=$3 AND document_key=$4", [canonicalJson(state), namespace, table, key]);
+        await client.query("COMMIT");
       } catch (error) { await client.query("ROLLBACK").catch(() => undefined); throw error; } finally { release(); }
     });
   }
@@ -484,14 +492,14 @@ export class HostedDocumentStore extends HostedService implements DocumentStore 
 
 const validateQueryValues = (index: IndexDefinition, values: readonly PortableScalar[], kind: string): void => {
   if (values.length > index.fields.length) throw new StorageError("invalid_request", `${kind} has too many index values`, { operation: "document.query" });
-  values.forEach((value, position) => { const actual = value === null ? "null" : typeof value; if (actual !== index.fields[position]!.type) throw new StorageError("invalid_request", `${kind} value ${position} must be ${index.fields[position]!.type}`, { operation: "document.query" }); });
+  values.forEach((value, position) => { const actual = value === null ? "null" : typeof value === "bigint" ? "number" : typeof value; if (actual !== index.fields[position]!.type) throw new StorageError("invalid_request", `${kind} value ${position} must be ${index.fields[position]!.type}`, { operation: "document.query" }); });
 };
 
 const nsHash = (namespace: string): string => createHash("sha256").update(namespace).digest("hex").slice(0, 20);
 const searchBackendId = (documentId: string): string => createHash("sha256").update(documentId).digest("hex");
 const aliasName = (namespace: string, logical: string): string => `tessyl-${nsHash(namespace)}-${logical}`;
 const physicalName = (namespace: string, schema: SearchSchema, generation: number): string => `${aliasName(namespace, schema.name)}-g${generation}`;
-const SEARCH_FORMAT_VERSION = 2;
+const SEARCH_FORMAT_VERSION = 1;
 
 export class HostedSearchIndexService extends HostedService implements SearchIndexService {
   constructor(readonly client: OpenSearchClient, readonly pool: Pool, limits: Readonly<StorageLimits>, semaphore: Semaphore, observe?: ObservabilityHook, private readonly ownsClient = false) { super(limits, "search_index", semaphore, observe); }
@@ -548,7 +556,7 @@ export class HostedSearchIndexService extends HostedService implements SearchInd
       const response = await openSearchRequest(signal, this.client.indices.getAlias({ name: aliasName(namespace, logicalName) }, { requestTimeout: options?.timeoutMs })); const body = response.body as Record<string, unknown>; const physical = Object.keys(body)[0]; if (!physical) throw new Error("empty alias");
       const settings = await openSearchRequest(signal, this.client.indices.get({ index: physical }, { requestTimeout: options?.timeoutMs })); const indexBody = (settings.body as Record<string, { mappings?: { _meta?: { tessyl_schema?: SearchSchema; generation?: number; storage_format_version?: number } } }>)[physical]; const schema = indexBody?.mappings?._meta?.tessyl_schema;
       if (!schema) throw new StorageError("internal", "OpenSearch index is missing Tessyl schema metadata", { operation: "search_index.inspect" });
-      if (indexBody?.mappings?._meta?.storage_format_version !== SEARCH_FORMAT_VERSION) throw new StorageError("failed_condition", "Search generation uses a legacy storage format; begin and cut over to a rebuilt generation", { operation: "search_index.inspect" });
+      if (indexBody?.mappings?._meta?.storage_format_version !== SEARCH_FORMAT_VERSION) throw new StorageError("failed_condition", "Search generation uses an incompatible storage format", { operation: "search_index.inspect" });
       return { namespace, logicalName, physicalName: physical, schema, generation: Number(indexBody?.mappings?._meta?.generation ?? 1), active: true };
     } catch (error) { if ((error as { statusCode?: number }).statusCode === 404) throw new StorageError("not_found", `Search index ${logicalName} was not found`, { operation: "search_index.inspect" }); throw error; }
   }
@@ -605,7 +613,7 @@ export class HostedSearchIndexService extends HostedService implements SearchInd
     if (!name.startsWith("tessyl-")) { assertName(name, "search index name", this.limits); const active = await this.inspectInternal(namespace, name, signal, options); return { index: aliasName(namespace, name), schema: active.schema, generation: active.generation }; }
     if (!name.startsWith(`tessyl-${nsHash(namespace)}-`)) throw new StorageError("invalid_request", "Physical index does not belong to this namespace", { operation: "search_index.mutate" });
     const metadata = await this.readPhysicalMetadata(namespace, name, signal, options);
-    if (metadata.formatVersion !== SEARCH_FORMAT_VERSION) throw new StorageError("failed_condition", "Search generation uses a legacy storage format; rebuild it before mutation", { operation: "search_index.mutate" });
+    if (metadata.formatVersion !== SEARCH_FORMAT_VERSION) throw new StorageError("failed_condition", "Search generation uses an incompatible storage format", { operation: "search_index.mutate" });
     return { index: name, schema: metadata.schema, generation: metadata.generation };
   }
   async upsert(document: SearchDocument, options?: OperationOptions): Promise<SearchMutationResult> { return this.operation("search_index.upsert", options, async (signal) => { if (typeof document?.index !== "string") throw new StorageError("invalid_request", "Search document index must be a string", { operation: "search_index.upsert" }); const target = await this.mutationTarget(document.namespace, document.index, options, signal); const version = validateSearchDocument(document, target.schema, this.limits); const backendId = searchBackendId(document.documentId); const body: Record<string, unknown> = { namespace: document.namespace, locale: document.locale, version, tags: document.tags, tessyl_deleted: false, tessyl_document_id: document.documentId }; for (const field of document.fields) body[`field_${field.name}`] = field.text; for (const filter of document.filters) body[`filter_${filter.name}`] = canonicalJson(filter.value); try { await openSearchRequest(signal, this.client.index({ index: target.index, id: backendId, routing: document.namespace, version, version_type: "external", body, refresh: "wait_for" }, { requestTimeout: options?.timeoutMs })); return { applied: true, currentVersion: String(version) }; } catch (error) { if ((error as { statusCode?: number }).statusCode !== 409) throw error; const current = await openSearchRequest(signal, this.client.get({ index: target.index, id: backendId, routing: document.namespace }, { requestTimeout: options?.timeoutMs })); return { applied: false, currentVersion: String((current.body as { _version?: number })._version ?? version) }; } }); }
@@ -621,7 +629,7 @@ export class HostedSearchService extends HostedService implements SearchService 
     let schemaResponse;
     try { schemaResponse = await openSearchRequest(signal, this.client.indices.get({ index: aliasName(request.namespace, request.index) }, { requestTimeout: options?.timeoutMs })); }
     catch (error) { if ((error as { statusCode?: number }).statusCode === 404) throw new StorageError("not_found", "Search index was not found", { operation: "search.query" }); throw error; }
-    const physical = Object.keys(schemaResponse.body as object)[0]!; const metadata = (schemaResponse.body as Record<string, { mappings?: { _meta?: { tessyl_schema?: SearchSchema; storage_format_version?: number } } }>)[physical]?.mappings?._meta; const schema = metadata?.tessyl_schema; if (!schema) throw new StorageError("internal", "OpenSearch index is missing Tessyl schema metadata", { operation: "search.query" }); if (metadata?.storage_format_version !== SEARCH_FORMAT_VERSION) throw new StorageError("failed_condition", "Active search generation uses a legacy storage format; rebuild and cut over before querying", { operation: "search.query" }); validateSearchQuery(request, schema, this.limits);
+    const physical = Object.keys(schemaResponse.body as object)[0]!; const metadata = (schemaResponse.body as Record<string, { mappings?: { _meta?: { tessyl_schema?: SearchSchema; storage_format_version?: number } } }>)[physical]?.mappings?._meta; const schema = metadata?.tessyl_schema; if (!schema) throw new StorageError("internal", "OpenSearch index is missing Tessyl schema metadata", { operation: "search.query" }); if (metadata?.storage_format_version !== SEARCH_FORMAT_VERSION) throw new StorageError("failed_condition", "Active search generation uses an incompatible storage format", { operation: "search.query" }); validateSearchQuery(request, schema, this.limits);
     const { cursor: _cursor, ...queryShape } = request; const queryHash = definitionHash(queryShape);
     const cursor = decodeCursor<{ searchAfter: readonly unknown[]; physical: string; queryHash: string }>(request.cursor, "search.query"); if (cursor && (!Array.isArray(cursor.searchAfter) || cursor.searchAfter.length !== 2 || !Number.isFinite(cursor.searchAfter[0]) || typeof cursor.searchAfter[1] !== "string" || cursor.physical !== physical || cursor.queryHash !== queryHash)) throw new StorageError("invalid_request", "Search cursor does not match query", { operation: "search.query" });
     const must: object[] = [{ term: { namespace: request.namespace } }];
@@ -635,7 +643,7 @@ export class HostedSearchService extends HostedService implements SearchService 
     const body = response.body as unknown as { hits: { hits: Array<{ _id: string; _score: number; _source: Record<string, unknown>; sort: readonly unknown[] }> }; aggregations?: Record<string, { buckets?: Array<{ key: string; doc_count: number }> }> };
     const rawHits = body.hits.hits; const page = rawHits.slice(0, request.limit); const terms = tokenize(request.text); const selectedFields = new Set(request.fields.length ? request.fields.map(({ name }) => name) : schema.fields);
     const hits = page.map((hit) => { const fields: SearchField[] = Object.entries(hit._source).filter(([name]) => name.startsWith("field_")).map(([name, text]) => ({ name: name.slice(6), text: String(text) })); const highlights: SearchHighlight[] = fields.filter((field) => selectedFields.has(field.name)).map((field) => ({ field: field.name, text: field.text, ranges: highlightRanges(field.text, terms) })).filter((highlight) => highlight.ranges.length); return { documentId: String(hit._source.tessyl_document_id), version: String(hit._source.version), score: hit._score ?? 0, fields, highlights }; });
-    const facets: SearchFacet[] = request.facets.map((name) => ({ name, buckets: (body.aggregations?.[name]?.buckets ?? []).map((bucket) => ({ value: String(JSON.parse(String(bucket.key)) as PortableScalar), count: bucket.doc_count })) })); const last = page.at(-1);
+    const facets: SearchFacet[] = request.facets.map((name) => ({ name, buckets: (body.aggregations?.[name]?.buckets ?? []).map((bucket) => ({ value: displayCanonicalScalar(String(bucket.key)), count: bucket.doc_count })) })); const last = page.at(-1);
     return { hits, facets, ...(rawHits.length > request.limit && last ? { cursor: encodeCursor({ searchAfter: last.sort, physical, queryHash }) } : {}) };
   }); }
   async health(options?: OperationOptions): Promise<HealthStatus> { const startedAt = Date.now(); return this.operation("search.health", options, async (signal) => { const response = await openSearchRequest(signal, this.client.cluster.health({}, { requestTimeout: options?.timeoutMs })); const status = String((response.body as { status?: string }).status); return { capability: "search", ready: status !== "red", message: status, latencyMs: Date.now() - startedAt }; }); }

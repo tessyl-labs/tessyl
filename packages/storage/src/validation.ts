@@ -14,6 +14,7 @@ import {
   type UploadRequest,
 } from "./contracts.js";
 import { StorageError } from "./errors.js";
+import { decodeStoredDocumentBody } from "./wire.js";
 
 const encoder = new TextEncoder();
 const NAME = /^[a-z][a-z0-9_]{0,127}$/;
@@ -90,7 +91,7 @@ export const parsePortableDocument = (bodyJson: string, limits: StorageLimits): 
   }
   let value: unknown;
   try {
-    value = JSON.parse(bodyJson);
+    value = decodeStoredDocumentBody(bodyJson);
   } catch (cause) {
     throw new StorageError("invalid_request", "Document is not valid JSON", { operation: "validate.document", cause });
   }
@@ -110,6 +111,10 @@ const validatePortableValue = (value: unknown, depth: number, state: { nodes: nu
   if (typeof value === "string") { if (!isPortableString(value)) throw new StorageError("invalid_request", "Document contains a non-portable string", { operation: "validate.document" }); return; }
   if (typeof value === "number") {
     if (!Number.isFinite(value)) throw new StorageError("invalid_request", "Document numbers must be finite", { operation: "validate.document" });
+    return;
+  }
+  if (typeof value === "bigint") {
+    if (value < -(1n << 63n) || value > (1n << 63n) - 1n) throw new StorageError("invalid_request", "Document i64 value is out of range", { operation: "validate.document" });
     return;
   }
   if (Array.isArray(value)) {
@@ -161,6 +166,7 @@ export const canonicalJson = (value: unknown): string => JSON.stringify(sortValu
 export const compareUtf8 = (left: string, right: string): number => Buffer.compare(Buffer.from(left, "utf8"), Buffer.from(right, "utf8"));
 
 const sortValue = (value: unknown): unknown => {
+  if (typeof value === "bigint") return { $voyd_i64: value.toString() };
   if (Array.isArray(value)) return value.map(sortValue);
   if (value && typeof value === "object") {
     return Object.fromEntries(Object.entries(value).sort(([a], [b]) => compareUtf8(a, b)).map(([key, item]) => [key, sortValue(item)]));
@@ -189,8 +195,8 @@ export const extractIndexValues = (document: Record<string, unknown>, index: Ind
       values.push(null);
       continue;
     }
-    const type = value === null ? "null" : typeof value;
-    if (type !== field.type || (type === "number" && !Number.isFinite(value))) {
+    const type = value === null ? "null" : typeof value === "bigint" ? "number" : typeof value;
+    if (type !== field.type || (typeof value === "number" && !Number.isFinite(value))) {
       throw new StorageError("invalid_request", `Index ${index.name} field ${field.path} must be ${field.type}`, { operation: "validate.index" });
     }
     values.push(value as PortableScalar);
@@ -212,6 +218,10 @@ export const encodeScalar = (value: PortableScalar): string => {
     if ((bytes[0]! & 0x80) !== 0) for (let index = 0; index < bytes.length; index += 1) bytes[index] = (~bytes[index]!) & 0xff;
     else bytes[0] = bytes[0]! ^ 0x80;
     return `2${[...bytes].map(hexByte).join("")}`;
+  }
+  if (typeof value === "bigint") {
+    if (value < -(1n << 63n) || value > (1n << 63n) - 1n) throw new StorageError("invalid_request", "Index i64 value is out of range", { operation: "validate.index" });
+    return `2i${(value + (1n << 63n)).toString(16).padStart(16, "0")}`;
   }
   assertPortableString(value, "validate.index");
   return `3${Buffer.from(value, "utf8").toString("hex")}`;
@@ -321,7 +331,20 @@ export const validateSearchQuery = (request: SearchQuery, schema: SearchSchema, 
   if (request.locale && !schema.locales.includes(request.locale)) throw new StorageError("invalid_request", `Unsupported search locale ${request.locale}`, { operation: "search.query" });
 };
 
-const isPortableScalar = (value: unknown): value is PortableScalar => value === null || typeof value === "string" || typeof value === "boolean" || (typeof value === "number" && Number.isFinite(value));
+const isPortableScalar = (value: unknown): value is PortableScalar =>
+  value === null ||
+  typeof value === "string" ||
+  typeof value === "boolean" ||
+  (typeof value === "number" && Number.isFinite(value)) ||
+  (typeof value === "bigint" && value >= -(1n << 63n) && value <= (1n << 63n) - 1n);
+
+export const displayCanonicalScalar = (encoded: string): string => {
+  const parsed = JSON.parse(encoded) as unknown;
+  if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && typeof (parsed as { $voyd_i64?: unknown }).$voyd_i64 === "string") {
+    return (parsed as { $voyd_i64: string }).$voyd_i64;
+  }
+  return String(parsed as PortableScalar);
+};
 
 export const validateUploadRequest = (request: UploadRequest, limits: StorageLimits): { bytes: number; requestHash: string } => {
   const raw = requireRecord(request, "Upload request must be an object", "object.initiate_upload");

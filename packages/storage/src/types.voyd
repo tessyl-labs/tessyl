@@ -1,0 +1,73 @@
+//! Shared storage value types.
+
+use std::array::Array
+use std::string::type::String
+
+pub enum StorageErrorCode
+  NotFound
+  Conflict
+  FailedCondition
+  InvalidRequest
+  InvalidData
+  Unavailable
+  QuotaExceeded
+  LimitExceeded
+  Timeout
+  Cancelled
+  Internal
+
+pub obj ErrorDetail {
+  api name: String,
+  api value: String
+}
+
+pub obj StorageError {
+  api code: StorageErrorCode,
+  api message: String,
+  api retryable: bool,
+  api operation: String,
+  api details: Array<ErrorDetail>
+}
+
+pub enum Scalar
+  Null
+  Boolean { value: bool }
+  I32 { value: i32 }
+  I64 { value: i64 }
+  F32 { value: f32 }
+  F64 { value: f64 }
+  Text { value: String }
+
+pub enum Order
+  Ascending
+  Descending
+
+pub enum ValueNode
+  Empty
+  BoolNode { value: bool }
+  I32Node { value: i32 }
+  I64Node { value: i64 }
+  F32Node { value: f32 }
+  F64Node { value: f64 }
+  TextNode { value: String }
+  ListNode { items: Array<i32> }
+  RecordNode { fields: Array<ValueField> }
+  NamedNode { name: String, fields: Array<ValueField> }
+
+pub obj ValueField {
+  api name: String,
+  api node: i32
+}
+
+pub obj ValueNodeEntry {
+  api value: ValueNode
+}
+
+/// Flat, acyclic representation of a boundary-compatible Voyd value.
+///
+/// Application code normally never constructs this type. It lets generic
+/// documents cross the external package boundary without exposing JSON.
+pub obj Value {
+  api root: i32,
+  api nodes: Array<ValueNodeEntry>
+}
